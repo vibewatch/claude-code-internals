@@ -1,0 +1,1046 @@
+{
+  "generatedAt": "2026-05-18T02:15:10.547Z",
+  "input": "claude-code-pkg/src/entrypoints/cli.renamed.js",
+  "totals": {
+    "totalModules": 3814,
+    "modulesWithExportTable": 387,
+    "modulesWithAnySemantic": 918,
+    "fullyOpaqueModules": 2896,
+    "classifiedModules": 239,
+    "unclassifiedSemanticModules": 679
+  },
+  "themes": [
+    {
+      "theme": "AWS SDK / Bedrock / Smithy",
+      "moduleCount": 154,
+      "lineMin": 70461,
+      "lineMax": 117003,
+      "sampleNames": [
+        "withBaseException",
+        "throwDefaultError",
+        "take",
+        "serializeFloat",
+        "serializeDateTime",
+        "resolvedPath",
+        "resolveDefaultRuntimeConfig",
+        "map",
+        "loadConfigsForDefaultMode",
+        "isSerializableHeaderValue",
+        "getValueFromTextNode",
+        "getDefaultExtensionConfiguration"
+      ],
+      "loaderLines": [
+        70461,
+        70513,
+        70663,
+        87104,
+        88093,
+        88113,
+        88133,
+        88153,
+        88239,
+        92308,
+        100329,
+        100349,
+        100376,
+        100400,
+        100424,
+        100448,
+        100468,
+        100492,
+        100512,
+        100536,
+        100556,
+        100576,
+        100596,
+        100620,
+        100640,
+        100664,
+        100684,
+        100704,
+        100724,
+        100748,
+        100775,
+        100799,
+        100823,
+        100843,
+        100867,
+        100891,
+        100911,
+        100931,
+        100951,
+        100975,
+        100999,
+        101019,
+        101043,
+        101067,
+        101091,
+        101115,
+        101139,
+        101166,
+        101190,
+        101214,
+        101238,
+        101262,
+        101282,
+        101302,
+        101322,
+        101346,
+        101366,
+        101386,
+        101406,
+        101426,
+        101450,
+        101470,
+        101490,
+        101510,
+        101530,
+        101554,
+        101574,
+        101598,
+        101618,
+        101642,
+        101666,
+        101690,
+        101714,
+        101734,
+        101754,
+        101774,
+        101798,
+        101818,
+        101838,
+        101858,
+        101878,
+        101902,
+        101922,
+        101942,
+        101962,
+        101982,
+        102002,
+        102026,
+        102046,
+        102070,
+        102090,
+        102114,
+        102138,
+        102162,
+        102182,
+        102202,
+        102222,
+        102242,
+        102262,
+        102286,
+        102310,
+        102334,
+        102354,
+        102378,
+        103602,
+        105317,
+        108737,
+        108757,
+        108777,
+        108799,
+        108819,
+        108839,
+        108859,
+        108887,
+        108909,
+        108929,
+        108949,
+        109278,
+        111376,
+        113069,
+        113089,
+        113109,
+        113129,
+        113149,
+        113169,
+        113189,
+        113209,
+        113229,
+        113249,
+        113269,
+        113527,
+        114295,
+        116125,
+        116145,
+        116165,
+        116185,
+        116205,
+        116225,
+        116245,
+        116265,
+        116285,
+        116305,
+        116329,
+        116349,
+        116369,
+        116409,
+        116429,
+        116449,
+        116469,
+        116509,
+        116529,
+        116569,
+        116702,
+        117003
+      ]
+    },
+    {
+      "theme": "Zod schema validation",
+      "moduleCount": 13,
+      "lineMin": 14503,
+      "lineMax": 28588,
+      "sampleNames": [
+        "void",
+        "util",
+        "unknown",
+        "union",
+        "undefined",
+        "tuple",
+        "transformer",
+        "symbol",
+        "string",
+        "strictObject",
+        "setErrorMap",
+        "set"
+      ],
+      "loaderLines": [
+        14503,
+        14590,
+        14788,
+        15436,
+        18083,
+        18751,
+        26160,
+        26868,
+        27116,
+        27343,
+        27376,
+        27838,
+        28588
+      ]
+    },
+    {
+      "theme": "MSAL / Microsoft Identity auth",
+      "moduleCount": 10,
+      "lineMin": 4322,
+      "lineMax": 143196,
+      "sampleNames": [
+        "withCredentialsLock",
+        "resolveCredentialsFromConfig",
+        "resetWIFSingletonsForTesting",
+        "loadCredentials",
+        "loadConfig",
+        "isWIFActive",
+        "getWIFTokenCache",
+        "getWIFStatusLine",
+        "getWIFPrecedenceSource",
+        "getWIFCredentials",
+        "getWIFAuthType",
+        "getCredentialsPath"
+      ],
+      "loaderLines": [
+        4322,
+        120729,
+        129562,
+        129877,
+        132480,
+        132709,
+        133870,
+        134326,
+        140670,
+        143196
+      ]
+    },
+    {
+      "theme": "Ink React hooks (terminal UI)",
+      "moduleCount": 8,
+      "lineMin": 173046,
+      "lineMax": 199781,
+      "sampleNames": [
+        "useStdin",
+        "ThemeProvider",
+        "useTheme",
+        "useThemeSetting",
+        "usePreviewTheme",
+        "useResolvedTheme",
+        "useCustomThemes",
+        "useTerminalFocus",
+        "useTerminalViewport",
+        "useSelection",
+        "useTabStatus",
+        "useTerminalTitle"
+      ],
+      "loaderLines": [
+        173046,
+        176244,
+        192572,
+        199508,
+        199698,
+        199721,
+        199755,
+        199781
+      ]
+    },
+    {
+      "theme": "SDK / query / session API surface",
+      "moduleCount": 7,
+      "lineMin": 57255,
+      "lineMax": 605109,
+      "sampleNames": [
+        "tool",
+        "tagSession",
+        "startup",
+        "resolveSettings",
+        "renameSession",
+        "query",
+        "parseDirectConnectUrl",
+        "listSubagents",
+        "listSessions",
+        "importSessionToStore",
+        "getSubagentMessages",
+        "getSessionMessages"
+      ],
+      "loaderLines": [
+        57255,
+        57368,
+        57451,
+        603841,
+        603910,
+        604195,
+        605109
+      ]
+    },
+    {
+      "theme": "MCPB extension packaging / signing",
+      "moduleCount": 5,
+      "lineMin": 268617,
+      "lineMax": 272401,
+      "sampleNames": [
+        "verifyMcpbFile",
+        "verifyCertificateChain",
+        "validateManifest",
+        "unsignMcpbFile",
+        "unpackExtension",
+        "signMcpbFile",
+        "shouldExclude",
+        "replaceVariables",
+        "readPackageJson",
+        "readMcpbIgnorePatterns",
+        "promptVisualAssets",
+        "promptUserConfig"
+      ],
+      "loaderLines": [
+        268617,
+        271802,
+        271894,
+        272102,
+        272401
+      ]
+    },
+    {
+      "theme": "MCP / Tool bridge / Chrome",
+      "moduleCount": 4,
+      "lineMin": 13823,
+      "lineMax": 39134,
+      "sampleNames": [
+        "localPlatformLabel",
+        "createClaudeForChromeMcpServer",
+        "createChromeSocketClient",
+        "createBridgeClient",
+        "clearBrowserResolution",
+        "WAIT_MAX_DURATION_S",
+        "ToolCallTimeoutError",
+        "SocketConnectionError",
+        "PEER_WAIT_TIMEOUT_MS",
+        "NoExtensionConnectedError",
+        "ExtensionDisconnectedMidCallError",
+        "DISCOVERY_TIMEOUT_MS"
+      ],
+      "loaderLines": [
+        13823,
+        13838,
+        39107,
+        39134
+      ]
+    },
+    {
+      "theme": "TUI text / token formatting",
+      "moduleCount": 3,
+      "lineMin": 12130,
+      "lineMax": 199851,
+      "sampleNames": [
+        "wrapText",
+        "truncateToWidthNoEllipsis",
+        "truncateToWidth",
+        "truncateStartToWidth",
+        "truncatePathMiddle",
+        "truncate",
+        "formatTokens",
+        "formatTokenEstimate",
+        "formatSecondsShort",
+        "formatResetTime",
+        "formatResetText",
+        "formatRelativeTimeAgo"
+      ],
+      "loaderLines": [
+        12130,
+        12313,
+        199851
+      ]
+    },
+    {
+      "theme": "GCP WIF / Anthropic / gateway auth",
+      "moduleCount": 2,
+      "lineMin": 110458,
+      "lineMax": 157847,
+      "sampleNames": [
+        "withOAuthRefreshLock",
+        "validateForceLoginOrg",
+        "shouldUseWIFAuth",
+        "saveOAuthTokensIfNeeded",
+        "saveApiKey",
+        "restoreGatewayAuth",
+        "resetAwsAuthRefreshCooldown",
+        "removeApiKey",
+        "refreshGcpCredentialsIfNeeded",
+        "refreshGcpAuth",
+        "refreshAwsAuth",
+        "refreshAndGetAwsCredentials"
+      ],
+      "loaderLines": [
+        110458,
+        157847
+      ]
+    },
+    {
+      "theme": "Session / runtime state hub",
+      "moduleCount": 2,
+      "lineMin": 3398,
+      "lineMax": 118553,
+      "sampleNames": [
+        "waitForScrollIdle",
+        "updateLastInteractionTime",
+        "switchSession",
+        "snapshotOutputTokensForTurn",
+        "setUserMsgOptIn",
+        "setUseCoworkPlugins",
+        "setTracerProvider",
+        "setThinkingTypeOverride",
+        "setTerminalFocusForState",
+        "setTeleportedSessionInfo",
+        "setTeamMemoryServerStatus",
+        "setSystemPromptSectionCacheEntry"
+      ],
+      "loaderLines": [
+        3398,
+        118553
+      ]
+    },
+    {
+      "theme": "Settings file load / merge",
+      "moduleCount": 2,
+      "lineMin": 62036,
+      "lineMax": 62450,
+      "sampleNames": [
+        "updateSettingsForSource",
+        "shouldIncludeParentTier",
+        "settingsMergeCustomizer",
+        "rawSettingsContainsKey",
+        "parseSettingsFileUncached",
+        "parseSettingsFile",
+        "parseRemoteManagedSettings",
+        "loadManagedFileSettingsFromDir",
+        "loadManagedFileSettings",
+        "keepRestrictiveFromParent",
+        "hasSkipDangerousModePermissionPrompt",
+        "hasIsolatePeerMachines"
+      ],
+      "loaderLines": [
+        62036,
+        62450
+      ]
+    },
+    {
+      "theme": "Process I/O / stdout-stderr",
+      "moduleCount": 2,
+      "lineMin": 11183,
+      "lineMax": 11235,
+      "sampleNames": [
+        "setBgExitCause",
+        "readAndClearBgExitCause",
+        "writeToStdout",
+        "writeToStderr",
+        "registerProcessOutputErrorHandlers",
+        "peekForStdinData",
+        "exitWithError"
+      ],
+      "loaderLines": [
+        11183,
+        11235
+      ]
+    },
+    {
+      "theme": "Axios HTTP",
+      "moduleCount": 2,
+      "lineMin": 39541,
+      "lineMax": 41297,
+      "sampleNames": [
+        "origin",
+        "navigator",
+        "hasStandardBrowserWebWorkerEnv",
+        "hasStandardBrowserEnv",
+        "hasBrowserEnv",
+        "isBuffer",
+        "isArrayBufferView",
+        "forEach",
+        "findKey",
+        "isSpecCompliantForm",
+        "kindOf",
+        "kindOfTest"
+      ],
+      "loaderLines": [
+        39541,
+        41297
+      ]
+    },
+    {
+      "theme": "Transcript / agent metadata / session files",
+      "moduleCount": 1,
+      "lineMin": 623491,
+      "lineMax": 623491,
+      "sampleNames": [
+        "writeRemoteAgentMetadata",
+        "writeAgentMetadata",
+        "worktreeStateSignal",
+        "transcriptCursorEnd",
+        "trackSessionWrite",
+        "subscribeSessionTitleChanged",
+        "subscribeSessionAgentNameChanged",
+        "setSessionFileForTesting",
+        "setRemoteIngressUrlForTesting",
+        "setInternalEventWriter",
+        "setInternalEventReader",
+        "sessionIdExists"
+      ],
+      "loaderLines": [
+        623491
+      ]
+    },
+    {
+      "theme": "Hooks subsystem",
+      "moduleCount": 1,
+      "lineMin": 629735,
+      "lineMax": 629735,
+      "sampleNames": [
+        "shouldSkipHookDueToTrust",
+        "persistHookOutput",
+        "parseElicitationHookOutput",
+        "hasWorktreeCreateHook",
+        "hasInstructionsLoadedHook",
+        "hasHookForEvent",
+        "hasBlockingResult",
+        "getUserPromptSubmitHookBlockingMessage",
+        "getTelemetryHookName",
+        "getTeammateIdleHookMessage",
+        "getTaskCreatedHookMessage",
+        "getTaskCompletedHookMessage"
+      ],
+      "loaderLines": [
+        629735
+      ]
+    },
+    {
+      "theme": "Mailbox / teammate IPC",
+      "moduleCount": 1,
+      "lineMin": 286598,
+      "lineMax": 286598,
+      "sampleNames": [
+        "writeToMailbox",
+        "sendShutdownRequestToMailbox",
+        "readUnreadMessages",
+        "readMailbox",
+        "markMessagesAsReadByPredicate",
+        "markMessagesAsRead",
+        "markMessageAsReadByIndex",
+        "isTeamPermissionUpdate",
+        "isTaskAssignment",
+        "isStructuredProtocolMessage",
+        "isShutdownRequest",
+        "isShutdownRejected"
+      ],
+      "loaderLines": [
+        286598
+      ]
+    },
+    {
+      "theme": "Trust / config / global settings",
+      "moduleCount": 1,
+      "lineMin": 169401,
+      "lineMax": 169401,
+      "sampleNames": [
+        "shouldSkipPluginAutoupdate",
+        "setPathTrusted",
+        "saveGlobalConfig",
+        "saveCurrentProjectConfig",
+        "resetTrustDialogAcceptedCache",
+        "recordFirstStartTime",
+        "isProjectConfigKey",
+        "isPathTrusted",
+        "isGlobalConfigKey",
+        "isAutoUpdaterDisabled",
+        "getUserClaudeRulesDir",
+        "getRemoteControlAtStartup"
+      ],
+      "loaderLines": [
+        169401
+      ]
+    },
+    {
+      "theme": "Permission rules / tool gating",
+      "moduleCount": 1,
+      "lineMin": 507251,
+      "lineMax": 507251,
+      "sampleNames": [
+        "toolAlwaysAllowedRule",
+        "syncPermissionRulesFromDisk",
+        "permissionRuleSourceDisplayString",
+        "hasPermissionsToUseTool",
+        "guardHookUpdatedInput",
+        "getRuleByContentsForToolName",
+        "getRuleByContentsForTool",
+        "getDenyRules",
+        "getDenyRuleForTool",
+        "getDenyRuleForAgent",
+        "getAskRules",
+        "getAskRuleForTool"
+      ],
+      "loaderLines": [
+        507251
+      ]
+    },
+    {
+      "theme": "Permission mode / auto mode",
+      "moduleCount": 1,
+      "lineMin": 508105,
+      "lineMax": 508105,
+      "sampleNames": [
+        "verifyAutoModeGateAccess",
+        "transitionPlanAutoMode",
+        "transitionPermissionMode",
+        "stripDangerousPermissionsForAutoMode",
+        "shouldPlanUseAutoMode",
+        "shouldDisableBypassPermissions",
+        "setPermissionModeWithGuards",
+        "restoreDangerousPermissions",
+        "removeDangerousPermissions",
+        "prepareContextForPlanMode",
+        "parseToolListFromCLI",
+        "parseBaseToolsFromCLI"
+      ],
+      "loaderLines": [
+        508105
+      ]
+    },
+    {
+      "theme": "Model selection / configuration",
+      "moduleCount": 1,
+      "lineMin": 118207,
+      "lineMax": 118207,
+      "sampleNames": [
+        "resolveSkillModelOverride",
+        "renderModelSetting",
+        "renderModelName",
+        "renderDefaultModelSetting",
+        "parseUserSpecifiedModel",
+        "normalizeModelStringForAPI",
+        "modelDisplayString",
+        "isOpus1mMergeEnabled",
+        "isNonCustomOpusModel",
+        "isLegacyOpusFirstParty",
+        "isLegacyModelRemapEnabled",
+        "getUserSpecifiedModelSetting"
+      ],
+      "loaderLines": [
+        118207
+      ]
+    },
+    {
+      "theme": "Git operations / issue context",
+      "moduleCount": 1,
+      "lineMin": 55226,
+      "lineMax": 55226,
+      "sampleNames": [
+        "stashToCleanState",
+        "redactGitRemoteCredentials",
+        "preserveGitStateForIssue",
+        "normalizeGitRemoteUrl",
+        "isLinkedWorktree",
+        "isCurrentDirectoryBareGitRepo",
+        "isBranchOnOrigin",
+        "isAtGitRoot",
+        "hasUnpushedCommits",
+        "gitExe",
+        "getWorktreeCount",
+        "getRepoRemoteHash"
+      ],
+      "loaderLines": [
+        55226
+      ]
+    },
+    {
+      "theme": "Git ref / file watcher",
+      "moduleCount": 1,
+      "lineMin": 54518,
+      "lineMax": 54518,
+      "sampleNames": [
+        "resolveRef",
+        "resolveGitDir",
+        "resetGitFileWatcher",
+        "removeWatchedRepo",
+        "readWorktreeHeadSha",
+        "readRawSymref",
+        "readGitHead",
+        "onRepoBranchChange",
+        "isValidGitSha",
+        "isShallowClone",
+        "getWorktreeCountFromFs",
+        "getRemoteUrlForDir"
+      ],
+      "loaderLines": [
+        54518
+      ]
+    },
+    {
+      "theme": "Agent worktree management",
+      "moduleCount": 1,
+      "lineMin": 631021,
+      "lineMax": 631021,
+      "sampleNames": [
+        "worktreeBranchName",
+        "validateWorktreeSlug",
+        "restoreWorktreeSession",
+        "removeAgentWorktree",
+        "persistWorktreeSession",
+        "parsePRReference",
+        "listRegisteredWorktrees",
+        "killTmuxSession",
+        "keepWorktree",
+        "isTmuxAvailable",
+        "hasWorktreeChanges",
+        "getTmuxInstallInstructions"
+      ],
+      "loaderLines": [
+        631021
+      ]
+    },
+    {
+      "theme": "Plugin loader / skill import",
+      "moduleCount": 1,
+      "lineMin": 276711,
+      "lineMax": 276711,
+      "sampleNames": [
+        "resolvePluginPath",
+        "resolveContainedPluginPath",
+        "probeSeedCacheAnyVersion",
+        "mergePluginSources",
+        "loadSkillsAsPlugins",
+        "loadPluginManifest",
+        "loadAllPluginsCacheOnly",
+        "loadAllPlugins",
+        "installFromNpm",
+        "installFromGitSubdir",
+        "gitClone",
+        "getVersionedZipCachePath"
+      ],
+      "loaderLines": [
+        276711
+      ]
+    },
+    {
+      "theme": "Plugin command handlers",
+      "moduleCount": 1,
+      "lineMin": 644148,
+      "lineMax": 644148,
+      "sampleNames": [
+        "pluginValidateHandler",
+        "pluginUpdateHandler",
+        "pluginUninstallHandler",
+        "pluginTagHandler",
+        "pluginPruneHandler",
+        "pluginListHandler",
+        "pluginInstallHandler",
+        "pluginInitHandler",
+        "pluginEnableHandler",
+        "pluginDisableHandler",
+        "pluginDetailsHandler",
+        "marketplaceUpdateHandler"
+      ],
+      "loaderLines": [
+        644148
+      ]
+    },
+    {
+      "theme": "Memory files / Markdown rules",
+      "moduleCount": 1,
+      "lineMin": 259680,
+      "lineMax": 259680,
+      "sampleNames": [
+        "stripHtmlComments",
+        "shouldShowClaudeMdExternalIncludesWarning",
+        "resetGetMemoryFilesCache",
+        "processMemoryFile",
+        "processMdRules",
+        "processConditionedMdRules",
+        "isSyntheticMemoryPath",
+        "isMemoryFilePath",
+        "hasExternalClaudeMdIncludes",
+        "getMemoryFilesForNestedDirectory",
+        "getMemoryFiles",
+        "getManagedAndUserConditionalRules"
+      ],
+      "loaderLines": [
+        259680
+      ]
+    },
+    {
+      "theme": "Proxy / HTTP / WebSocket",
+      "moduleCount": 1,
+      "lineMin": 91577,
+      "lineMax": 91577,
+      "sampleNames": [
+        "shouldBypassProxy",
+        "prefetchProxyAuthFromHelperIfSafe",
+        "getWebSocketProxyUrl",
+        "getProxyUrl",
+        "getProxyFetchOptions",
+        "getProxyAuthFromHelperCached",
+        "getProxyAuthFromHelper",
+        "getProxyAgent",
+        "getNoProxy",
+        "getConfiguredProxyAuthHelper",
+        "getAddressFamily",
+        "getAWSClientProxyConfig"
+      ],
+      "loaderLines": [
+        91577
+      ]
+    },
+    {
+      "theme": "Remote control / feature gates",
+      "moduleCount": 1,
+      "lineMin": 325388,
+      "lineMax": 325388,
+      "sampleNames": [
+        "isRunningInRemoteEnvironment",
+        "isRemoteControlInternalEventsEnabled",
+        "isRemoteControlHardDisabled",
+        "isPreviewHmrEnabled",
+        "isPersistentRemoteSessionEnabled",
+        "isCseShimEnabled",
+        "isCcrV2SendEventsEnabled",
+        "isCcrMirrorEnabled",
+        "isBridgeEnabledBlocking",
+        "isBridgeEnabled",
+        "hasBridgeEntitlement",
+        "getCcrAutoConnectDefault"
+      ],
+      "loaderLines": [
+        325388
+      ]
+    },
+    {
+      "theme": "Team file / member modes",
+      "moduleCount": 1,
+      "lineMin": 476236,
+      "lineMax": 476236,
+      "sampleNames": [
+        "writeTeamFileAsync",
+        "updateTeamFile",
+        "unregisterTeamForSessionCleanup",
+        "syncTeammateMode",
+        "setMultipleMemberModes",
+        "setMemberMode",
+        "setMemberActive",
+        "sanitizeName",
+        "sanitizeAgentName",
+        "removeTeammateFromTeamFile",
+        "removeTeamMember",
+        "removeMemberFromTeam"
+      ],
+      "loaderLines": [
+        476236
+      ]
+    },
+    {
+      "theme": "GrowthBook feature flags",
+      "moduleCount": 1,
+      "lineMin": 167597,
+      "lineMax": 167597,
+      "sampleNames": [
+        "stopPeriodicGrowthBookRefresh",
+        "setupPeriodicGrowthBookRefresh",
+        "setGrowthBookConfigOverride",
+        "resetGrowthBook",
+        "refreshGrowthBookFeatures",
+        "refreshGrowthBookAfterAuthChange",
+        "onGrowthBookRefresh",
+        "isGrowthBookEnabled",
+        "isFeatureFromExperiment",
+        "initializeGrowthBook",
+        "hasGrowthBookEnvOverride",
+        "getUserAttributes"
+      ],
+      "loaderLines": [
+        167597
+      ]
+    },
+    {
+      "theme": "Startup performance profiling",
+      "moduleCount": 1,
+      "lineMin": 12438,
+      "lineMax": 12438,
+      "sampleNames": [
+        "profileReport",
+        "profileCheckpoint",
+        "logStartupPerf",
+        "isDetailedProfilingEnabled",
+        "getStartupPerfLogPath"
+      ],
+      "loaderLines": [
+        12438
+      ]
+    },
+    {
+      "theme": "Login flow / post-login hooks",
+      "moduleCount": 1,
+      "lineMin": 409636,
+      "lineMax": 409636,
+      "sampleNames": [
+        "runPostLoginHooks",
+        "call",
+        "Login"
+      ],
+      "loaderLines": [
+        409636
+      ]
+    },
+    {
+      "theme": "Analytics / telemetry events",
+      "moduleCount": 1,
+      "lineMin": 3474,
+      "lineMax": 3474,
+      "sampleNames": [
+        "stripProtoFields",
+        "logEventAsync",
+        "logEvent",
+        "createAnalyticsState",
+        "attachAnalyticsSink",
+        "_setGlobalAnalyticsStateForTesting",
+        "setGlobalAnalyticsStateForTesting"
+      ],
+      "loaderLines": [
+        3474
+      ]
+    },
+    {
+      "theme": "Secret redaction / sanitization",
+      "moduleCount": 1,
+      "lineMin": 11510,
+      "lineMax": 11510,
+      "sampleNames": [
+        "stripUrlSecrets",
+        "scan",
+        "redactedJsonPreview",
+        "redactSensitiveKeys",
+        "redactObject",
+        "redact"
+      ],
+      "loaderLines": [
+        11510
+      ]
+    },
+    {
+      "theme": "Job / activity scheduler (worktree daemon)",
+      "moduleCount": 1,
+      "lineMin": 686644,
+      "lineMax": 686644,
+      "sampleNames": [
+        "summarizeEvent",
+        "stateBucket",
+        "spawnOrigin",
+        "sortJobs",
+        "seedLastJobs",
+        "rollupJobColor",
+        "rollupChildColor",
+        "repoGroupLabel",
+        "repoGroup",
+        "pruneMap",
+        "pickIcon",
+        "parseQuery"
+      ],
+      "loaderLines": [
+        686644
+      ]
+    },
+    {
+      "theme": "i18n locales",
+      "moduleCount": 1,
+      "lineMin": 25400,
+      "lineMax": 25400,
+      "sampleNames": [
+        "zhTW",
+        "zhCN",
+        "vi",
+        "ur",
+        "ua",
+        "tr",
+        "th",
+        "ta",
+        "sv",
+        "sl",
+        "ru",
+        "pt"
+      ],
+      "loaderLines": [
+        25400
+      ]
+    },
+    {
+      "theme": "LSP / IDE client",
+      "moduleCount": 1,
+      "lineMin": 428870,
+      "lineMax": 428870,
+      "sampleNames": [
+        "createLSPClient"
+      ],
+      "loaderLines": [
+        428870
+      ]
+    },
+    {
+      "theme": "fflate zip/zlib codec",
+      "moduleCount": 1,
+      "lineMin": 267623,
+      "lineMax": 267623,
+      "sampleNames": [
+        "zlibSync",
+        "zlib",
+        "zipSync",
+        "zip",
+        "unzlibSync",
+        "unzlib",
+        "unzipSync",
+        "unzip",
+        "strToU8",
+        "strFromU8",
+        "inflateSync",
+        "inflate"
+      ],
+      "loaderLines": [
+        267623
+      ]
+    }
+  ]
+}

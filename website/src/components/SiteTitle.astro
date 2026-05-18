@@ -1,0 +1,53 @@
+---
+/**
+ * SiteTitle override — replaces Starlight's default text wordmark with the
+ * site's compact dog mascot plus title.
+ */
+import dog from '../assets/dog.svg';
+
+const { siteTitle, siteTitleHref } = Astro.locals.starlightRoute;
+const title = siteTitle || 'Claude Code Internal Analysis';
+const href = siteTitleHref || import.meta.env.BASE_URL || '/';
+---
+
+<a href={href} class="site-title" aria-label={`${title} home`}>
+  <img
+    src={dog.src}
+    alt=""
+    width={32}
+    height={32}
+    class="site-title__mascot"
+  />
+  <span class="site-title__text" translate="no">{title}</span>
+</a>
+
+<style>
+  .site-title {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--tk-space-sm);
+    color: var(--tk-color-ink);
+    font-family: var(--tk-font-sans);
+    font-size: var(--tk-fs-body-md);
+    font-weight: var(--tk-fw-bold);
+    text-decoration: none;
+    line-height: 1;
+  }
+
+  .site-title__mascot {
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+
+  .site-title__text {
+    color: var(--tk-color-ink);
+    white-space: nowrap;
+  }
+
+  @media (max-width: 480px) {
+    .site-title__text {
+      display: none;
+    }
+  }
+</style>

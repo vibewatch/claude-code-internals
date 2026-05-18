@@ -1,0 +1,8 @@
+/* Self-hosted Mona Sans, matching the GitHub Agentic Workflows docs site.
+ * @fontsource embeds the font files locally so the site has zero third-party
+ * font requests at runtime. */
+@import '@fontsource/mona-sans/400.css';
+@import '@fontsource/mona-sans/500.css';
+@import '@fontsource/mona-sans/600.css';
+@import '@fontsource/mona-sans/700.css';
+@import '@fontsource/mona-sans/800.css';

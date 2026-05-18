@@ -1,0 +1,16 @@
+---
+/**
+ * Head override — extends Starlight's default <head> with the mermaid
+ * client-side renderer. Per Starlight's component override docs we render
+ * the built-in <Default /> component first so all standard <head> tags remain.
+ */
+import { ClientRouter } from 'astro:transitions';
+import Default from '@astrojs/starlight/components/Head.astro';
+import GoogleAnalytics from './GoogleAnalytics.astro';
+import MermaidRenderer from './MermaidRenderer.astro';
+---
+
+<Default {...Astro.props}><slot /></Default>
+<ClientRouter fallback="none" />
+<GoogleAnalytics />
+<MermaidRenderer />

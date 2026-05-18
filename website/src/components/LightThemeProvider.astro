@@ -1,0 +1,36 @@
+---
+/**
+ * LightThemeProvider — this site intentionally has one visual theme. Keep the
+ * Starlight theme API present for compatibility, but always resolve it to the
+ * light GitHub-style canvas.
+ */
+---
+
+<script is:inline>
+	const applyLightTheme = (doc = document) => {
+		const root = doc.documentElement;
+		root.dataset.theme = 'light';
+		root.style.colorScheme = 'light';
+	};
+
+	window.StarlightThemeProvider = {
+		updatePickers() {
+			/* Theme controls are disabled for this light-only documentation site. */
+		},
+	};
+	applyLightTheme();
+	try {
+		localStorage.setItem('starlight-theme', 'light');
+	} catch {
+		/* localStorage can be unavailable in private/locked-down contexts. */
+	}
+
+	// Normalize incoming client-routed documents before the swap so the visual
+	// theme stays stable across page changes.
+	document.addEventListener('astro:before-swap', (event) => {
+		applyLightTheme(event.newDocument);
+	});
+	document.addEventListener('astro:page-load', () => {
+		applyLightTheme();
+	});
+</script>

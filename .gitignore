@@ -1,0 +1,8 @@
+# npm tarballs and editor/runtime noise.
+node_modules/
+.DS_Store
+bun-decompile/
+
+# Extracted Bun standalone native addons (regenerable via
+# `node scripts/extract-claude-code-final-artifacts.mjs`).
+*.node

@@ -1,0 +1,16 @@
+{
+  "name": "claude-code-internals",
+  "private": true,
+  "scripts": {
+    "normalize:cli": "node scripts/normalize-cli-js.mjs",
+    "rename:cli": "node scripts/semantic-rename-cli.mjs",
+    "extract:atlas": "node scripts/extract-cli-module-map.mjs",
+    "extract:prompts": "node --max-old-space-size=8192 scripts/extract-prompt-catalog.mjs"
+  },
+  "devDependencies": {
+    "@babel/generator": "7.29.1",
+    "@babel/parser": "7.29.3",
+    "@babel/traverse": "7.29.0",
+    "@babel/types": "7.29.0"
+  }
+}
