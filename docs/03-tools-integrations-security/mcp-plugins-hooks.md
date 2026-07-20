@@ -17,7 +17,13 @@ Use [Hooks and events reference](hooks-and-events-reference.md) for the canonica
 | McpToolTimeout | `MCP_TIMEOUT` | MCP tool timeout environment variable. |
 | McpAutoBackground | `CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS` | Moves MCP calls that exceed the configured foreground threshold into background task handling. |
 | McpRoots | `roots/list`, `notifications/roots/list_changed` | Publishes the current/additional working directories and announces root-set changes. |
+| McpPendingWait | `WaitForMcpServers` | Waits briefly for pending MCP servers and classifies connected, failed, auth, disabled, unconfigured, and unknown names. |
 | McpToolRefresh | `RefreshMcpTools` | Re-queries tool lists on already connected servers without dialing. |
+| McpRefreshEnvGate | `CLAUDE_CODE_ENABLE_REFRESH_MCP_TOOLS` | Adds the refresh descriptor to the base tool pool. |
+| McpIdleTimeout | `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` | Global no-response/no-progress watchdog; zero disables it. |
+| HostedConnectorDiscovery | `SearchMcpRegistry`, `SuggestConnectors`, `ListConnectors` | Searches hosted connector metadata, resolves suggestion payloads, or lists installed organization connectors. |
+| HostedPluginSkillDiscovery | `ListPlugins`, `SearchPlugins`, `SuggestPluginInstall`, `ListSkills`, `SearchSkills`, `SuggestSkills` | Lists/searches hosted account catalogs and renders out-of-band action cards. |
+| ComputerUseMcp | `serverName = "computer-use"`, `--computer-use-mcp` | macOS-only dynamic MCP server with a separate application-control policy layer. |
 | McpConfigFlag | `--mcp-config <configs...>` | Loads MCP config from JSON files or strings. |
 | StrictMcpConfigFlag | `--strict-mcp-config` | Ignores non-flag MCP configurations. |
 | PluginCommandRegistrar | `function fC4(H)` | Registers `plugin` / `plugins` command family. |
@@ -60,6 +66,10 @@ flowchart TD
     Coordinator --> Deferred[non-alwaysLoad servers]
     Coordinator --> ClaudeAi[claude.ai connectors]
     Coordinator --> Tools[MCP tools/resources/prompts]
+    Coordinator --> Pending[WaitForMcpServers]
+    Tools --> Refresh[RefreshMcpTools]
+    ClaudeAi --> Discovery[connector/plugin/skill discovery]
+    Config --> Computer[computer-use dynamic MCP on macOS]
 ```
 
 `McpRuntimeCoordinator` splits regular configs into always-load and non-always-load groups, honors `MCP_CONNECTION_NONBLOCKING`, connects regular and claude.ai connector configs, and deduplicates overlapping plugin/connector surfaces.
@@ -183,6 +193,19 @@ flowchart TD
 
 The `alwaysLoad` split is important. Required servers are labeled `--mcp-config alwaysLoad servers` and normal servers as `--mcp-config servers`. Required servers are connected as a distinct group; normal servers can honor non-blocking/deferred behavior; claude.ai connectors are a separate promise-driven group. Because `connect()` awaits both groups, the final headless startup waits for the coordinator as a whole even when parts are internally non-blocking.
 
+### Pending-server wait and live refresh
+
+`WaitForMcpServers` and `RefreshMcpTools` solve different readiness problems:
+
+| Tool | Use when | What it does not do |
+|---|---|---|
+| `WaitForMcpServers` | One or more configured clients are still `pending` and the needed tools have not joined the tool set. | Does not configure, enable, or authenticate a server. |
+| `RefreshMcpTools` | A connected server's `tools/list` view may be stale after an app/device change or missed notification. | Does not dial or reconnect a disconnected client. |
+
+`WaitForMcpServers` is dynamically visible only while a supported model/session has pending clients. It waits for selected server names—or all pending names—for at most five seconds, then returns `ready` plus `connected`, `failed`, `stillPending`, `needsAuth`, `disabled`, optional `unconfigured`, and `unknown` arrays. A retry cannot fix `unconfigured`; the user must provide a server URL/config. `needsAuth` and `disabled` route the user to `/mcp`.
+
+`RefreshMcpTools` is added to the base pool only when `CLAUDE_CODE_ENABLE_REFRESH_MCP_TOOLS` is true. On a connected client it immediately updates the available tool set and reports added/removed names; on failure it preserves the previous set.
+
 ### MCP protocol surfaces
 
 | Protocol method | Role |
@@ -197,10 +220,36 @@ The `alwaysLoad` split is important. Required servers are labeled `--mcp-config 
 
 These schema anchors are paired with runtime anchors in `McpRuntimeCoordinator`, `McpCommandRegistrar`, `HeadlessControlLoop`, and MCP tool-call error handling, confirming MCP as both a command/config system and a runtime capability provider.
 
+### Hosted connector, plugin, and skill discovery
+
+The runtime also carries first-party hosted discovery descriptors. They are enabled only in the first-party remote/hosted environment (`CLAUDE_CODE_REMOTE` plus first-party provider), so they should not be treated as universal local MCP/plugin commands.
+
+```mermaid
+flowchart LR
+    Intent[User intent] --> Search[SearchMcpRegistry]
+    Search --> UUIDs[directoryUuid results]
+    UUIDs --> Suggest[SuggestConnectors]
+    Installed[ListConnectors] --> SessionState[connected + enabledInChat]
+    Plugins[SearchPlugins] --> PluginCard[SuggestPluginInstall]
+    Skills[SearchSkills] --> SkillCard[SuggestSkills]
+    ExistingPlugins[ListPlugins] --> PluginCard
+    ExistingSkills[ListSkills] --> SkillCard
+```
+
+- `SearchMcpRegistry` returns ranked connector records with org-level `installState` and session-level `enabledInChat`.
+- `SuggestConnectors` accepts only UUIDs returned by registry search and resolves full card payloads; it does not connect anything.
+- `ListConnectors` lists installed organization connectors. `connected: true` with `enabledInChat: false` means authenticated but disabled for this chat.
+- `ListPlugins`/`ListSkills` inspect enabled claude.ai capabilities; `SearchPlugins`/`SearchSkills` search hosted catalogs.
+- `SuggestPluginInstall` and `SuggestSkills` render cards. Installation/enablement happens out of band and must be confirmed later by a list call.
+
+These surfaces are distinct from the local plugin marketplace/cache lifecycle below and from filesystem `SKILL.md` discovery. See [Skills system](skills-system.md#hosted-skill-discovery-and-proposals) for the skill-specific handoff.
+
 ### Timeout and auth-error mechanics
 
 - `MCP_TIMEOUT` → tool-call timeout, falling back to `30000` ms.
 - `MCP_CONNECT_TIMEOUT_MS` → connection timeout, falling back to `5000` ms.
+- `MCP_TOOL_TIMEOUT` → hard wall-clock tool-call timeout. Per-server `timeout` values at or above one second take precedence; progress does not extend the hard deadline.
+- `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` → no-response/no-progress watchdog. Defaults are 30 minutes for stdio and 5 minutes for HTTP/SSE-like transports, bounded by the hard timeout; `0` disables it. IDE/SDK transports are exempt.
 - Per-server `request_timeout_ms` overrides the normal request timeout for configs loaded from `.mcp.json` or `--mcp-config`.
 - `CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS` controls the foreground threshold; the shipped behavior moves calls running longer than two minutes to the background so the session remains usable. Set a different millisecond value or disable according to the env parser contract.
 
@@ -259,6 +308,8 @@ The `PluginHotReload` module (`cli.renamed.js:288518`-`288560`) keeps plugin-con
 - [Hooks and events reference](hooks-and-events-reference.md)
 - [Tool runtime and security architecture](architecture.md)
 - [Built-in tools and permissions](built-in-tools-and-permissions.md)
+- [Computer-use MCP](computer-use-mcp.md)
+- [Skills system](skills-system.md)
 - [Settings, policy, and integrations](settings-policy-and-integrations.md)
 - [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md)
 - [SDK query, session API, and subagent surface](../04-sessions-persistence-remote/sdk-query-and-session-api.md)

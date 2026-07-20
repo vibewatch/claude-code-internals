@@ -24,6 +24,10 @@ Use [Telemetry and tracing](telemetry-and-tracing.md) for telemetry/export behav
 | ProjectsGates | `allow_projects_tool`, `CLAUDE_PROJECT_UUID` | Requires organization permission and a host-attached Project. |
 | ArtifactGates | `CLAUDE_CODE_DISABLE_ARTIFACT`, `disableArtifact`, `enableArtifact`, `allow_cobalt_plinth`, `tengu_cobalt_plinth` | Combines hard disable, preference, policy, account, and rollout checks. |
 | DesignGates | `allow_design_sync`, `tengu_omelette_fouet`, `tengu_slate_quill` | Controls collaborative design and fixed-schema design-system sync exposure. |
+| ObserverAgentGates | `CLAUDE_CODE_EXPERIMENTAL_OBSERVER_AGENTS`, `tengu_observer_agents_enabled` | Requires explicit process opt-in plus rollout enablement. |
+| EndConversationGates | `tengu_umber_kestrel`, `allowedEntrypoints`, `modelMeetsEndConversationFloor` | Restricts model-ended conversations by rollout configuration, entrypoint, and model floor. |
+| TeamOnboardingGates | `allow_team_onboarding`, `tengu_flint_harbor_share` | Controls local onboarding workflow policy and the optional hosted share layer. |
+| ComputerUseBoundary | `process.platform === "darwin"`, `--computer-use-mcp`, `computer-use.lock` | Limits native desktop control to the macOS/session-wired path and one controlling session. |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -66,12 +70,13 @@ The table groups source-visible keys by nearby behavior. It does **not** claim e
 |---|---|---|
 | Remote / bridge / CCR | `tengu_ccr_bridge`, `tengu_remote_backend`, `tengu_bridge_repl_v2_cse_shim_enabled`, `tengu_bridge_attestation_enforce`, `tengu_bridge_attestation_enforce_config`, `tengu_ccr_v2_send_events_cli`, `tengu_bridge_requires_action_details`, `tengu_bridge_system_init`, `tengu_surreal_dali`, `CLAUDE_CODE_REMOTE`, `disableRemoteControl`, `allow_remote_sessions` | Remote Control, bridge transport, attestation, event forwarding, and remote routine management. |
 | Scheduled tasks / Kairos cron | `tengu_kairos_cron`, `tengu_kairos_cron_durable`, `tengu_kairos_loop_dynamic`, `tengu_kairos_loop_persistent`, `tengu_kairos_loop_prompt`, `tengu_kairos_push_notifications`, `tengu_kairos_input_needed_push`, `CLAUDE_CODE_DISABLE_CRON` | Cron/scheduled prompt feature family and autonomous-loop behavior. |
-| Agents / background agents | `tengu_auto_background_agents`, `tengu_agent_list_attach`, `tengu_mcp_subagent_prompt`, `tengu_slim_subagent_claudemd`, `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`, `CLAUDE_CODE_DISABLE_AGENT_VIEW` | Agent UI, background agents, subagent prompt/context behavior. |
+| Agents / background agents | `tengu_auto_background_agents`, `tengu_agent_list_attach`, `tengu_mcp_subagent_prompt`, `tengu_slim_subagent_claudemd`, `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`, `CLAUDE_CODE_DISABLE_AGENT_VIEW`, `CLAUDE_CODE_EXPERIMENTAL_OBSERVER_AGENTS`, `tengu_observer_agents_enabled` | Agent UI, background agents, subagent prompt/context behavior, and experimental observer pairings. |
 | Dynamic workflows | `enableWorkflows`, `disableWorkflows`, `workflowKeywordTriggerEnabled`, `CLAUDE_CODE_DISABLE_WORKFLOWS`, `CLAUDE_CODE_WORKFLOWS`, org `allow_workflows` | Workflow availability, keyword opt-in, and policy enforcement. |
-| Hosted projects/artifacts/design | `allow_projects_tool`, `CLAUDE_PROJECT_UUID`, `CLAUDE_CODE_DISABLE_ARTIFACT`, `allow_cobalt_plinth`, `tengu_cobalt_plinth`, `allow_design_sync`, `tengu_omelette_fouet`, `tengu_slate_quill` | Attached Project knowledge, hosted page publication, collaborative design, and design-system synchronization. |
+| Hosted projects/artifacts/design/onboarding | `allow_projects_tool`, `CLAUDE_PROJECT_UUID`, `CLAUDE_CODE_DISABLE_ARTIFACT`, `allow_cobalt_plinth`, `tengu_cobalt_plinth`, `allow_design_sync`, `tengu_omelette_fouet`, `tengu_slate_quill`, `allow_team_onboarding`, `tengu_flint_harbor_share` | Attached Project knowledge, hosted page publication, collaborative design, design-system synchronization, and team-guide sharing. |
 | Auto-mode / permission automation | `tengu_auto_mode_config`, `tengu_disable_bypass_permissions_mode`, `tengu_auto_notice_once`, policy `defaultMode=auto` | Auto-mode defaults, consent, permission automation. |
-| Tool/runtime security | `tengu_streaming_tool_execution2`, `tengu_harbor_permissions`, `tengu_destructive_command_warning`, `tengu_bash_allowlist_strip_all`, `CLAUDE_CODE_DISABLE_ADVISOR_TOOL`, `CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL` | Tool execution mode, warnings, advisory/permission behavior. |
-| MCP/plugins/skills | `tengu_mcp_directory_visibility`, `tengu_mcp_directory_bff`, `tengu_mcp_singleton_unwrap`, `tengu_skills_dashboard_enabled`, `tengu_plugin_official_mkt_git_fallback`, `CLAUDE_CODE_PLUGIN_PREFER_HTTPS`, `CLAUDE_CODE_PLUGIN_USE_ZIP_CACHE`, `CLAUDE_CODE_SYNC_PLUGIN_INSTALL`, `CLAUDE_CODE_ENABLE_XAA` | MCP discovery, plugin install/update, skills UI, and cross-app OAuth. |
+| Tool/runtime security | `tengu_streaming_tool_execution2`, `tengu_harbor_permissions`, `tengu_destructive_command_warning`, `tengu_bash_allowlist_strip_all`, `CLAUDE_CODE_DISABLE_ADVISOR_TOOL`, `CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL`, `tengu_umber_kestrel` | Tool execution mode, warnings, advisory/permission behavior, and model-ended conversation rollout. |
+| MCP/plugins/skills | `tengu_mcp_directory_visibility`, `tengu_mcp_directory_bff`, `tengu_mcp_singleton_unwrap`, `tengu_skills_dashboard_enabled`, `tengu_plugin_official_mkt_git_fallback`, `CLAUDE_CODE_PLUGIN_PREFER_HTTPS`, `CLAUDE_CODE_PLUGIN_USE_ZIP_CACHE`, `CLAUDE_CODE_SYNC_PLUGIN_INSTALL`, `CLAUDE_CODE_ENABLE_XAA`, `CLAUDE_CODE_ENABLE_REFRESH_MCP_TOOLS` | MCP discovery/refresh, plugin install/update, skills UI, and cross-app OAuth. |
+| Native computer use | macOS platform guard, internal computer-use startup predicate, `--computer-use-mcp`, session callbacks | Dynamic native desktop-control MCP, separate from Claude-in-Chrome; app approval and lock checks continue after startup. |
 | Context/model behavior | `CLAUDE_CODE_DISABLE_1M_CONTEXT`, `DISABLE_COMPACT`, `DISABLE_INTERLEAVED_THINKING`, `USE_API_CONTEXT_MANAGEMENT`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`, `tengu_prompt_cache_1h_config`, `tengu_prompt_cache_diagnostics` | Context window, compaction, thinking, prompt cache, beta flags. |
 | Web/search/fetch adjacent | `tengu_tool_search_unsupported_models`, `/api/web/domain_info?domain=` | Web/domain metadata and model support guardrails. |
 | UI/terminal behavior | `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN`, `CLAUDE_CODE_NO_FLICKER`, `CLAUDE_CODE_DISABLE_MOUSE`, `CLAUDE_CODE_DISABLE_MOUSE_CLICKS`, `CLAUDE_CODE_FORCE_SYNC_OUTPUT`, `CLAUDE_AX_SCREEN_READER`, `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` | Terminal rendering, pointer, and [screen-reader behavior](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md). |
@@ -97,6 +102,7 @@ flowchart TD
 | Sessions/remote | Remote Control can be disabled by managed policy; bridge state and transcript mirrors emit observable frames. |
 | Tools/permissions | Permission automation and streaming execution are feature-gated; denials can surface as stream frames and telemetry. |
 | Agents/tasks | Background agents, subagent prompt shape, scheduled tasks, and auto-mode are behind feature/env/policy gates. |
+| Conversation lifetime | `EndConversation` requires the rollout config, entrypoint regex, and supported model; its two-call reflection and durable marker are additional runtime guards. |
 | Scheduled tasks | `CLAUDE_CODE_DISABLE_CRON` disables cron; scheduled-task telemetry tracks missed/fire/expired behavior. |
 | Hosted review/update | Hosted review preflight and native updater emit operational telemetry but do not own model turns. |
 
@@ -106,6 +112,15 @@ flowchart TD
 2. Prefer env/policy strings for hard claims, because they are usually descriptive and user/admin-facing.
 3. Distinguish a gate from an exported event: feature gates decide behavior; telemetry/tracing reports behavior.
 4. Use [Telemetry and tracing](telemetry-and-tracing.md) for sink/export details.
+
+## Focused lifecycle gates
+
+| Lifecycle | Gate chain | Important distinction |
+|---|---|---|
+| [Observer agents](../06-agents-automation/observer-agents.md) | `CLAUDE_CODE_EXPERIMENTAL_OBSERVER_AGENTS` must be true; `tengu_observer_agents_enabled` must not disable the feature; the named observer type must exist and cannot itself declare an observer. | Even after feature enablement, arm and every digest delivery re-run Agent permission and managed `PreToolUse` checks. |
+| [Conversation termination](../01-runtime-lifecycle/conversation-termination.md) | `modelMeetsEndConversationFloor` + `tengu_umber_kestrel` + configured/default entrypoint regex + runtime exclusion check. | Visibility does not end a conversation: the same tool must be called across two assistant turns before the marker/abort path runs. |
+| [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md) | `allow_team_onboarding` controls the user-only workflow. Hosted sharing additionally requires nonessential traffic, stored OAuth, and `tengu_flint_harbor_share`. | A local `ONBOARDING.md` remains useful when hosted sharing is unavailable. |
+| [Computer-use MCP](../03-tools-integrations-security/computer-use-mcp.md) | macOS + interactive/session-wired startup + internal enablement predicate. | Startup visibility is only the first boundary; TCC, per-app approval/tier, optional grants, live target checks, and a process lock govern calls. |
 
 ## GrowthBook client lifecycle
 
@@ -276,5 +291,9 @@ The practical outcomes:
 - [Hosted Projects and knowledge](../04-sessions-persistence-remote/hosted-projects-and-knowledge.md)
 - [Artifact publishing and live pages](../03-tools-integrations-security/artifact-publishing-and-live-pages.md)
 - [Claude Design and design-system sync](../03-tools-integrations-security/claude-design-and-design-sync.md)
+- [Computer-use MCP](../03-tools-integrations-security/computer-use-mcp.md)
+- [Conversation termination](../01-runtime-lifecycle/conversation-termination.md)
+- [Observer agents](../06-agents-automation/observer-agents.md)
+- [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md)
 - [Agent runtime, scheduling, and completion](../06-agents-automation/agent-runtime-scheduling-and-completion.md)
 - [Operations and native-support architecture](architecture.md)

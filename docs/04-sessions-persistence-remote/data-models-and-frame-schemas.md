@@ -19,6 +19,8 @@ This page centralizes observable session data models, transcript record families
 | TranscriptRecorder | `recordTranscript` | Durable transcript append/export surface. |
 | FileHistorySnapshotRecorder | `recordFileHistorySnapshot` | File-history snapshot storage. |
 | ContextCollapseSnapshotRecorder | `recordContextCollapseSnapshot` | Context-collapse snapshot storage. |
+| EndedByModelRecorder | `markSessionEndedByModel`, `ended-by-model` | Durable marker that prevents resumed work in a model-ended conversation. |
+| ObserverRefRecorder | `recordObserverRef`, `observer-ref` | Pointer from an observed transcript to its observer task/type. |
 | SdkSessionStoreAdapter | `sessionStore` | SDK/external storage adapter hook. |
 | SessionStateFrame | `session_state_changed` | Runtime/session state stream frame. |
 | TranscriptMirrorFrame | `transcript_mirror` | Transcript mirror stream frame. |
@@ -52,8 +54,18 @@ This page centralizes observable session data models, transcript record families
 | Hook/event records | Hook name, event input/output, decision or observation metadata. | Hook runtime and audit trail. |
 | File-history records | Paths, snapshots, checkpoint IDs, restore metadata. | Rewind/checkpoint mechanics. |
 | Context-collapse records | Summary/replacement metadata, token-savings metadata, commit records. | Context compaction. |
-| Sidechain/subagent records | Parent session ID, task/subagent transcript linkage. | Agent/task runtime. |
+| Session-lifecycle records | `ended-by-model` with timestamp/session ID. | Conversation termination and resume guard. |
+| Sidechain/subagent records | Parent session ID, task/subagent transcript linkage, optional `observer-ref`. | Agent/task and observer runtime. |
 | Queue/control records | Pending task/control operations and bridge messages. | SDK/remote/task control plane. |
+
+### `2.1.215` lifecycle records
+
+| Record | Source-visible fields | Restore behavior |
+|---|---|---|
+| `ended-by-model` | `type`, `timestamp`, `sessionId` | Loader collects marked session IDs; resume sets `appState.endedByModel`, which rejects later turns and most prompt commands. `/clear` resets the live flag by starting a new conversation rather than deleting the marker. |
+| `observer-ref` | `type`, `timestamp`, optional observed `agentId`, `observerTaskId`, `observerAgentType` | Routed to the observed main/agent transcript. Reattachment accepts the pointer only when the observer type still matches, its transcript exists, and it was not explicitly stopped. |
+
+Neither record is an ordinary model message. `ENTRY_APPEND_POLICY` stores `ended-by-model` as `always` and routes `observer-ref` by agent so persistence can outlive the in-memory lifecycle registries.
 
 ## Stream and control frame families
 
@@ -104,6 +116,7 @@ Remote Control frame detail remains feature-gate and transport dependent. Consum
 | File history/checkpoints | `recordFileHistorySnapshot`, checkpoint/rewind surfaces | Snapshots used for rewind and restore. |
 | Context-collapse data | `recordContextCollapseSnapshot`, collapse commit/replacement records | Compaction metadata and summary replacement records. |
 | Sidechain/subagent transcripts | sidechain/subagent transcript loaders | Subagent/task history separate from the main transcript view. |
+| Lifecycle pointers | `ended-by-model`, `observer-ref`, `readLastObserverRef` | Durable termination state and observer reattachment metadata. |
 | Remote metadata | remote-agent and bridge-session metadata helpers | Remote/bridge/agent metadata linked to a local session. |
 | Queues | queue operation records and task message handling | Pending task/control messages. |
 | Debug/ops logs | debug log env vars and `latest` symlink | Operational logs outside the transcript. |
@@ -116,3 +129,5 @@ Remote Control frame detail remains feature-gate and transport dependent. Consum
 - [Runtime communication protocols](../00-start-here/runtime-communication-protocols.md)
 - [Hooks and events reference](../03-tools-integrations-security/hooks-and-events-reference.md)
 - [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md)
+- [Conversation termination](../01-runtime-lifecycle/conversation-termination.md)
+- [Observer agents](../06-agents-automation/observer-agents.md)

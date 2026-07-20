@@ -35,11 +35,12 @@ flowchart TD
 |---:|---|---|
 | 1 | [Session resume and transcripts](session-resume-and-transcripts.md) | How do JSONL transcript roots, `--continue`/`--resume`/`--session-id`/fork/no-persistence/rewind connect, and how do `SessionDiscovery` + `SessionRestore` rehydrate permission/model/agent state? |
 | 2 | [Hosted Projects and knowledge](hosted-projects-and-knowledge.md) | How does `CLAUDE_PROJECT_UUID` bind one session to one shared knowledge container, and how do project context, read/search/write/delete, OAuth scopes, and upload guards work? |
-| 3 | [Remote control and teleport](remote-control-and-teleport.md) | How do `--remote`, `--teleport`, `remote-control`, bridge tokens, and Remote Control paths connect to sessions? |
-| 4 | [Session API, events, and storage](session-api-events-and-storage.md) | Which API endpoints, event families, bridge frames, and internal storage areas are visible around sessions and remote control? |
-| 5 | [SDK query, session API, and subagent surface](sdk-query-and-session-api.md) | What programmatic SDK surface does Claude Code expose for `query`, session management, subagent inspection, in-process MCP, and direct-connect transport? |
-| 6 | [Data models and frame schemas](data-models-and-frame-schemas.md) | Which observable transcript records, session layers, stream/control frames, and storage record families shape sessions? |
-| 7 | [Session and remote-control architecture](architecture.md) | How is a session decomposed into a durable JSONL layer + live envelope, and how do resume/fork/rewind/remote reuse the same address? |
+| 3 | [Team onboarding and share flows](team-onboarding-and-share-flows.md) | How does `/team-onboarding` scan local session usage, draft `ONBOARDING.md`, and optionally create/update an organization share link? |
+| 4 | [Remote control and teleport](remote-control-and-teleport.md) | How do `--remote`, `--teleport`, `remote-control`, bridge tokens, and Remote Control paths connect to sessions? |
+| 5 | [Session API, events, and storage](session-api-events-and-storage.md) | Which API endpoints, event families, bridge frames, and internal storage areas are visible around sessions and remote control? |
+| 6 | [SDK query, session API, and subagent surface](sdk-query-and-session-api.md) | What programmatic SDK surface does Claude Code expose for `query`, session management, subagent inspection, in-process MCP, and direct-connect transport? |
+| 7 | [Data models and frame schemas](data-models-and-frame-schemas.md) | Which observable transcript records, session layers, stream/control frames, and storage record families shape sessions? |
+| 8 | [Session and remote-control architecture](architecture.md) | How is a session decomposed into a durable JSONL layer + live envelope, and how do resume/fork/rewind/remote reuse the same address? |
 
 ## Handoffs
 

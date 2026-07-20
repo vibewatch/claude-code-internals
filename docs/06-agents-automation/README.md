@@ -1,6 +1,6 @@
 # Agents and automation
 
-This chapter documents the agent/task automation layer: custom agents, background-by-default subagents, background sessions, deterministic dynamic workflows, task tools, lifecycle hooks, slash-command automation, `ultrareview`, and `auto-mode`.
+This chapter documents the agent/task automation layer: custom agents, background-by-default subagents, observer agents, background sessions, deterministic dynamic workflows, task tools, lifecycle hooks, slash-command automation, `ultrareview`, and `auto-mode`.
 
 Read this chapter when the question is: **how does Claude Code delegate work, run subagents, or automate runtime behavior?**
 
@@ -35,17 +35,19 @@ flowchart TD
 | Order | Page | Automation question answered |
 |---:|---|---|
 | 1 | [Agents, tasks, and subagents](agents-tasks-and-subagents.md) | Which command/flag/tool/hook surfaces define custom agents, tasks, background agents, and hosted review, and how do `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`, subagent hooks, cron scheduling, and `ultrareview` preflight work? |
-| 2 | [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md) | How are agent families designed, how are tasks scheduled, how is completion detected, and how do timed/cron tasks work? |
-| 3 | [Dynamic workflows](dynamic-workflows.md) | How does the `Workflow` tool execute deterministic JavaScript orchestration with agents, pipelines, shared budgets, progress, and resumable journals? |
-| 4 | [Slash commands and automation](slash-commands-and-automation.md) | Which slash-command, hook, skill, and auto-mode surfaces automate behavior around the main session? |
-| 5 | [Cron and scheduled tasks](cron-and-scheduled-tasks.md) | How do `/loop`, cron tools, wakeups, persistence, and missed-task handling inject later work? |
-| 6 | [Agent and automation architecture](architecture.md) | How are custom agents, tasks, workflows, slash commands, `auto-mode`, and hosted review orchestrated over the same runtime? |
+| 2 | [Observer agents](observer-agents.md) | How do agent declarations auto-spawn read-only observers, persist pairings, deliver digests, and route one-way `ObserverReport` messages? |
+| 3 | [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md) | How are agent families designed, how are tasks scheduled, how is completion detected, and how do timed/cron tasks work? |
+| 4 | [Dynamic workflows](dynamic-workflows.md) | How does the `Workflow` tool execute deterministic JavaScript orchestration with agents, pipelines, shared budgets, progress, and resumable journals? |
+| 5 | [Slash commands and automation](slash-commands-and-automation.md) | Which slash-command, hook, skill, and auto-mode surfaces automate behavior around the main session? |
+| 6 | [Cron and scheduled tasks](cron-and-scheduled-tasks.md) | How do `/loop`, cron tools, wakeups, persistence, and missed-task handling inject later work? |
+| 7 | [Agent and automation architecture](architecture.md) | How are custom agents, tasks, workflows, slash commands, `auto-mode`, and hosted review orchestrated over the same runtime? |
 
 ## Handoffs
 
 - Custom-agent prompt/context inputs are documented in [Context and model loop](../02-context-model-loop/README.md).
 - Tool permissions and hooks are documented in [Tools, integrations, and security](../03-tools-integrations-security/README.md).
 - Remote/hosted session state is documented in [Sessions, persistence, and remote](../04-sessions-persistence-remote/README.md).
+- Local-history analysis and hosted onboarding-guide sharing are documented in [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md).
 - Task/agent communication protocol families are summarized in [Runtime communication protocols](../00-start-here/runtime-communication-protocols.md).
 
 ## Navigation

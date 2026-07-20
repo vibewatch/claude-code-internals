@@ -34,6 +34,8 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | WorkflowSettings | `enableWorkflows`, `disableWorkflows`, `workflowKeywordTriggerEnabled`, `workflowSizeGuideline` | Enables workflows, controls the `ultracode` trigger, and advises default fan-out size. |
 | SandboxCredentialPolicy | `sandbox.credentials` | Protects credential files and environment variables inside sandboxed subprocesses. |
 | ManagedVersionPolicy | `requiredMinimumVersion`, `requiredMaximumVersion` | Refuses startup outside administrator-approved semver bounds. |
+| DisableClaudeAiConnectorsSetting | `disableClaudeAiConnectors` | Disables claude.ai connector loading while leaving other MCP sources separate. |
+| TeamOnboardingPolicy | `allow_team_onboarding` | Organization policy gate for `/team-onboarding` and its optional hosted-share path. |
 
 ## Bundle module in `cli.renamed.js`
 
@@ -62,7 +64,7 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | Remote and agent policy | `disableRemoteControl`, `disableAgentView` | Managed policy can disable Remote Control and agent UI paths. | [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) |
 | Skill/slash safety | `disableSkillShellExecution` | Replaces or prevents shell execution in skills/custom slash commands. | [Slash commands and automation](../06-agents-automation/slash-commands-and-automation.md) |
 | Authentication helpers | `apiKeyHelper`, `proxyAuthHelper`, `enterpriseGateway` | Points to credential/proxy helper mechanisms. | [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md) |
-| MCP and plugins | `mcpServers`, plugin marketplaces, plugin-provided hooks/output styles/MCP servers | Adds external capability providers. | [MCP, plugins, and hooks](mcp-plugins-hooks.md) |
+| MCP and plugins | `mcpServers`, `disableClaudeAiConnectors`, plugin marketplaces, plugin-provided hooks/output styles/MCP servers | Adds external capability providers; the disable key specifically suppresses claude.ai connectors. | [MCP, plugins, and hooks](mcp-plugins-hooks.md) |
 | Tools and permissions | `allowedTools`, `disallowedTools`, permission mode settings, `denyRead`-style exclusions | Shapes model-visible tools and approval/deny behavior. | [Tool inventory and schemas](tool-inventory-and-schemas.md) |
 | Prompt/context | system prompt, append prompt, output styles, memory/context exclusions | Shapes model-visible context and prompt assembly. | [Prompt, context, and memory](../02-context-model-loop/prompt-context-memory.md) |
 | Integrations | `--ide`, `--chrome`, `--file` plus integration settings | Adds editor/browser/file-resource integration surfaces. | [Settings, policy, and integrations](settings-policy-and-integrations.md) |
@@ -70,6 +72,7 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | Accessibility/UI | `axScreenReader`, `wheelScrollAccelerationEnabled`, `vimInsertModeRemaps` | Selects accessible rendering and terminal input behavior. | [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md) |
 | Permission defaults/auto mode | `permissions.defaultMode`, `autoMode.classifyAllShell` | `manual` aliases historical `default`; auto mode can classify every shell command. | [Built-in tools and permissions](built-in-tools-and-permissions.md) |
 | Workflows | `enableWorkflows`, `disableWorkflows`, `workflowKeywordTriggerEnabled`, global `workflowSizeGuideline` | Controls feature availability, `ultracode` keyword opt-in, and advisory workflow size. | [Dynamic workflows](../06-agents-automation/dynamic-workflows.md) |
+| Team onboarding | organization policy `allow_team_onboarding` | Enables the user-only recent-session analysis workflow; hosted sharing remains separately gated. | [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md) |
 | Memory | `autoMemoryDirectory` | Sets the auto-memory directory; project settings are ignored for this key. | [Prompt, context, and memory](../02-context-model-loop/prompt-context-memory.md) |
 | Model/version policy | `availableModels`, `enforceAvailableModels`, `requiredMinimumVersion`, `requiredMaximumVersion` | Restricts models/default resolution and enforces supported CLI versions. | [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md) |
 | Sideload/process policy | `disableSideloadFlags`, `processWrapper` | Blocks inline plugin/agent/MCP flags or routes background self-spawns through a corporate launcher. | [Settings, policy, and integrations](settings-policy-and-integrations.md) |
@@ -92,7 +95,7 @@ The complete settings validator is present in the bundle, but it is embedded as 
 |---|---|---|
 | Embedded validator | `PP().safeParse` validates loaded settings after JSON/object parsing. | Anchored here; not expanded into a full generated JSON Schema. |
 | Project/user/local settings | `.claude/settings.json`, `.claude/settings.local.json`, `~/.claude/settings.json` | Covered as roots and loaders. |
-| Managed/policy settings | `disableRemoteControl`, `disableAgentView`, `disableAllHooks`, `disableSkillShellExecution`, marketplace allow/block lists | Covered as policy groups; exact organization policy envelopes may vary. |
+| Managed/policy settings | `disableRemoteControl`, `disableAgentView`, `disableAllHooks`, `disableSkillShellExecution`, `allow_team_onboarding`, marketplace allow/block lists | Covered as policy groups; exact organization policy envelopes may vary. |
 | Plugin marketplaces | `enabledPlugins`, `extraKnownMarketplaces`, `strictKnownMarketplaces`, `blockedMarketplaces` | Covered here and in [MCP, plugins, and hooks](mcp-plugins-hooks.md). |
 | Sandbox-sensitive settings | `dangerouslyDisableSandbox` schema text and sandbox policy pages | Covered as policy boundary, not as a guarantee that a command bypasses sandboxing. |
 
@@ -120,3 +123,4 @@ When adding new settings detail, prefer this ownership split:
 - [Hooks and events reference](hooks-and-events-reference.md)
 - [MCP, plugins, and hooks](mcp-plugins-hooks.md)
 - [Environment variables reference](../05-hosted-agent-ops/environment-variables-reference.md)
+- [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md)

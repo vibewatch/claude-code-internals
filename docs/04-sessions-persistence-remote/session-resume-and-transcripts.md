@@ -16,6 +16,8 @@ This page reverse-engineers the local session and transcript paths that explain 
 | ResumeFlag | `-r, --resume [value]` | Resume by ID or picker/search term. |
 | ForkSessionFlag | `--fork-session` | Resume into a new session ID. |
 | NoSessionPersistenceFlag | `--no-session-persistence` | Disables transcript writes and resume. |
+| EndedByModelResume | `ended-by-model`, `applyEndedByModelOnResume` | Rehydrates the terminal conversation state and blocks new turns. |
+| ObserverRefResume | `observer-ref`, `readLastObserverRef` | Lets an observed main/agent transcript reattach a compatible observer task. |
 | ResumeSessionAtGuard | `--resume-session-at requires --resume` | Headless resume validation. |
 | RewindFilesResumeGuard | `--rewind-files requires --resume` | Rewind validation. |
 | BackgroundForkCommand | `Usage: /fork \<directive\>` | Copies the current conversation into a new background session with its own agent-view row. |
@@ -72,12 +74,23 @@ Background sessions participate in `/resume`; from the agent view, `/resume` ope
 
 The `local-jsonl` and `${sessionId}.jsonl` anchors show that local sessions are durable JSONL transcript files. `SessionDiscovery` and `SessionRestore` then form the semantic pair for session discovery and restore. The root action routes `--continue`, `--resume`, PR resume, remote/teleport branches, and picker fallback into these restoration surfaces before entering `InteractiveSessionLoop` or `HeadlessRunner`.
 
+### Lifecycle records beyond message replay
+
+Two `2.1.215` records affect resumed runtime behavior without becoming ordinary chat messages:
+
+- **`ended-by-model`** — `EndConversation` appends `{type, timestamp, sessionId}` before aborting. Transcript load records the ended session ID, and `applyEndedByModelOnResume()` restores `appState.endedByModel`. A resumed original conversation therefore remains unable to accept another prompt; the user starts a new conversation or uses `/clear`.
+- **`observer-ref`** — after observer delivery, the observed transcript records optional observed `agentId`, `observerTaskId`, and `observerAgentType`. The observer installer scans the transcript tail and reuses the prior task only when the type still matches, its transcript exists, and it was not stopped by the user; otherwise it allocates a fresh observer.
+
+These records illustrate why resume is broader than rebuilding the model-visible message chain: runtime lifecycle registries are reconstructed from transcript metadata too. See [Conversation termination](../01-runtime-lifecycle/conversation-termination.md) and [Observer agents](../06-agents-automation/observer-agents.md) for their complete gates and failure behavior.
+
 ## Edge cases
 
 - `--resume-session-at` and `--rewind-files` require `--resume`.
 - `--rewind-files` is a standalone operation and cannot be used with a prompt.
 - `--no-session-persistence` explicitly prevents saving and resuming.
 - Resuming may warn when permission mode differs from the saved session.
+- A transcript marked `ended-by-model` restores as ended; resume does not silently clear the marker.
+- A stale/missing `observer-ref` target falls back to a fresh observer rather than failing the observed session.
 
 ## Restore internals
 
@@ -180,3 +193,5 @@ Attaching to an existing worktree is stricter than checking whether a path exist
 - [Context, memory, compaction, checkpoints, and rewind](../02-context-model-loop/context-memory-compaction-checkpoints.md)
 - [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md)
 - [Remote control and teleport](remote-control-and-teleport.md)
+- [Conversation termination](../01-runtime-lifecycle/conversation-termination.md)
+- [Observer agents](../06-agents-automation/observer-agents.md)

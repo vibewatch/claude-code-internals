@@ -17,6 +17,9 @@ This page reverse-engineers the task and subagent paths that show how Claude Cod
 | SubagentContextClassifier | `agentType==="subagent"` | Runtime subagent context classifier. |
 | UltraReviewCommand | `H.command("ultrareview [target]")` | Cloud-hosted multi-agent code-review command. |
 | AgentTool | `Agents run in the background by default` | Delegated agents launch asynchronously unless `run_in_background: false` is explicit. |
+| ListAgentsTool | `ListAgents`, `Names are the address`, ` [ref]` | Lists addressable agents/sessions and explains reference-based disambiguation. |
+| SendMessagePinGuard | `send_message_pin_guard`, `now resolves to a different agent` | Prevents a reused display name from silently rebinding an established conversation recipient. |
+| ObserverDeclaration | `observer`, `observerMessage`, `ObserverReport` | Experimental auto-spawned observer and its one-way report channel. |
 | SessionSpawnCap | `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | Session-wide spawn budget (default 200); `/clear` resets it. |
 | ImplicitTeamContract | `team_name: "Deprecated; ignored. The session has a single implicit team."` | Explicit team setup is no longer required. |
 | ForkAndSubtask | `Usage: /fork \<directive\>`, `Usage: /subtask \<task\>` | Background conversation copy versus in-session delegated subagent. |
@@ -55,6 +58,8 @@ flowchart TD
 | `agentType === "subagent"` | Runtime context marker distinguishing subagent execution. |
 | `ultrareview [target]` | Cloud-hosted multi-agent code-review command. |
 | `Agent` | Spawns a named/custom subagent in the background by default; can run synchronously, in a worktree, or on a gated remote environment. |
+| `ListAgents` / `SendMessage` | Lists and addresses in-process subagents plus reachable local, cloud, and Remote Control sessions, when that roster surface is available. |
+| `ObserverReport` | Sends an observer's one-way advisory report to its paired task or main conversation; unavailable as a normal peer-message channel. |
 | `Workflow` | Runs explicit deterministic multi-agent orchestration and returns a background task/run ID. |
 | `/fork` / `/subtask` | `/fork` creates a separate background-session copy; `/subtask` launches the old in-session delegation path. |
 
@@ -94,6 +99,21 @@ Subagents may spawn subagents up to five levels deep. A process-local session bu
 Messages from the launching agent are task direction, not user authorization. Cross-agent messages cannot approve permission requests; permission prompts from background subagents surface in the parent session.
 
 Background-session completion and input-needed states can fire `Notification` hooks (`agent_completed`, `agent_needs_input`). `claude agents --json --all` exposes active/completed state for scripts, including what a waiting row is blocked on.
+
+## Peer addressing with `ListAgents`
+
+The source-visible `ListAgents` contract treats names as the primary address. Its roster can combine:
+
+- in-process subagents spawned by the current session;
+- other live local Claude sessions;
+- the user's cloud Claude sessions when cloud access is available;
+- Remote Control bridge sessions, which are reply-only from this path.
+
+Callers copy the printed name into `SendMessage({to: "<name>", ...})`. A row's bracketed reference is appended only when duplicate names make the bare name ambiguous or an error requests disambiguation. The resolver returns candidate rows rather than guessing.
+
+After a recipient resolves, the runtime can pin that identity. If the same display name later points to a different agent/session, `send_message_pin_guard` refuses the send and asks for an explicit reference instead of silently redirecting the message. This name-plus-ref contract also appears in the fully implemented `SendFile` body, but `SendFile.isEnabled()` is hard-coded false in this build and must not be treated as an available peer capability.
+
+Observers are intentionally excluded from ordinary messaging: `SendMessage` rejects observer callers/targets, and observers report only through `ObserverReport`. See [Observer agents](observer-agents.md) for pairing, repeated permission checks, digest framing, and resume behavior.
 
 ## Hosted review
 
@@ -171,6 +191,8 @@ The `Large agent descriptions` warning is produced when custom-agent description
 
 Deterministic multi-agent fan-out is owned by the separate [`Workflow` lifecycle](dynamic-workflows.md). Use individual `Agent` calls for ordinary delegation; use `Workflow` only after explicit user opt-in to multi-agent orchestration.
 
+Experimental read-only supervision is owned by [Observer agents](observer-agents.md). It composes with the Agent permission boundary but uses a separate pairing registry and `observer-ref` transcript record.
+
 ## Agent communication protocol handoff
 
 The source-confirmed agent/subagent communication surface is not a separate peer socket protocol. It is tool/state/event mediated: `SendMessage`, `TaskCreate`, `TaskGet`, `TaskList`, and `TaskUpdate` feed task stores, task queues, transcript-backed subagent contexts, and lifecycle hooks. Remote/team updates such as `team_permission_update` are typed envelopes on the broader runtime control channel. For the cross-cutting protocol view, see [Runtime communication protocols](../00-start-here/runtime-communication-protocols.md).
@@ -230,6 +252,7 @@ After invalidation, the next `getActiveAgentsFromList(...)` call re-parses every
 
 - [Agent and automation architecture](architecture.md)
 - [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md)
+- [Observer agents](observer-agents.md)
 - [Slash commands and automation](slash-commands-and-automation.md)
 - [Built-in tools and permissions](../03-tools-integrations-security/built-in-tools-and-permissions.md)
 - [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md)

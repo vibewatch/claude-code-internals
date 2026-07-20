@@ -24,6 +24,10 @@ Use this page alongside:
 | SkillLoadingMetadata | `function formatSkillLoadingMetadata(skill, phase="loading")` | Renders the user-facing skill-loading banner. |
 | UserPromptExpansionRunner | `async function runUserPromptExpansionHook(...)` | Runs the `UserPromptExpansion` hook chain after slash-command resolution. |
 | PromptCache | `function clearPromptCache()` | Clears the cached SDK skill prompt (re-fetched lazily by `getPrompt`). |
+| HostedListSkills | `ListSkills` | Lists enabled claude.ai skills, optionally filtered by keyword. |
+| HostedSearchSkills | `SearchSkills` | Searches the hosted organization/account skill catalog by intent keywords. |
+| HostedSuggestSkills | `SuggestSkills` | Finds not-yet-enabled skills and renders an add card. |
+| SkillProposalTool | `propose_skills`, `tengu_propose_skills` | Presents up to three complete new/improved `SKILL.md` drafts for host review. |
 | CommandBudgetConstants | `const ww6 = 20` (minimum-per-skill chars), `const Yz_ = 200000` (default token budget) | Budget thresholds used by `formatCommandsWithinBudget`. |
 
 ## Bundle modules in `cli.renamed.js`
@@ -157,6 +161,21 @@ This is what the `Skill` tool calls to keep the system-prompt skill list under b
 
 `restoreSkillStateFromMessages(messages)` walks a resumed transcript and re-derives which skills already loaded their content in the live state. This is how `/resume` brings back a session that previously loaded a skill — the skill's `<skill-loaded>` tag in the transcript signals "already loaded" so the runtime doesn't re-load it on resume.
 
+## Hosted skill discovery and proposals
+
+The local `SKILL.md` runtime above is complemented by first-party hosted discovery descriptors. These descriptors use organization APIs and are visible only when `isConnectorSuggestToolEnabled()` passes—`CLAUDE_CODE_REMOTE` plus the first-party provider—so their presence in the bundle is not evidence that every local CLI session has them.
+
+| Tool | Input/output role | Important boundary |
+|---|---|---|
+| `ListSkills` | Optional keyword filter over enabled claude.ai skills; returns IDs, names, descriptions, and enabled state. | Use this for capabilities the account already has. It calls the hosted list API, not the local skill directory scanner. |
+| `SearchSkills` | One to eight intent keywords; returns ranked hosted catalog records. | Discovery only. A matching record is not automatically loaded or enabled. |
+| `SuggestSkills` | Task keywords plus optional context label/trigger; searches and filters out already-enabled records, then returns a renderable card payload. | The user adds the skill out of band. A later `ListSkills` call is the source of truth for whether it became enabled. |
+| `propose_skills` | One to three proposals containing slug, new/improvement kind, description, evidence paths, and a complete `SKILL.md` draft. | Separate host review surface, not direct filesystem creation. Requires the remote-environment shape, `CLAUDE_CODE_SYNC_SKILLS`, `tengu_propose_skills`, and an additional host predicate. |
+
+Plugin discovery mirrors this sequence with `ListPlugins`, `SearchPlugins`, and `SuggestPluginInstall`; connector discovery uses `SearchMcpRegistry → SuggestConnectors`. See [MCP, plugins, and hooks](mcp-plugins-hooks.md#hosted-connector-plugin-and-skill-discovery) for the shared hosted boundary.
+
+`/team-onboarding` is another built-in skill-shaped workflow, but it is deliberately user-only (`disableModelInvocation: true`) because it scans recent local session usage before drafting `ONBOARDING.md`. Its scan and optional hosted share lifecycle are documented in [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md).
+
 ## Related docs
 
 - [MCP, plugins, and hooks](mcp-plugins-hooks.md)
@@ -164,3 +183,4 @@ This is what the `Skill` tool calls to keep the system-prompt skill list under b
 - [Prompt template catalog](../02-context-model-loop/prompt-template-catalog.md)
 - [SDK query, session API, and subagent surface](../04-sessions-persistence-remote/sdk-query-and-session-api.md)
 - [Slash commands and automation](../06-agents-automation/slash-commands-and-automation.md)
+- [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md)

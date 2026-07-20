@@ -37,10 +37,18 @@ This page is the canonical inventory for Claude Code tool names, tool families, 
 | PreToolUsePermissionHook | `hookPermissionResult`, `PreToolUse` | `PreToolUse` hook can allow, ask, deny, defer, or update input. |
 | AgentToolContract | `Agents run in the background by default` | Delegated agents are asynchronous unless `run_in_background: false` is supplied. |
 | WorkflowToolContract | `Execute a workflow script that orchestrates multiple subagents deterministically` | Dynamic workflows start in the background and report completion through task notifications. |
+| ListAgentsContract | `ListAgents`, `Names are the address`, ` [ref]` | Lists addressable in-process, local, cloud, and Remote Control peers; a row reference disambiguates duplicate names. |
+| ObserverReportContract | `ObserverReport` | One-way report channel installed in an observer agent's restricted tool set. |
+| EndConversationContract | `END_CONVERSATION_TOOL_NAME = "EndConversation"` | Gated two-call conversation-termination lifecycle. |
+| WaitForMcpServersContract | `WaitForMcpServers` | Waits briefly for pending MCP connections and reports connected/failed/auth/disabled states. |
 | RefreshMcpToolsContract | `RefreshMcpTools`, status `refreshed` / `error` / `not_connected` | Re-queries live MCP tool lists without dialing disconnected servers. |
+| HostedDiscoveryContracts | `SearchMcpRegistry`, `SuggestConnectors`, `ListConnectors`, `ListPlugins`, `SearchPlugins`, `ListSkills`, `SearchSkills` | First-party hosted discovery/list/card tools, not universal local CLI capabilities. |
 | ProjectsToolContract | `ProjectsTool`, `CLAUDE_PROJECT_UUID` | Reads/searches/writes the one claude.ai Project attached to the session. |
 | ArtifactToolContract | `ARTIFACT_TOOL_NAME = "Artifact"`, `ArtifactTool` | Publishes/lists/version-tracks hosted HTML or Markdown pages. |
 | ClaudeDesignContracts | `DesignTool`, `DesignSyncTool` | Discovers collaborative design operations or synchronizes a local design system through path-scoped plans. |
+| ShareOnboardingGuideContract | `ShareOnboardingGuide` | Creates, updates, finds, or deletes an organization-hosted `ONBOARDING.md` share. |
+| ComputerUseMcpContract | `serverName = "computer-use"`, `--computer-use-mcp` | macOS in-process MCP with per-app approval, interaction tiers, and a cross-session lock. |
+| DormantSendFileContract | `SendFileTool`, `isEnabled(){ return !1; }` | Fully implemented peer-file-transfer descriptor that is hard-disabled in this build. |
 
 ## Built-in tool families
 
@@ -51,10 +59,13 @@ This page is the canonical inventory for Claude Code tool names, tool families, 
 | File write/edit | `Edit`, `Write`, `MultiEdit`, `NotebookEdit` | Modify files and notebooks. | Read-before-write/edit checks and modified-after-read checks. |
 | Web | `WebFetch`, `WebSearch` | Fetch URL/domain content or perform web search. | Domain/search permission validation and provider/tool support gates. |
 | Planning/todos | `TodoWrite`, `ExitPlanMode` | Track plan state and exit plan mode. | Plan-mode state and prompt/context rules. |
-| Skills and agents | `Skill`, `Agent`, `TaskCreate`, `TaskGet`, `TaskList`, `TaskUpdate`, `SendMessage` | Load skills and dispatch/observe background-by-default subagent or task work. | Agent/task runtime, subagent hooks, task state registry, per-session spawn cap. |
+| Skills and agents | `Skill`, `Agent`, `ListAgents`, `TaskCreate`, `TaskGet`, `TaskList`, `TaskUpdate`, `SendMessage`, observer-only `ObserverReport` | Load skills; dispatch/observe agents and tasks; enumerate/message addressable peers; let an observer report to its paired target. | Agent/task runtime, subagent hooks, task state registry, per-session spawn cap, observer pairing. |
 | Deterministic orchestration | `Workflow` | Run a JavaScript workflow that coordinates many agents with shared concurrency/token budgets. | Workflow enablement/policy, usage warning, permission decision, workflow runtime. |
-| MCP lifecycle | `RefreshMcpTools`, `ListMcpResources`, `ReadMcpResource`, `ReadMcpResourceDir` | Refresh live tool discovery and browse/read MCP resources. | MCP connection state, server schema, normal permission boundary. |
+| MCP lifecycle | `WaitForMcpServers`, `RefreshMcpTools`, `ListMcpResources`, `ReadMcpResource`, `ReadMcpResourceDir` | Wait for pending connections, refresh live tool discovery, and browse/read MCP resources. | MCP connection state, server schema, normal permission boundary. |
+| Hosted capability discovery | `SearchMcpRegistry`, `SuggestConnectors`, `ListConnectors`, `ListPlugins`, `SearchPlugins`, `SuggestPluginInstall`, `ListSkills`, `SearchSkills`, `SuggestSkills`, `propose_skills` | Discover or render first-party connector/plugin/skill choices and propose reusable skills. | Claude.ai auth/provider/remote-host and feature gates; card tools do not themselves install/connect capabilities. |
+| Native computer control | `mcp__computer-use__*` | Inspect and control approved macOS applications through a dynamic MCP server. | macOS TCC, per-session app allowlist, application tiers, optional grants, and process lock. |
 | Scheduled/monitor work | `CronCreate`, `CronDelete`, `CronList`, `ScheduleWakeup`, `Monitor`, `RemoteTrigger` | Schedule local prompts, arm plugin monitors, or manage gated remote routines. | Cron/monitor/plugin trust and remote-session policy. |
+| Session/hosted lifecycle | `EndConversation`, `ShareOnboardingGuide` | End a qualifying conversation after reflection, or manage the optional organization-hosted onboarding guide. | Model/entrypoint/rollout gate plus durable marker; onboarding auth/policy/feature and local-file guards. |
 | Hosted knowledge and creation | `Projects`, `Artifact`, `ClaudeDesign`, `DesignSync` | Read/write attached Project knowledge, publish hosted pages, and edit/synchronize collaborative design projects. | Account/provider/policy gates plus operation-specific local-read, consent, plan, grant, and destructive-write checks. |
 
 ## Schema ownership
@@ -83,6 +94,20 @@ The packaged `sdk-tools.d.ts` union adds the following schema owners relative to
 | `REPL`, `ShowOnboardingRolePicker`, `SendFeedback` | Host-control and product-UX contracts. | Internal/hosted surfaces rather than guaranteed model-visible local tools. |
 
 `Agent` and `WebSearch` also gained hard process-local budgets: defaults are 200 spawns and 200 searches per session, configurable with `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` and `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION`. `/clear` resets the subagent budget.
+
+## Runtime-only, hosted, and dormant descriptors
+
+Not every runtime descriptor belongs to the SDK-declared addition list, and descriptor presence alone does not establish local availability.
+
+| Surface | Confirmed runtime role | Availability interpretation |
+|---|---|---|
+| [`EndConversation`](../01-runtime-lifecycle/conversation-termination.md) | Requires two consecutive tool-call turns, persists `ended-by-model`, and aborts/blocks the conversation. | New in `2.1.215`; model-, feature-, entrypoint-, and mode-gated. |
+| [`ObserverReport`](../06-agents-automation/observer-agents.md) | Delivers a concise one-way report to an observer's paired task/main session. | New in `2.1.215`; only meaningful inside an armed experimental observer. |
+| `WaitForMcpServers` | Waits up to five seconds for selected/all pending servers and returns readiness buckets. | Enabled only while MCP clients are pending; it does not configure or authenticate a server. |
+| `SearchMcpRegistry → SuggestConnectors`, `ListConnectors` | Searches connector directory UUIDs, resolves suggestion payloads, or lists installed organization connectors and `enabledInChat`. | First-party remote/hosted surface; suggestion/list calls do not connect or enable a connector. |
+| `ListPlugins` / `SearchPlugins` / `SuggestPluginInstall`, `ListSkills` / `SearchSkills` / `SuggestSkills` | Lists enabled account capabilities, searches hosted catalogs, and renders out-of-band install/add cards. | First-party remote/hosted surface; distinct from local filesystem/plugin-marketplace loading. |
+| [`ShareOnboardingGuide`](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md) | CRUD-style wrapper around the organization's onboarding-share API and local `ONBOARDING.md`. | OAuth, traffic, policy, and rollout gated; returns `unavailable` as a graceful fallback. |
+| `SendFile` | Contains same-machine and bridge transfer implementations, digest verification, path permissions, and policy checks. | **Hard-disabled:** its descriptor returns `false` from `isEnabled()` in `2.1.215`. Do not document it as an available peer-transfer tool. This is distinct from gated `SendUserFile`, which delivers a file to the connected host/user. |
 
 ## Descriptor and execution-body map
 
@@ -150,6 +175,10 @@ High-signal guard strings include:
 | Hook/event names and frame families | [Hooks and events reference](hooks-and-events-reference.md) |
 | Settings/policy keys that shape tools | [Settings schema reference](settings-schema-reference.md) |
 | Task/subagent tool behavior | [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md) |
+| Observer pairing and one-way reports | [Observer agents](../06-agents-automation/observer-agents.md) |
+| Model-ended session lifecycle | [Conversation termination](../01-runtime-lifecycle/conversation-termination.md) |
+| macOS application control | [Computer-use MCP](computer-use-mcp.md) |
+| Team guide generation and hosted sharing | [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md) |
 | Attached claude.ai Project knowledge | [Hosted Projects and knowledge](../04-sessions-persistence-remote/hosted-projects-and-knowledge.md) |
 | Hosted page publication and live updates | [Artifact publishing and live pages](artifact-publishing-and-live-pages.md) |
 | Collaborative design and design-system sync | [Claude Design and design-system sync](claude-design-and-design-sync.md) |
@@ -159,5 +188,6 @@ High-signal guard strings include:
 - [Tool runtime, events, and integration flows](tool-runtime-events-and-integrations.md)
 - [Built-in tools and permissions](built-in-tools-and-permissions.md)
 - [MCP, plugins, and hooks](mcp-plugins-hooks.md)
+- [Computer-use MCP](computer-use-mcp.md)
 - [Hooks and events reference](hooks-and-events-reference.md)
 - [Settings schema reference](settings-schema-reference.md)

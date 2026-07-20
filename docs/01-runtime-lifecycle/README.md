@@ -1,6 +1,6 @@
 # Runtime lifecycle
 
-This section reverse-engineers package/Bun startup, command-line routing, runtime mode selection, accessibility rendering, and high-level session entry paths to show how Claude Code reaches a live session.
+This section reverse-engineers package/Bun startup, command-line routing, runtime mode selection, accessibility rendering, conversation termination, and high-level session entry paths to show how Claude Code reaches and eventually leaves a live session.
 
 ## Source-anchor policy
 
@@ -33,7 +33,8 @@ flowchart TD
 | 4 | [Commands and flags](commands-and-flags.md) | Which root flags and top-level command families define the user-facing CLI surface? |
 | 5 | [Command-line reference](command-line-reference.md) | Which source-visible flags, subcommands, aliases, and mode-specific CLI surfaces exist? |
 | 6 | [Accessibility and screen-reader mode](accessibility-and-screen-reader-mode.md) | How do flag/env/setting precedence, classic renderer selection, animation suppression, terminal cues, and child propagation compose? |
-| 7 | [Runtime lifecycle architecture](architecture.md) | How is bootstrap → main → Commander composed, what is the public interface, and what design decisions drive mode dispatch and shutdown? |
+| 7 | [Conversation termination](conversation-termination.md) | How does the gated `EndConversation` tool reflect twice, persist an `ended-by-model` marker, block resumed turns, and recover through `/clear`? |
+| 8 | [Runtime lifecycle architecture](architecture.md) | How is bootstrap → main → Commander composed, what is the public interface, and what design decisions drive mode dispatch and shutdown? |
 
 ## Handoffs
 

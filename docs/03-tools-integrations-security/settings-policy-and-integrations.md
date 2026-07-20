@@ -23,6 +23,8 @@ Use [Settings schema reference](settings-schema-reference.md) for the canonical 
 | SafeModeBoundary | `--safe-mode`, `CLAUDE_CODE_SAFE_MODE` | Disables project/user customizations for recovery while preserving admin policy, auth, core tools, and permissions. |
 | ProcessWrapperPolicy | `processWrapper`, `CLAUDE_CODE_PROCESS_WRAPPER` | Routes the background supervisor and covered self-spawns through a required corporate launcher. |
 | DisableSideloadFlagsPolicy | `disableSideloadFlags` | Managed policy rejects inline plugin URL/dir, custom agent, and non-SDK MCP sideload flags. |
+| DisableClaudeAiConnectorsSetting | `disableClaudeAiConnectors` | Disables claude.ai connector loading and classifies pending connectors as disabled. |
+| TeamOnboardingPolicy | `allow_team_onboarding` | Organization policy controls the user-only onboarding workflow and its optional share layer. |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -58,6 +60,8 @@ flowchart TD
 | Skills/slash safety | `disableSkillShellExecution` | Replaces inline shell execution in skills/custom slash commands with placeholders. |
 | Authentication and telemetry helpers | `apiKeyHelper`, `proxyAuthHelper`, `otelHeadersHelper` | Lets settings point to helper scripts for credentials/proxy auth and telemetry headers. |
 | Plugin/MCP config | `mcpServers`, plugin marketplaces, output styles, hooks | Integrations can be contributed through settings and plugins. |
+| Hosted connector policy | `disableClaudeAiConnectors` | Prevents claude.ai connector configs/tools from loading, without disabling ordinary local MCP configs. |
+| Team onboarding policy | `allow_team_onboarding` | Controls `/team-onboarding`; hosted sharing adds OAuth, traffic, and rollout gates. |
 | IDE/Chrome/file resources | `--ide`, `--chrome`, `--file` | Adds editor/browser/file startup integration surfaces. |
 | Accessibility/recovery | `axScreenReader`, `--ax-screen-reader`, `--safe-mode` | Selects the [screen-reader-friendly classic renderer](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md) or enters [configuration-isolation recovery](../05-hosted-agent-ops/safe-mode-and-recovery.md). |
 | Workflow/model/version policy | `disableWorkflows`, `availableModels`, `enforceAvailableModels`, `requiredMinimumVersion`, `requiredMaximumVersion` | Constrains orchestration, model resolution, and allowed client builds. |
@@ -83,6 +87,8 @@ Managed `disableSideloadFlags` closes CLI-only extension paths by rejecting `--p
 
 Claude in Chrome is a first-class integration in this build (`--chrome` / `--no-chrome`) and is generally available subject to auth, host, extension, policy, and safe-mode gates. Browser calls remain tool calls and therefore still cross normal plan-mode and permission checks.
 
+`disableClaudeAiConnectors` is narrower than a global MCP kill switch: the runtime checks it for `claudeai`-scoped configs and connector startup, while normal settings/plugin/flag MCP configs retain their own policies. `allow_team_onboarding` is an organization capability policy rather than a model permission; it gates the user-invoked local-history workflow, and [hosted guide sharing](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md) applies additional account/traffic/feature checks.
+
 ## Related docs
 
 - [Settings schema reference](settings-schema-reference.md)
@@ -92,4 +98,5 @@ Claude in Chrome is a first-class integration in this build (`--chrome` / `--no-
 - [Telemetry and tracing](../05-hosted-agent-ops/telemetry-and-tracing.md)
 - [Prompt, context, and memory](../02-context-model-loop/prompt-context-memory.md)
 - [MCP, plugins, and hooks](mcp-plugins-hooks.md)
+- [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md)
 - [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md)

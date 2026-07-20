@@ -26,6 +26,11 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | DisableGrowthBookEnv | `DISABLE_GROWTHBOOK` | Feature-evaluation kill switch. |
 | McpToolTimeoutEnv | `MCP_TIMEOUT` | MCP tool timeout environment variable. |
 | McpConnectTimeoutEnv | `MCP_CONNECT_TIMEOUT_MS` | MCP connection timeout environment variable. |
+| McpHardToolTimeoutEnv | `MCP_TOOL_TIMEOUT` | Hard wall-clock MCP call timeout when no per-server timeout wins. |
+| McpIdleToolTimeoutEnv | `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` | No-response/no-progress MCP watchdog; zero disables it. |
+| McpRefreshToolEnv | `CLAUDE_CODE_ENABLE_REFRESH_MCP_TOOLS` | Adds `RefreshMcpTools` to the base tool pool. |
+| ObserverAgentsEnv | `CLAUDE_CODE_EXPERIMENTAL_OBSERVER_AGENTS` | Required process opt-in for observer-agent declarations. |
+| AutoModeSiblingContextEnv | `CLAUDE_CODE_AUTO_MODE_SIBLING_CONTEXT` | Overrides whether auto-mode classification sees earlier tool calls from the same assistant turn. |
 | SessionAccessTokenEnv | `CLAUDE_CODE_SESSION_ACCESS_TOKEN` | Remote/session ingress token source. |
 | WebSocketAuthFdEnv | `CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR` | WebSocket auth file-descriptor handoff. |
 | OtelHeadersEnv | `OTEL_EXPORTER_OTLP_HEADERS` | OpenTelemetry exporter env surface. |
@@ -95,12 +100,16 @@ This page centralizes environment variables visible in the analyzed runtime and 
 |---|---|---|
 | `MCP_TIMEOUT` | MCP tool-call timeout, with a documented default fallback. | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
 | `MCP_CONNECT_TIMEOUT_MS` | MCP connection timeout. | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
+| `MCP_TOOL_TIMEOUT` | Hard wall-clock MCP tool-call limit; per-server `timeout` at or above one second takes precedence. | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
+| `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` | Global no-response/no-progress limit, bounded by the hard timeout; `0` disables the idle watchdog. | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
 | `MCP_CONNECTION_NONBLOCKING` | Runtime MCP connection non-blocking gate. | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
+| `CLAUDE_CODE_ENABLE_REFRESH_MCP_TOOLS` | Includes `RefreshMcpTools`; the tool then re-lists only already-connected servers. | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
 | `CLAUDE_CODE_PLUGIN_PREFER_HTTPS` | Plugin transport preference gate. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_CODE_PLUGIN_USE_ZIP_CACHE` | Plugin zip-cache gate. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_CODE_SYNC_PLUGIN_INSTALL` | Synchronous plugin installation behavior. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS` | Built-in agent availability gate. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_CODE_DISABLE_AGENT_VIEW` | Agent UI/view gate. | [Feature gates reference](feature-gates-reference.md) |
+| `CLAUDE_CODE_EXPERIMENTAL_OBSERVER_AGENTS` | Enables parsing/arming observer declarations; the GrowthBook observer gate must also pass. | [Observer agents](../06-agents-automation/observer-agents.md) |
 | `CLAUDE_CODE_FORWARD_SUBAGENT_TEXT` | Forwards subagent text/thinking into stream-JSON output with parent linkage. | [SDK query, session API, and subagent surface](../04-sessions-persistence-remote/sdk-query-and-session-api.md) |
 | `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | Sets the spawn budget; default 200 and reset by `/clear`. | [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md) |
 | `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` | Sets the WebSearch call budget; default 200. | [Tool inventory and schemas](../03-tools-integrations-security/tool-inventory-and-schemas.md) |
@@ -130,6 +139,7 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | `CLAUDE_CODE_WORKFLOW_SIZE_WARNING_AGENTS`, `CLAUDE_CODE_WORKFLOW_SIZE_WARNING_TOKENS` | Tunes workflow-size warning thresholds. | [Dynamic workflows](../06-agents-automation/dynamic-workflows.md) |
 | `CLAUDE_CODE_DISABLE_ADVISOR_TOOL` | Advisor/permission-adjacent tool gate. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL` | Experimental advisor tool gate. | [Feature gates reference](feature-gates-reference.md) |
+| `CLAUDE_CODE_AUTO_MODE_SIBLING_CONTEXT` | Overrides the `tengu_auto_mode_config.sameTurnSiblingContext` value; when enabled, auto-mode's classifier receives earlier tool calls from the same assistant turn. | [Built-in tools and permissions](../03-tools-integrations-security/built-in-tools-and-permissions.md) |
 | `CLAUDE_CODE_DISABLE_1M_CONTEXT` | Context-window feature gate. | [Feature gates reference](feature-gates-reference.md) |
 | `DISABLE_COMPACT` | Context compaction gate. | [Feature gates reference](feature-gates-reference.md) |
 | `DISABLE_INTERLEAVED_THINKING` | Interleaved-thinking gate. | [Feature gates reference](feature-gates-reference.md) |
@@ -152,6 +162,7 @@ This page centralizes environment variables visible in the analyzed runtime and 
 - [Updater and doctor](updater-and-doctor.md)
 - [Safe mode and recovery](safe-mode-and-recovery.md)
 - [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md)
+- [Observer agents](../06-agents-automation/observer-agents.md)
 - [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md)
 - [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md)
 - [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md)

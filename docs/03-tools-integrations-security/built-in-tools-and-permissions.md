@@ -18,6 +18,10 @@ Use [Tool inventory and schemas](tool-inventory-and-schemas.md) for the canonica
 | WebSearchToolName | `var RI="WebSearch"` | Web search tool name. |
 | TodoWriteToolName | `var HV="TodoWrite"` | Todo list tool name. |
 | SkillToolName | `var XX="Skill"` | Skill-loading tool name. |
+| EndConversationTool | `EndConversation`, `checkPermissions` → `allow` | Model-ended lifecycle relies on rollout/model/entrypoint and two-call reflection rather than an ask dialog. |
+| ObserverReportTool | `ObserverReport` | Observer-only delivery tool; execution still validates the live pairing and target. |
+| ComputerUsePolicyLayer | `request_access`, `computer-use.lock` | MCP computer actions add macOS TCC, per-app tier, and ownership checks after normal tool routing. |
+| DormantSendFileTool | `SendFileTool`, `isEnabled(){return!1}` | Peer file transfer implementation is hard-disabled in this build. |
 | ToolVisibilityFlag | `--tools <tools...>` | Selects available tools from the built-in set. |
 | ToolAllowRuleFlag | `--allowedTools, --allowed-tools <tools...>` | Allows matching tool calls. |
 | ToolDenyRuleFlag | `--disallowedTools, --disallowed-tools <tools...>` | Denies matching tool calls. |
@@ -39,7 +43,8 @@ Use [Tool inventory and schemas](tool-inventory-and-schemas.md) for the canonica
 | File write/edit | `Edit`, `Write`, `MultiEdit`, `NotebookEdit` | Modifies files/notebooks and participates in code-edit permission telemetry. |
 | Web | `WebFetch`, `WebSearch` | Fetches URLs/domains or performs web search with validation. |
 | Planning/todos | `TodoWrite`, `ExitPlanMode` | Tracks task plan state and exits plan mode. |
-| Skills/agents | `Skill`, `TaskCreate`, `TaskGet`, `TaskList`, `TaskUpdate`, `SendMessage` | Loads skills and dispatches/observes task or agent work. |
+| Skills/agents | `Skill`, `ListAgents`, `TaskCreate`, `TaskGet`, `TaskList`, `TaskUpdate`, `SendMessage`, observer-only `ObserverReport` | Loads skills, dispatches/observes task work, and addresses or reports to agents. |
+| Session lifecycle | `EndConversation` | Ends a qualifying conversation only after the built-in two-call reflection sequence. |
 
 ## Permission and filtering flow
 
@@ -165,6 +170,20 @@ This is why the headless schema has both `permission_denied` system events and `
 2. `PreToolUse` can affect authorization and input, while `PermissionDenied` can feed a retry hint back to the model.
 3. SDK/Remote Control hosts see a structured `can_use_tool` control request only for ask-style decisions; denial shortcuts become `permission_denied` frames.
 4. File-edit tools enforce a read-before-write invariant, which explains why the model often must call `Read` before `Edit`/`Write`/`NotebookEdit`.
+
+### Specialized boundaries do not disappear after registration
+
+Some descriptors deliberately use a specialized policy layer rather than an ordinary ask prompt:
+
+| Surface | Shared-boundary behavior | Additional enforcement |
+|---|---|---|
+| [`EndConversation`](../01-runtime-lifecycle/conversation-termination.md) | Descriptor permission returns `allow`. | Model/feature/entrypoint visibility, prior-turn reflection, transcript marker, and ended-state guards determine whether it can terminate anything. |
+| [`ObserverReport`](../06-agents-automation/observer-agents.md) | Report permission returns `allow`; observer auto-spawn is checked as an `Agent` request. | The observer arm/delivery path re-runs Agent rules and managed `PreToolUse`; report execution requires an active pairing and running target. |
+| [`computer-use`](computer-use-mcp.md) | MCP calls still enter normal tool routing. | macOS Accessibility/Screen Recording, per-session application approval, read/click/full tiers, optional clipboard/system-key grants, coordinate/frontmost-app checks, and a cross-session lock. |
+| [`ShareOnboardingGuide`](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md) | Descriptor is non-read-only and non-concurrency-safe; `mode: "delete"` is explicitly destructive. | It reads a bounded local `ONBOARDING.md` and requires first-party OAuth, traffic, organization policy, and rollout gates before remote CRUD. |
+| `SendFile` | Contains path-read permission, plan/auto-mode, peer-isolation, provider, and policy checks. | Its `isEnabled()` is hard-coded `false` in `2.1.215`, so those execution checks do not make it an available tool. |
+
+This distinction prevents two common reverse-engineering errors: interpreting `checkPermissions: allow` as “ungated,” or interpreting a complete execution body as “enabled.”
 
 ## Permission mode state machine
 
@@ -332,5 +351,8 @@ The classifier and summary engine together are why a permission-denied turn stil
 - [Sandbox and isolation](sandbox-and-isolation.md)
 - [Prompt, context, and memory](../02-context-model-loop/prompt-context-memory.md)
 - [MCP, plugins, and hooks](mcp-plugins-hooks.md)
+- [Computer-use MCP](computer-use-mcp.md)
 - [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md)
 - [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md)
+- [Observer agents](../06-agents-automation/observer-agents.md)
+- [Conversation termination](../01-runtime-lifecycle/conversation-termination.md)

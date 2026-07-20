@@ -19,6 +19,8 @@ This page documents slash-command and automation surfaces that complement the ag
 | ForkCommand | `Usage: /fork \<directive\>` | Starts a conversation copy as a background session. |
 | SubtaskCommand | `Usage: /subtask \<task\>` | Starts an in-session delegated subagent. |
 | WorkflowsCommand | `/workflows` | Opens dynamic workflow progress/history and stop controls. |
+| TeamOnboardingCommand | `name: "team-onboarding"`, `disableModelInvocation: true` | User-only workflow that analyzes recent local usage and drafts `ONBOARDING.md`. |
+| TeamOnboardingShare | `ShareOnboardingGuide`, `allow_team_onboarding` | Optional organization-hosted share/update/delete layer for the generated guide. |
 
 ## Automation surfaces
 
@@ -36,6 +38,7 @@ This page documents slash-command and automation surfaces that complement the ag
 | `/fork <directive>` | Creates a separately managed background copy of the conversation. |
 | `/subtask <task>` | Delegates one task inside the current session. |
 | `/workflows` | Shows live and historical deterministic workflow runs. |
+| `/team-onboarding` | Scans bounded recent local session usage, drafts `ONBOARDING.md`, collects team review input, and optionally preserves one hosted share link across the draft/final update. |
 
 ## Slash-command path
 
@@ -52,6 +55,14 @@ flowchart TD
 ## Auto-mode
 
 `auto-mode` is registered as a top-level command when the feature is not disabled. It exposes `config`, `defaults`, `critique`, and `reset`; reset removes the user-level `autoMode` section after confirmation (`--yes` skips the prompt). Classifier rules can only come from user, flag/SDK, or managed settings—project/local rules are ignored because repositories control those files.
+
+## `/team-onboarding`
+
+`/team-onboarding` is a built-in skill-shaped command but cannot be invoked by the model. This is a meaningful privacy boundary: the user explicitly starts the workflow before Claude Code scans recent local JSONL sessions for command/MCP counts, bounded session descriptors, and repository metadata.
+
+The workflow writes a local `ONBOARDING.md` first. When first-party OAuth, nonessential traffic, organization policy, and rollout gates permit, it can call `ShareOnboardingGuide` once for the draft and again with the same `short_code` after user review. Sharing failure leaves the local guide intact and falls back to manual distribution.
+
+The complete scan limits, guide contract, API modes, and fallback statuses are documented in [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md).
 
 ## Subcommand tokenization (`matchSubcommand`)
 
@@ -74,3 +85,4 @@ This pattern explains why the same skill can answer different shapes of question
 - [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md)
 - [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md)
 - [Settings, policy, and integrations](../03-tools-integrations-security/settings-policy-and-integrations.md)
+- [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md)
