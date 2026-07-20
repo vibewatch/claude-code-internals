@@ -2,7 +2,7 @@
 
 This page answers the software-architecture question that sits between the high-level [main feature map](main-feature-map.md) and the focused implementation pages: **what does reverse engineering reveal about how the Claude Code runtime is decomposed, how its modules relate, and what data/control paths tie them together?**
 
-The analysis is grounded in `claude-code-pkg/src/entrypoints/cli.js`. The file is bundled/minified production JavaScript, so names such as `Bootstrap`, `CommanderRoot`, `HeadlessLoop`, or `SessionRestorer` are stable semantic aliases; minified symbols are lookup anchors for this analyzed `@anthropic-ai/claude-code@2.1.143` build.
+The analysis is grounded in `claude-code-pkg/src/entrypoints/cli.js`. The file is bundled/minified production JavaScript, so names such as `Bootstrap`, `CommanderRoot`, `HeadlessLoop`, or `SessionRestorer` are stable semantic aliases; exact strings and approximate lines are lookup anchors for this analyzed `@anthropic-ai/claude-code@2.1.215` build.
 
 ## Architecture thesis
 
@@ -15,7 +15,7 @@ The logical architecture has five cooperating planes:
 | Control plane | Process bootstrap, command parsing, mode routing, setup, and shutdown decisions. | `OuterBootstrap`, `TopLevelMain`, `CommanderRoot`, root `claude` command strings. |
 | Execution plane | Runs either the headless/SDK stream loop or the interactive TUI/session loop. | `HeadlessRunner`, `HeadlessLoop`, `InteractiveSessionLoop`, `InteractiveResumePicker`. |
 | Context/model plane | Turns settings, `CLAUDE.md`, prompt flags, tools, MCP, agents, memory, and provider config into model-visible requests. | `CLAUDE.md`, `--system-prompt`, `--append-system-prompt`, `outputStyles`, provider env gates. |
-| Capability plane | Exposes built-in tools, MCP tools, plugins, hooks, skills, tasks, and permission mediation. | `BuiltInToolNames`, `TaskRuntime`, `ToolPermissionBoundary`, `HookEvents`, `McpCoordinator`, `McpCommand`, `PluginCommand`. |
+| Capability plane | Exposes built-in tools, MCP tools, plugins, hooks, skills, tasks, dynamic workflows, and permission mediation. | `BuiltInToolNames`, `TaskRuntime`, `Workflow`, `ToolPermissionBoundary`, `HookEvents`, `McpCoordinator`, `McpCommand`, `PluginCommand`. |
 | State and integration plane | Persists/resumes local transcripts, bridges remote/teleport/control sessions, and projects events to SDK/TUI/remote consumers. | `SessionDiscovery`, `SessionRestore`, `transcript_mirror`, `remoteSessionConfig`, `bridgeSessionId`, `permission_response`, `teleportWithProgress`. |
 
 The design resembles the `copilot-cli-internals` documentation model in one important way: both systems separate **context engineering** from **harness engineering**. Claude Code's implementation is distinct in its concrete surfaces: `CLAUDE.md` memory, Anthropic/Bedrock/Vertex/Mantle provider gates, `claude` command routing, Claude Code remote/teleport/Remote Control, task/subagent tools, and Claude-specific traffic/debug policy strings are all visible directly in `cli.renamed.js`.
@@ -24,7 +24,7 @@ The design resembles the `copilot-cli-internals` documentation model in one impo
 
 | Area | Semantic alias | Minified anchor or exact string | Architectural meaning |
 | --- | --- | --- | --- |
-| Artifact identity | Embedded version metadata | `VERSION:"2.1.143"`, `BUILD_TIME:"2026-05-15T17:39:39Z"` | Confirms the analyzed runtime build. |
+| Artifact identity | Embedded version metadata | `VERSION: "2.1.215"`, `BUILD_TIME: "2026-07-19T00:01:04Z"`, `GIT_SHA: "316ce99628e89900bf0b1328fed3b8fec0c0c92d"` | Confirms the analyzed runtime build. |
 | Bootstrap | `OuterBootstrap` | `async function J9A` | Performs fast version/background checks before loading the full runtime. |
 | Main entry | `TopLevelMain` | `async function O4A` | Establishes process identity, deep-link handling, entrypoint classification, and the call into the command router. |
 | Command router | `CommanderRoot` | `async function w4A`, `H.name("claude")` | Builds root options, pre-action setup, root action, and top-level commands. |
@@ -33,7 +33,7 @@ The design resembles the `copilot-cli-internals` documentation model in one impo
 | Interactive loop | `InteractiveSessionLoop` | `async function pT$`, `async function aa4` | Runs the TUI/session loop and picker/search restore path. |
 | Context sources | `ContextInputs` | `CLAUDE.md`, `.claude/settings.json`, `--system-prompt`, `--append-system-prompt`, `--exclude-dynamic-system-prompt-sections` | Confirms layered prompt/context inputs and stable-vs-dynamic prompt boundaries. |
 | Provider/auth | `ProviderClassifier` | `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_MANTLE`, `CLAUDE_CODE_USE_ANTHROPIC_AWS` | Confirms credential and provider-routing surfaces. |
-| Built-in tools | `BuiltInToolNames` | `Bash`, `Read`, `Edit`, `Write`, `WebFetch`, `WebSearch`, `TodoWrite`, `Skill` | Names the core model-visible tool capability set. |
+| Built-in tools | `BuiltInToolNames` | `Bash`, `Read`, `Edit`, `Write`, `WebFetch`, `WebSearch`, `Agent`, `Workflow`, `RefreshMcpTools` | Names core coding, delegation, workflow, and integration capabilities. |
 | Permission boundary | `ToolPermissionBoundary` | `function U85`, `tengu_tool_use_can_use_tool_rejected`, `tengu_tool_use_can_use_tool_allowed` | Mediates tool execution through validation, permission decisions, telemetry, and denial feedback. |
 | Host permission bridge | `CanUseToolBridge` | `createCanUseTool`, `can_use_tool`, `permission_response` | Shows ask/deny tool decisions crossing SDK/Remote Control boundaries. |
 | Communication protocols | `RuntimeProtocolFamilies` | `tools/list`, `control_request`, `bridge_state`, `text/event-stream`, `SendMessage` | Distinguishes in-process calls from MCP JSON-RPC, bridge envelopes, provider streams, and task/message tools. |
@@ -45,7 +45,7 @@ The design resembles the `copilot-cli-internals` documentation model in one impo
 | Session restore | `SessionRestorer` | `async function loadConversationForResume`, `async function OG8` | Loads resumable session state and applies it to the current runtime envelope. |
 | Session events | `SessionProjection` | `transcriptPath`, `transcript_mirror`, `session_state_changed` | Shows transcript-backed state plus live SDK/headless projections. |
 | Remote/teleport/control | `RemoteBridge` | `--remote`, `--teleport`, `--remote-control`, `remoteSessionConfig`, `teleportWithProgress`, `CLAUDE_CODE_SESSION_ACCESS_TOKEN` | Confirms local sessions can be bridged to remote, teleport, and control channels. |
-| Agents/tasks | `TaskRuntime` | `TaskCreate`, `TaskGet`, `TaskList`, `TaskUpdate`, `SubagentStart`, `SubagentStop` | Confirms task/subagent orchestration as first-class runtime state. |
+| Agents/tasks/workflows | `TaskRuntime` | `Agent`, `TaskCreate`, `TaskGet`, `Workflow`, `SubagentStart`, `SubagentStop`, `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | Confirms task, background subagent, and deterministic workflow orchestration as first-class runtime state. |
 | Operations | `OpsPolicy` | `CLAUDE_CODE_DEBUG_LOGS_DIR`, `--debug-file`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `H.command("doctor")`, `H.command("update")` | Debug, telemetry/traffic, updater, and health-check boundaries. |
 | Voice/native audio | `VoiceDictation` | `audio-capture-napi loaded`, `/voice`, `Final transcript assembled`, `Injecting transcript` | Local microphone capture plus transcription stream feeding text back into prompt input. |
 

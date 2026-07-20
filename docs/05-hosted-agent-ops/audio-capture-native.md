@@ -2,7 +2,7 @@
 
 This page is the binary-level reverse-engineering writeup of `audio-capture.node`, the Bun-embedded Rust addon that powers Claude Code's voice mode capture / playback path. It is the companion page to [Audio capture and voice mode](audio-capture-and-voice.md) — that page documents the JS-side state machine; this page documents what actually lives inside the `.node` shared object.
 
-The `.node` binary is regenerated locally by [`scripts/extract-claude-code-final-artifacts.mjs`](../../scripts/extract-claude-code-final-artifacts.mjs) and is held outside git via `*.node` in [`.gitignore`](../../.gitignore). This page works off the linux-x64 build of `@anthropic-ai/claude-code@2.1.143`.
+The `.node` binary is regenerated locally by [`scripts/extract-claude-code-final-artifacts.mjs`](../../scripts/extract-claude-code-final-artifacts.mjs) and is held outside git via `*.node` in [`.gitignore`](../../.gitignore). This page works off the linux-x64 build of `@anthropic-ai/claude-code@2.1.215`.
 
 ## ELF metadata
 
@@ -11,7 +11,7 @@ The `.node` binary is regenerated locally by [`scripts/extract-claude-code-final
 | Path | [`claude-code-pkg/audio-capture.node`](../../claude-code-pkg/audio-capture.node) |
 | Type | ELF 64-bit LSB shared object, x86-64, dynamically linked, **stripped** |
 | Size | 492,184 bytes (481 KiB) |
-| SHA-256 | `7e89edf4dde9b69b6c55a310788ad999e2d0dd469d8a31c529cf28f3ea5e929c` |
+| SHA-256 | `185f990044394fbd4811284cfe9812d261453571c4dfbfa27dadd299c53036eb` |
 | Bun graph path | `/$bunfs/root/audio-capture.node` |
 | Defined dynamic symbol | `napi_register_module_v1` (single export) |
 
@@ -87,7 +87,7 @@ No class is exposed — the eight functions hold the entire surface. The `napi_d
 
 ### Call path from `cli.renamed.js`
 
-The JS wrapper at [cli.renamed.js#L611651](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L611651) loads the addon via `require("/$bunfs/root/audio-capture.node")` (see the shim at [`claude-code-pkg/audio-capture.js`](../../claude-code-pkg/audio-capture.js)) and re-exports the eight functions one-to-one, plus a JS-side `isNativeAudioAvailable()` helper that returns `true` if the addon loaded and the addon's `isRecording` symbol resolves. The `audio-capture-napi loaded in Xms` log line at [cli.renamed.js#L611740](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L611740) is emitted after the first successful `RP8()` lazy-load.
+The bundle wrapper at [cli.renamed.js#L95](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L95) loads the addon via `require("/$bunfs/root/audio-capture.node")` (see the shim at [`claude-code-pkg/audio-capture.js`](../../claude-code-pkg/audio-capture.js)). The voice runtime exposes `isNativeAudioAvailable()` around [line 562780](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L562780); the `audio-capture-napi loaded in Xms` log at [line 562844](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L562844) follows the first successful lazy load.
 
 The runtime path (covered fully in [Audio capture and voice mode](audio-capture-and-voice.md)) prefers this addon over `arecord` / SoX `rec` when both the addon loads and `/proc/asound/cards` reports a working sound card.
 

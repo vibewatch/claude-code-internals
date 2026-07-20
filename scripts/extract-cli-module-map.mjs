@@ -2,7 +2,7 @@
 
 /**
  * Walks claude-code-pkg/src/entrypoints/cli.renamed.js, partitions the
- * top-level statements by Bun loader boundaries (`var X = T(() => { ... })`),
+ * top-level statements by Bun loader boundaries (`var X = loader(() => { ... })`),
  * collects every semantic function/class/var name plus any `j$` export-table
  * properties belonging to each partition, then bins the partitions into
  * runtime feature themes by keyword matching.
@@ -79,16 +79,60 @@ function keyOf(node) {
   return null;
 }
 
-function loaderInfo(statement) {
+function discoverLoaderNames(statements) {
+  const names = new Set(["T", "b"]);
+
+  for (const statement of statements) {
+    if (statement.type !== "VariableDeclaration") continue;
+    for (const declarator of statement.declarations) {
+      if (declarator.id.type !== "Identifier") continue;
+      const outer = declarator.init;
+      if (outer?.type !== "ArrowFunctionExpression") continue;
+      const inner = outer.body;
+      if (inner.type !== "ArrowFunctionExpression") continue;
+      const body = inner.body;
+      if (body.type !== "SequenceExpression") continue;
+      if (
+        body.expressions.some(
+          (expression) =>
+            expression.type === "LogicalExpression" &&
+            expression.operator === "&&",
+        )
+      ) {
+        names.add(declarator.id.name);
+      }
+    }
+  }
+
+  return names;
+}
+
+function loaderInfo(statement, loaderNames) {
   if (statement.type !== "VariableDeclaration") return null;
   for (const declarator of statement.declarations) {
     if (
       declarator.id.type === "Identifier" &&
       declarator.init?.type === "CallExpression" &&
       declarator.init.callee.type === "Identifier" &&
-      declarator.init.callee.name === "T"
+      loaderNames.has(declarator.init.callee.name)
     ) {
       return { loaderName: declarator.id.name };
+    }
+  }
+  return null;
+}
+
+function returnedIdentifierName(node) {
+  if (!node) return null;
+  if (node.type === "Identifier") return node.name;
+  if (node.type !== "ArrowFunctionExpression" && node.type !== "FunctionExpression") {
+    return null;
+  }
+  if (node.body.type === "Identifier") return node.body.name;
+  if (node.body.type === "BlockStatement" && node.body.body.length === 1) {
+    const statement = node.body.body[0];
+    if (statement.type === "ReturnStatement" && statement.argument?.type === "Identifier") {
+      return statement.argument.name;
     }
   }
   return null;
@@ -99,13 +143,21 @@ function exportTableExports(statement) {
   const call = statement.expression;
   if (
     call.type !== "CallExpression" ||
-    call.callee.type !== "Identifier" ||
-    call.callee.name !== "j$"
+    call.callee.type !== "Identifier"
   ) {
     return null;
   }
   const objectArg = call.arguments[1];
-  if (objectArg?.type !== "ObjectExpression") return null;
+  if (objectArg?.type !== "ObjectExpression" || objectArg.properties.length === 0) return null;
+  if (
+    !objectArg.properties.every(
+      (property) =>
+        property.type === "ObjectProperty" &&
+        returnedIdentifierName(property.value) !== null,
+    )
+  ) {
+    return null;
+  }
   const exports = [];
   for (const property of objectArg.properties) {
     if (property.type !== "ObjectProperty") continue;
@@ -139,11 +191,12 @@ async function main() {
     throw new Error("Unexpected top-level shape; cli.renamed.js should be a single function expression statement");
   }
   const topStatements = programStatement.expression.body.body;
+  const loaderNames = discoverLoaderNames(topStatements);
 
   const modules = [];
   let buffer = { decls: [], exports: [], startLine: null };
   for (const statement of topStatements) {
-    const loader = loaderInfo(statement);
+    const loader = loaderInfo(statement, loaderNames);
     if (loader) {
       const semanticDecls = buffer.decls.filter((name) => !isMinified(name));
       modules.push({

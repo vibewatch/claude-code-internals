@@ -15,6 +15,9 @@ Use [Hooks and events reference](hooks-and-events-reference.md) for the canonica
 | McpProjectChoiceReset | `reset-project-choices` | Resets approved/rejected project-scoped MCP choices. |
 | McpNonblockingGate | `MCP_CONNECTION_NONBLOCKING` | Runtime MCP connection non-blocking gate. |
 | McpToolTimeout | `MCP_TIMEOUT` | MCP tool timeout environment variable. |
+| McpAutoBackground | `CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS` | Moves MCP calls that exceed the configured foreground threshold into background task handling. |
+| McpRoots | `roots/list`, `notifications/roots/list_changed` | Publishes the current/additional working directories and announces root-set changes. |
+| McpToolRefresh | `RefreshMcpTools` | Re-queries tool lists on already connected servers without dialing. |
 | McpConfigFlag | `--mcp-config <configs...>` | Loads MCP config from JSON files or strings. |
 | StrictMcpConfigFlag | `--strict-mcp-config` | Ignores non-flag MCP configurations. |
 | PluginCommandRegistrar | `function fC4(H)` | Registers `plugin` / `plugins` command family. |
@@ -70,6 +73,7 @@ flowchart TD
 | `add`, `remove`, `get`, `add-json` | Present in the command family by surrounding command registration, though individual anchors are less stable than `McpCommandRegistrar`. |
 | `add-from-claude-desktop` | Imports MCP servers from Claude Desktop on supported platforms. |
 | `reset-project-choices` | Clears project-scoped approve/reject choices for `.mcp.json` servers. |
+| `login <name>` / `logout <name>` | Authenticates or clears one MCP server without opening the interactive `/mcp` menu; `--no-browser` supports SSH/manual completion. |
 
 ## Plugin surfaces
 
@@ -79,6 +83,8 @@ flowchart TD
 - marketplace concepts and reserved marketplace names;
 - plugin-provided `agents`, `skills`, `hooks`, `mcpServers`, and `outputStyles` schema surfaces;
 - plugin autoupdate guarded by updater state.
+
+Current CLI handlers also expose `plugin init <name>` (scaffold under `.claude/skills`), `plugin list` with enabled/disabled filters, `plugin prune` / `uninstall --prune` for orphaned dependencies, and `plugin tag` for validated release tags. Nested `.claude/skills` directories load contextually; name collisions are qualified with their directory.
 
 ## Plugin marketplace lifecycle
 
@@ -186,6 +192,8 @@ The `alwaysLoad` split is important. Required servers are labeled `--mcp-config 
 | `resources/templates/list` | Lists resource templates. |
 | `prompts/list` | Lists prompts. |
 | `prompts/get` | Retrieves a prompt by name/arguments. |
+| `roots/list` | Returns current and additional working directories exposed as MCP roots. |
+| `notifications/roots/list_changed` | Announces a changed root set after `/add-dir`, `/cd`, or equivalent runtime updates. |
 
 These schema anchors are paired with runtime anchors in `McpRuntimeCoordinator`, `McpCommandRegistrar`, `HeadlessControlLoop`, and MCP tool-call error handling, confirming MCP as both a command/config system and a runtime capability provider.
 
@@ -193,6 +201,10 @@ These schema anchors are paired with runtime anchors in `McpRuntimeCoordinator`,
 
 - `MCP_TIMEOUT` → tool-call timeout, falling back to `30000` ms.
 - `MCP_CONNECT_TIMEOUT_MS` → connection timeout, falling back to `5000` ms.
+- Per-server `request_timeout_ms` overrides the normal request timeout for configs loaded from `.mcp.json` or `--mcp-config`.
+- `CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS` controls the foreground threshold; the shipped behavior moves calls running longer than two minutes to the background so the session remains usable. Set a different millisecond value or disable according to the env parser contract.
+
+`RefreshMcpTools` keeps the prior tool set when refresh fails and reports `refreshed`, `error`, or `not_connected` plus tool-count/add/remove details. It intentionally never dials a disconnected server.
 
 The MCP tool-call error path has a specific auth branch: on `401` or token-expiry-like errors, the runtime emits `tengu_mcp_tool_call_auth_error` and raises a user-facing error requiring re-authorization.
 

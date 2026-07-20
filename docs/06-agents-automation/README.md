@@ -1,6 +1,6 @@
 # Agents and automation
 
-This chapter documents the agent/task automation layer: custom agents, background agents, task tool constants, subagent lifecycle hooks, slash-command automation, `ultrareview`, and `auto-mode`.
+This chapter documents the agent/task automation layer: custom agents, background-by-default subagents, background sessions, deterministic dynamic workflows, task tools, lifecycle hooks, slash-command automation, `ultrareview`, and `auto-mode`.
 
 Read this chapter when the question is: **how does Claude Code delegate work, run subagents, or automate runtime behavior?**
 
@@ -26,6 +26,8 @@ flowchart TD
     AgentsCmd --> Background[Background agents]
     TaskTools --> Subagents[Subagents / tasks]
     Slash --> Automation[command automation]
+    Runtime --> Workflow[Workflow tool]
+    Workflow --> Orchestration[deterministic multi-agent orchestration]
 ```
 
 ## Primary reading order
@@ -34,8 +36,10 @@ flowchart TD
 |---:|---|---|
 | 1 | [Agents, tasks, and subagents](agents-tasks-and-subagents.md) | Which command/flag/tool/hook surfaces define custom agents, tasks, background agents, and hosted review, and how do `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`, subagent hooks, cron scheduling, and `ultrareview` preflight work? |
 | 2 | [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md) | How are agent families designed, how are tasks scheduled, how is completion detected, and how do timed/cron tasks work? |
-| 3 | [Slash commands and automation](slash-commands-and-automation.md) | Which slash-command, hook, skill, and auto-mode surfaces automate behavior around the main session? |
-| 4 | [Agent and automation architecture](architecture.md) | How are custom agents, tasks, slash commands, `auto-mode`, and hosted review orchestrated over the same runtime without parallel loops? |
+| 3 | [Dynamic workflows](dynamic-workflows.md) | How does the `Workflow` tool execute deterministic JavaScript orchestration with agents, pipelines, shared budgets, progress, and resumable journals? |
+| 4 | [Slash commands and automation](slash-commands-and-automation.md) | Which slash-command, hook, skill, and auto-mode surfaces automate behavior around the main session? |
+| 5 | [Cron and scheduled tasks](cron-and-scheduled-tasks.md) | How do `/loop`, cron tools, wakeups, persistence, and missed-task handling inject later work? |
+| 6 | [Agent and automation architecture](architecture.md) | How are custom agents, tasks, workflows, slash commands, `auto-mode`, and hosted review orchestrated over the same runtime? |
 
 ## Handoffs
 

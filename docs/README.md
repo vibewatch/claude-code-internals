@@ -61,7 +61,7 @@ flowchart TD
 | [Sessions, persistence, and remote](04-sessions-persistence-remote/README.md) | Local JSONL transcripts, resume/continue/fork/rewind, remote sessions, teleport, and Remote Control. |
 | [Hosted agent ops](05-hosted-agent-ops/README.md) | Debug logs, telemetry/traffic policy, doctor/update, hosted review signals, and native image/audio modules. |
 | [Agents and automation](06-agents-automation/README.md) | Custom/background agents, task/subagent tools, lifecycle hooks, slash commands, and auto-mode. |
-| [Research atlas](99-research-atlas/README.md) | Artifact maps, bytecode caveats, decoded chunk audits, and promotion rules for future source reads. |
+| [Research atlas](99-research-atlas/README.md) | Generated module/string inventories, source-anchor methodology, and promotion rules for future source reads. |
 
 ## Recommended reading paths
 
@@ -76,7 +76,7 @@ flowchart TD
 | Understand durable sessions and remote control | [Sessions, persistence, and remote](04-sessions-persistence-remote/README.md) → [Session resume and transcripts](04-sessions-persistence-remote/session-resume-and-transcripts.md) → [Remote control and teleport](04-sessions-persistence-remote/remote-control-and-teleport.md) → [Session API, events, and storage](04-sessions-persistence-remote/session-api-events-and-storage.md) |
 | Review trust boundaries | [Tools, integrations, and security](03-tools-integrations-security/README.md) → [Tool runtime, events, and integration flows](03-tools-integrations-security/tool-runtime-events-and-integrations.md) → [Built-in tools and permissions](03-tools-integrations-security/built-in-tools-and-permissions.md) → [Sandbox and isolation](03-tools-integrations-security/sandbox-and-isolation.md) → [MCP, plugins, and hooks](03-tools-integrations-security/mcp-plugins-hooks.md) |
 | Understand voice/audio dictation | [Hosted agent ops](05-hosted-agent-ops/README.md) → [Media native modules](05-hosted-agent-ops/media-native-modules.md) → [Audio capture and voice mode](05-hosted-agent-ops/audio-capture-and-voice.md) |
-| Study agents and automation | [Agents and automation](06-agents-automation/README.md) → [Agents, tasks, and subagents](06-agents-automation/agents-tasks-and-subagents.md) → [Agent runtime, scheduling, and completion](06-agents-automation/agent-runtime-scheduling-and-completion.md) → [Slash commands and automation](06-agents-automation/slash-commands-and-automation.md) |
+| Study agents and automation | [Agents and automation](06-agents-automation/README.md) → [Agents, tasks, and subagents](06-agents-automation/agents-tasks-and-subagents.md) → [Dynamic workflows](06-agents-automation/dynamic-workflows.md) → [Agent runtime, scheduling, and completion](06-agents-automation/agent-runtime-scheduling-and-completion.md) → [Cron and scheduled tasks](06-agents-automation/cron-and-scheduled-tasks.md) |
 
 ## Cross-cutting implementation matrix
 
@@ -94,7 +94,7 @@ flowchart TD
 | Sandbox and isolation | [Sandbox and isolation](03-tools-integrations-security/sandbox-and-isolation.md) | [Built-in tools and permissions](03-tools-integrations-security/built-in-tools-and-permissions.md), [Settings, policy, and integrations](03-tools-integrations-security/settings-policy-and-integrations.md) |
 | Voice/audio dictation | [Audio capture and voice mode](05-hosted-agent-ops/audio-capture-and-voice.md) | [Media native modules](05-hosted-agent-ops/media-native-modules.md), [Prompt, context, and memory](02-context-model-loop/prompt-context-memory.md) |
 | Subagents and automation | [Agent runtime, scheduling, and completion](06-agents-automation/agent-runtime-scheduling-and-completion.md) | [Agents and automation](06-agents-automation/README.md), [Tools, integrations, and security](03-tools-integrations-security/README.md), [Sessions, persistence, and remote](04-sessions-persistence-remote/README.md) |
-| Artifact/decode triage | [Research atlas](99-research-atlas/README.md) | [Decoded-classified decompilation audit](99-research-atlas/decoded-classified-decompilation-audit.md), [Artifact map and bytecode notes](99-research-atlas/artifact-map-and-bytecode.md) |
+| Artifact/source triage | [Research atlas](99-research-atlas/README.md) | [Bundle module map](99-research-atlas/module-map-from-renamed-cli.md), generated data under `99-research-atlas/data/` |
 
 ## Mechanism-level deep dives
 
@@ -127,6 +127,7 @@ flowchart TD
 | Environment variable reference | [Environment variables reference](05-hosted-agent-ops/environment-variables-reference.md) |
 | Task/subagent runtime behavior | [Agents, tasks, and subagents](06-agents-automation/agents-tasks-and-subagents.md) |
 | Agent task scheduling, completion, and cron | [Agent runtime, scheduling, and completion](06-agents-automation/agent-runtime-scheduling-and-completion.md) |
+| Deterministic multi-agent orchestration | [Dynamic workflows](06-agents-automation/dynamic-workflows.md) |
 | Voice capture, transcription stream, and prompt injection | [Audio capture and voice mode](05-hosted-agent-ops/audio-capture-and-voice.md) |
 
 ## Source policy

@@ -28,6 +28,8 @@ Short version: the daemon is the **long-lived local supervisor process** used by
 | DaemonServiceCLI | `Install as a launchctl/systemd service (persists across reboot)` | User-facing help states the service's persistence contract. |
 | DaemonTransientIdleExit | `origin === "transient"` idle-exit branch | Transient daemons exit after clients/jobs drain; service daemons are managed by the OS service manager. |
 | DaemonTelemetryFamily | `tengu_bg_daemon_*`, `tengu_bg_orphan_reap`, `tengu_bg_dispatch_*` | Operational telemetry families around daemon lifecycle. |
+| AgentJsonSurface | `claude agents --json`, `--all`, `waitingFor` | Scriptable active/completed session roster and blocked-on state. |
+| CorporateProcessWrapper | `processWrapper`, `CLAUDE_CODE_PROCESS_WRAPPER` | Required launcher prefix for the supervisor, workers, and covered background self-spawns. |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -45,6 +47,8 @@ The daemon acts as a **local control-plane supervisor** for background work:
 - Coordinates start/stop/status/install/uninstall style operations.
 - Bridges “service installed” mode and “one-shot/transient spawn” mode.
 - Emits operational telemetry for diagnostics and recovery decisions.
+
+The `2.1.215` agent view groups sessions into needs-input, working, and completed states. JSON mode can include completed rows with `--all`; waiting sessions expose what they are blocked on, and sandbox, MCP-input, and managed-settings prompts are classified as needing input rather than working.
 
 ## What the service is for
 
@@ -218,6 +222,8 @@ Important details in that flow:
 - Stale service files are repaired by the user-visible path: `Vj8()` reads the service file's `ExecStart`; if the binary path no longer exists, the CLI warns and falls back to transient spawn.
 - Transient is intentionally less durable: the code warns on Linux/WSL if `KillUserProcesses=yes`, because SSH logout can kill the transient daemon and its background jobs.
 - Service mode and transient mode both run the same daemon supervisor; the difference is who owns its lifecycle.
+
+When `processWrapper` or `CLAUDE_CODE_PROCESS_WRAPPER` is configured, the supervisor and covered workers must self-spawn through that launcher. The runtime records the launcher, retires an older raw supervisor, validates executability, and defers upgrade restarts if the wrapper is broken. `claude daemon status` exposes version/wrapper skew so an administrator can distinguish a pre-policy process from a launcher that failed to propagate the variable.
 
 ## Lifecycle and safety checks
 

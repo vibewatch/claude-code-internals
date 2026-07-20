@@ -17,6 +17,7 @@ Yes. The bundle contains a source-confirmed command sandbox subsystem. It is set
 | SocatPathPolicy | `socatPath` | Linux/WSL `socat` override for sandbox network proxy. |
 | SandboxManagedPolicyMerge | `sandbox.enabled`, `sandbox.failIfUnavailable`, `sandbox.network`, `sandbox.filesystem` | Managed settings merge preserves sandbox policy controls. |
 | SandboxSettingsValidator | `enabled`, `failIfUnavailable`, `allowUnsandboxedCommands`, `network`, `filesystem`, `ignoreViolations` | Settings-key validator recognizes sandbox settings. |
+| SandboxCredentialSettings | `sandbox.credentials.files`, `sandbox.credentials.envVars`, `allowPlaintextInject` | Protects credential paths and secret environment variables inside sandboxed commands. |
 | SandboxRuntimePackageLookup | `@anthropic-ai/sandbox-runtime` | Runtime searches for the external sandbox-runtime package. |
 | LinuxSandboxDependencyChecks | `bubblewrap (bwrap) not installed`, `socat not installed` | Linux dependency checks. |
 | LinuxSandboxWrapper | `--unshare-net`, `--tmpfs`, `--ro-bind`, `apply-seccomp` | Linux command wrapping uses bubblewrap, network namespace, bind mounts, and optional seccomp. |
@@ -69,6 +70,7 @@ The settings schema exposes three control layers:
 | Availability and fallback | `sandbox.enabled`, `sandbox.failIfUnavailable`, `enabledPlatforms` policy | Decide whether the sandbox should run and whether missing dependencies are fatal. |
 | Escape hatch policy | `allowUnsandboxedCommands`, `autoAllowBashIfSandboxed`, `excludedCommands` | Decide whether commands can request unsandboxed fallback and whether Bash can be auto-allowed when sandboxed. |
 | Isolation policy | `network`, `filesystem`, `ignoreViolations`, `enableWeakerNestedSandbox`, `enableWeakerNetworkIsolation` | Define domain/socket/proxy rules, read/write path rules, ignored violation patterns, and platform-specific weakening knobs. |
+| Credential isolation | `credentials.files`, `credentials.envVars`, `credentials.allowPlaintextInject` | Deny file reads, unset env vars, or mask/inject env credentials through the egress proxy. |
 
 Important schema details:
 
@@ -77,6 +79,19 @@ Important schema details:
 - `sandbox.network.allowedDomains` / `deniedDomains` define network policy, with managed-only modes such as `allowManagedDomainsOnly`.
 - `sandbox.filesystem.allowWrite`, `denyWrite`, `denyRead`, and `allowRead` define path policy. Edit/Read permission rules can feed those lists.
 - `bwrapPath` and `socatPath` are Linux/WSL-only and only honored from admin-controlled managed settings.
+
+### Credential isolation
+
+`sandbox.credentials` is separate from the general filesystem/network lists:
+
+| Entry | Modes | Behavior |
+|---|---|---|
+| `files[]` | `deny` only | Blocks reads of the named credential file or directory inside the sandbox. Paths resolve like other sandbox filesystem paths. |
+| `envVars[]` | `deny` / `mask` | `deny` removes the variable. `mask` exposes a sentinel in the sandbox and lets the host proxy replace it with the real value only on egress. |
+| `envVars[].injectHosts` | applies to `mask` | Narrows substitution to named reachable hosts; if omitted, allowed network domains are used. |
+| `allowPlaintextInject` | boolean, default false | Allows sentinel replacement on plain HTTP. It is ignored from project/local settings and should be reserved for trusted test fixtures. |
+
+Mask mode is text-only: binary/non-UTF-8 credential files are not supported. The runtime warns when mask entries exist without a usable proxy/TLS path, because merely placing a sentinel in the child environment does not make arbitrary plaintext egress safe.
 
 ## Execution path
 

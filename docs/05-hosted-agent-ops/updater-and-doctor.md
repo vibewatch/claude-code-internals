@@ -19,12 +19,14 @@ Use [Diagnostics and debug logs](diagnostics-and-debug-logs.md) for local log/de
 | DoctorDiagnosticsScreen | `/doctor diagnostics screen` | Interactive diagnostics/doctor surface. |
 | DoctorCommand | `H.command("doctor")` | Auto-updater health check command. |
 | UpdateCommandFamily | `H.command("update").alias("upgrade")` | Update/upgrade command family. |
+| InteractiveDoctorSkill | `Health-check my Claude Code setup and fix what's wrong` | Bundled `/doctor` (`/checkup`) skill that diagnoses and proposes fixes. |
 
 ## Command surface
 
 | Command | Role |
 |---|---|
-| `doctor` | Runs diagnostics/health checks, including auto-updater and environment preflights. |
+| `claude doctor` | Non-interactive installation/settings health check. It reads settings in the current directory without a trust prompt. |
+| `/doctor` / `/checkup` | Full interactive setup checkup that can diagnose, explain, and apply approved fixes. |
 | `update` / `upgrade` | Checks for updates and installs when available. |
 | `install [target]` | Installs a stable/latest/specific native build. |
 | `ultrareview [target]` | Cloud-hosted multi-agent review preflight and execution path; operationally adjacent but owned by agents/automation. |
@@ -53,7 +55,11 @@ flowchart TD
 
 ## Doctor behavior
 
-The `doctor` command is the canonical user-facing diagnostics surface. It can check updater state and environment issues; the older mixed ops docs noted that `doctor` also warns that workspace trust is skipped and stdio MCP servers from `.mcp.json` may be spawned for health checks.
+The terminal `claude doctor` command is the non-interactive installation/settings surface. It can check updater state and environment issues; workspace trust is skipped, so settings in the current directory are inspected without the normal dialog.
+
+The in-session `/doctor` (alias `/checkup`) is broader. Its bundled prompt at approximately `cli.renamed.js:886764` checks installation health, stale/context-heavy extensions, duplicated local versus checked-in memories, oversized checked-in `CLAUDE.md`, opportunities to move always-loaded guidance into lazy skills/nested instructions, slow hooks, installed-version freshness, auto mode as the default permission mode, and frequently denied read-only commands. Proposed edits or setting changes still require normal tool permissions.
+
+This distinction matters: `claude doctor` is a deterministic CLI diagnostic; `/doctor` is an agent-assisted repair workflow over the current project and user configuration.
 
 Use [Diagnostics and debug logs](diagnostics-and-debug-logs.md) for the log/debug evidence generated around these checks.
 

@@ -12,8 +12,8 @@ This page is the table-first companion to [Commands and flags](commands-and-flag
 
 | Semantic alias | Anchor | Meaning |
 | --- | --- | --- |
-| CommanderRoot | `async function w4A` | Commander root construction and mode routing. |
-| ClaudeRootCommand | `H.name("claude")` | Root command name and description. |
+| CommanderRoot | `Usage: claude [options] [command] [prompt]` | Commander root construction and invocation shape. |
+| ClaudeRootCommand | `Claude Code - starts an interactive session by default` | Root command name and description. |
 | PrintModeFlag | `-p, --print` | Selects non-interactive print/headless mode. |
 | ToolAllowListFlag | `--allowedTools, --allowed-tools <tools...>` | Tool allow-list flag. |
 | PermissionModeFlag | `--permission-mode <mode>` | Session permission mode selector. |
@@ -21,8 +21,8 @@ This page is the table-first companion to [Commands and flags](commands-and-flag
 | ResumeSessionFlag | `-r, --resume [value]` | Resume by session ID or open picker/search. |
 | RemoteSessionFlag | `--remote [description\|session_id\|url]` | Remote session creation/attach flag. |
 | RemoteControlFlag | `--remote-control [name]` | Remote Control flag. |
-| DoctorCommand | `H.command("doctor")` | Auto-updater health check command. |
-| UpdateCommandFamily | `H.command("update").alias("upgrade")` | Update/upgrade command family. |
+| DoctorCommand | `doctor — Check the health of your Claude Code installation` | Non-interactive installation/settings health check. |
+| UpdateCommandFamily | `update|upgrade` | Update/upgrade command family. |
 
 ## Root invocation modes
 
@@ -33,19 +33,21 @@ This page is the table-first companion to [Commands and flags](commands-and-flag
 | SDK-style headless | `--sdk-url`, stream/control frames | Exposes structured frames and control requests for external hosts. |
 | Resume/continue | `--continue`, `--resume`, `--session-id` | Restores a local JSONL session into the live envelope. |
 | Remote/teleport/control | `--remote`, `--teleport`, `--remote-control`, `--rc` | Adds bridge/session-ingress control around the same session model. |
+| Recovery/accessibility | `--safe-mode`, `--ax-screen-reader` | Starts without customizations or selects screen-reader-friendly flat output. |
 
 ## Root flag families
 
 | Family | Flags | Primary owner |
 |---|---|---|
-| Diagnostics | `-d, --debug [filter]`, `--debug-file`, `--debug-to-stderr`, `--mcp-debug`, `--verbose` | [Diagnostics and debug logs](../05-hosted-agent-ops/diagnostics-and-debug-logs.md) |
-| Headless/SDK output | `-p, --print`, `--output-format`, `--input-format`, `--json-schema`, `--sdk-url`, `--include-partial-messages`, `--session-mirror` | [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md) |
-| Thinking and budget | `--thinking`, `--thinking-display`, `--max-thinking-tokens`, `--max-turns`, `--max-budget-usd`, `--task-budget` | [Model selection, calls, usage, quota, and billing](../02-context-model-loop/model-selection-usage-quota-billing.md) |
-| Tools and permissions | `--tools`, `--allowedTools`, `--allowed-tools`, `--disallowedTools`, `--disallowed-tools`, `--permission-mode`, `--permission-prompt-tool`, `--dangerously-skip-permissions` | [Tool inventory and schemas](../03-tools-integrations-security/tool-inventory-and-schemas.md) |
-| Prompt and context | `--system-prompt`, `--system-prompt-file`, `--append-system-prompt`, `--append-system-prompt-file`, `--add-dir`, `--exclude-dynamic-system-prompt-sections`, `--plan-mode-instructions` | [Prompt assembly scenarios](../02-context-model-loop/prompt-assembly-scenarios.md) |
-| Sessions | `-c, --continue`, `-r, --resume`, `--fork-session`, `--no-session-persistence`, `--resume-session-at`, `--rewind-files`, `--session-id`, `--name` | [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md) |
+| Diagnostics/recovery | `-d, --debug [filter]`, `--debug-file`, `--verbose`, `--safe-mode` | [Diagnostics and debug logs](../05-hosted-agent-ops/diagnostics-and-debug-logs.md) |
+| Headless/SDK output | `-p, --print`, `--output-format`, `--input-format`, `--json-schema`, `--include-partial-messages`, `--include-hook-events`, `--replay-user-messages`, `--forward-subagent-text`, `--prompt-suggestions` | [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md) |
+| Thinking and budget | `--effort`, `--max-budget-usd`, `--fallback-model` | [Model selection, calls, usage, quota, and billing](../02-context-model-loop/model-selection-usage-quota-billing.md) |
+| Tools and permissions | `--tools`, `--allowedTools`, `--allowed-tools`, `--disallowedTools`, `--disallowed-tools`, `--permission-mode`, `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions` | [Tool inventory and schemas](../03-tools-integrations-security/tool-inventory-and-schemas.md) |
+| Prompt and context | `--system-prompt`, `--append-system-prompt`, `--add-dir`, `--exclude-dynamic-system-prompt-sections` | [Prompt assembly scenarios](../02-context-model-loop/prompt-assembly-scenarios.md) |
+| Sessions | `-c, --continue`, `-r, --resume`, `--fork-session`, `--from-pr`, `--no-session-persistence`, `--session-id`, `--name`, `--bg` | [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md) |
 | Models and auth | `--model`, `--fallback-model`, `--betas` | [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md) |
-| Settings and integrations | `--settings`, `--managed-settings`, `--setting-sources`, `--mcp-config`, `--strict-mcp-config`, `--plugin-dir`, `--plugin-url`, `--agents`, `--ide`, `--chrome`, `--file` | [Settings schema reference](../03-tools-integrations-security/settings-schema-reference.md) |
+| Settings and integrations | `--settings`, `--setting-sources`, `--mcp-config`, `--strict-mcp-config`, `--plugin-dir`, `--plugin-url`, `--agents`, `--agent`, `--ide`, `--chrome`, `--file` | [Settings schema reference](../03-tools-integrations-security/settings-schema-reference.md) |
+| Accessibility | `--ax-screen-reader` | [Settings schema reference](../03-tools-integrations-security/settings-schema-reference.md) |
 | Remote and deep links | `--remote`, `--teleport`, `--remote-control`, `--rc`, `--remote-control-session-name-prefix`, `--prefill`, `--deep-link-origin` | [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) |
 
 ## Command families
@@ -61,11 +63,26 @@ This page is the table-first companion to [Commands and flags](commands-and-flag
 | `setup-token` | `H.command("setup-token")` | Sets up a long-lived authentication token flow. |
 | `agents` | `H.command("agents")` | Opens/manages background agents and dispatched sessions. |
 | `ultrareview [target]` | `H.command("ultrareview [target]")` | Runs cloud-hosted multi-agent code review. |
-| `auto-mode` | `H.command("auto-mode")` | Inspects or critiques auto-mode classifier configuration. |
+| `auto-mode` | `config`, `defaults`, `critique`, `reset` | Inspects, critiques, or resets auto-mode classifier configuration. |
 | `remote-control` / `rc` | `H.command("remote-control", {hidden: true}).alias("rc")` | Starts local-session Remote Control. |
 | `doctor` | `H.command("doctor")` | Checks auto-updater and related health state. |
 | `update` / `upgrade` | `H.command("update").alias("upgrade")` | Checks for and installs updates. |
 | `install [target]` | `H.command("install [target]")` | Installs a stable/latest/specific native build. |
+
+### `agents` options
+
+`claude agents` accepts `--json` for a non-TTY JSON array and `--all` to include completed sessions. Dispatch defaults include `--agent`, `--model`, `--effort`, `--permission-mode`, `--settings`, `--setting-sources`, `--add-dir`, `--mcp-config`, `--strict-mcp-config`, and `--plugin-dir`. The JSON state can expose what a session is waiting for; sandbox, MCP-input, and managed-settings prompts are classified as needing input.
+
+### Interactive command additions
+
+| Command | Current behavior |
+|---|---|
+| `/cd <path>` | Changes the live session working directory and can emit `CwdChanged`. |
+| `/config key=value [key=value ...]` | Applies one or more settings directly; bare `/config` opens the settings UI. |
+| `/fork <directive>` | Copies the current conversation into a separately listed background session. |
+| `/subtask <task>` | Runs the former in-session `/fork` delegation behavior as a subagent. |
+| `/workflows` | Opens live/history views for dynamic workflow runs and supports stopping active runs. |
+| `/doctor` (`/checkup`) | Runs the interactive setup checkup, including fix suggestions. |
 
 ## Aliases and spelling variants
 
@@ -76,6 +93,8 @@ This page is the table-first companion to [Commands and flags](commands-and-flag
 | `--rc [name]` | `--remote-control [name]` |
 | `--allowed-tools` | `--allowedTools` |
 | `--disallowed-tools` | `--disallowedTools` |
+
+`--permission-mode manual` is accepted as the user-facing spelling of the historical `default` mode; `2.1.215 --help` lists `manual` and the settings schema continues to accept `default`.
 
 ## Parse-time optimization
 

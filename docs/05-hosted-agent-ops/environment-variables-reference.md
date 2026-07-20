@@ -33,6 +33,10 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | OtelHeadersHelperDebounceEnv | `CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS` | Debounce interval for settings-provided OTEL header helper execution. |
 | TraceparentEnv | `TRACEPARENT` | Trace-context propagation. |
 | DisableCronEnv | `CLAUDE_CODE_DISABLE_CRON` | Cron/scheduled-task kill switch. |
+| SafeModeEnv | `CLAUDE_CODE_SAFE_MODE` | Disables customizations for recovery startup. |
+| ScreenReaderEnv | `CLAUDE_AX_SCREEN_READER` | Forces screen-reader-friendly flat rendering. |
+| SubagentLimitEnv | `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | Session-wide agent spawn budget (default 200). |
+| WebSearchLimitEnv | `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` | Session-wide WebSearch budget (default 200). |
 
 ## Authentication and credential handoff
 
@@ -79,6 +83,8 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | `OTEL_*` | OpenTelemetry metrics/logs/traces exporter configuration. | [Telemetry and tracing](telemetry-and-tracing.md) |
 | `CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS` | Debounces `otelHeadersHelper` command execution. | [Telemetry and tracing](telemetry-and-tracing.md) |
 | `OTEL_LOG_TOOL_DETAILS`, `OTEL_LOG_TOOL_CONTENT`, `OTEL_LOG_USER_PROMPTS` | Controls how much tool/user detail may be logged. | [Telemetry and tracing](telemetry-and-tracing.md) |
+| `OTEL_LOG_ASSISTANT_RESPONSES` | Controls assistant-response content logs; when unset it follows `OTEL_LOG_USER_PROMPTS`. | [Telemetry and tracing](telemetry-and-tracing.md) |
+| `CLAUDE_CODE_OTEL_CONTENT_MAX_LENGTH` | Overrides the default 60 KB OTel content-attribute truncation limit. | [Telemetry and tracing](telemetry-and-tracing.md) |
 
 ## MCP, plugins, and agents
 
@@ -92,12 +98,25 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | `CLAUDE_CODE_SYNC_PLUGIN_INSTALL` | Synchronous plugin installation behavior. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS` | Built-in agent availability gate. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_CODE_DISABLE_AGENT_VIEW` | Agent UI/view gate. | [Feature gates reference](feature-gates-reference.md) |
+| `CLAUDE_CODE_FORWARD_SUBAGENT_TEXT` | Forwards subagent text/thinking into stream-JSON output with parent linkage. | [SDK query, session API, and subagent surface](../04-sessions-persistence-remote/sdk-query-and-session-api.md) |
+| `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | Sets the spawn budget; default 200 and reset by `/clear`. | [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md) |
+| `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` | Sets the WebSearch call budget; default 200. | [Tool inventory and schemas](../03-tools-integrations-security/tool-inventory-and-schemas.md) |
+| `CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS` | Changes/disables the foreground duration before a long MCP call becomes a background task. | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
+| `CLAUDE_CODE_PROCESS_WRAPPER` | Corporate launcher prefix for the background supervisor/workers and covered self-spawns. | [Daemon and background service](../01-runtime-lifecycle/daemon-and-background-service.md) |
 
 ## Feature, context, UI, and update gates
 
 | Variable | Effect | Owner |
 |---|---|---|
 | `CLAUDE_CODE_DISABLE_CRON` | Disables scheduled tasks / Kairos cron paths. | [Agent runtime, scheduling, and completion](../06-agents-automation/agent-runtime-scheduling-and-completion.md) |
+| `CLAUDE_CODE_SAFE_MODE` | Environment equivalent of `--safe-mode`; disables user/project customizations but not managed policy. | [Settings, policy, and integrations](../03-tools-integrations-security/settings-policy-and-integrations.md) |
+| `CLAUDE_AX_SCREEN_READER` | Overrides the `axScreenReader` setting and `--ax-screen-reader` selection. | [Command-line reference](../01-runtime-lifecycle/command-line-reference.md) |
+| `CLAUDE_CODE_DISABLE_MOUSE_CLICKS` | Disables click/drag/hover while retaining wheel scrolling. | [Feature gates reference](feature-gates-reference.md) |
+| `CLAUDE_CLIENT_PRESENCE_FILE` | Marker file that suppresses mobile push notifications while the user is present at the machine. | [Feature gates reference](feature-gates-reference.md) |
+| `CLAUDE_ENABLE_STREAM_WATCHDOG` | Enables/disables the provider stream idle watchdog (enabled by default in this build). | [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md) |
+| `CLAUDE_CODE_DISABLE_BG_SHELL_PRESSURE_REAP` | Disables memory-pressure reaping of idle background shell commands. | [Daemon and background service](../01-runtime-lifecycle/daemon-and-background-service.md) |
+| `CLAUDE_CODE_DISABLE_WORKFLOWS`, `CLAUDE_CODE_WORKFLOWS` | Disables or explicitly selects workflow availability. | [Dynamic workflows](../06-agents-automation/dynamic-workflows.md) |
+| `CLAUDE_CODE_WORKFLOW_SIZE_WARNING_AGENTS`, `CLAUDE_CODE_WORKFLOW_SIZE_WARNING_TOKENS` | Tunes workflow-size warning thresholds. | [Dynamic workflows](../06-agents-automation/dynamic-workflows.md) |
 | `CLAUDE_CODE_DISABLE_ADVISOR_TOOL` | Advisor/permission-adjacent tool gate. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL` | Experimental advisor tool gate. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_CODE_DISABLE_1M_CONTEXT` | Context-window feature gate. | [Feature gates reference](feature-gates-reference.md) |

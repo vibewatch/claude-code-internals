@@ -16,6 +16,11 @@ This page reverse-engineers the task and subagent paths that show how Claude Cod
 | TaskLifecycleHooks | `TaskCreated`, `TaskCompleted` | Task lifecycle hook events. |
 | SubagentContextClassifier | `agentType==="subagent"` | Runtime subagent context classifier. |
 | UltraReviewCommand | `H.command("ultrareview [target]")` | Cloud-hosted multi-agent code-review command. |
+| AgentTool | `Agents run in the background by default` | Delegated agents launch asynchronously unless `run_in_background: false` is explicit. |
+| SessionSpawnCap | `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | Session-wide spawn budget (default 200); `/clear` resets it. |
+| ImplicitTeamContract | `team_name: "Deprecated; ignored. The session has a single implicit team."` | Explicit team setup is no longer required. |
+| ForkAndSubtask | `Usage: /fork \<directive\>`, `Usage: /subtask \<task\>` | Background conversation copy versus in-session delegated subagent. |
+| WorkflowTool | `Execute a workflow script that orchestrates multiple subagents deterministically` | Starts resumable deterministic orchestration as a background task. |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -49,6 +54,9 @@ flowchart TD
 | `TaskCreated`, `TaskCompleted` | Hook events around task lifecycle. |
 | `agentType === "subagent"` | Runtime context marker distinguishing subagent execution. |
 | `ultrareview [target]` | Cloud-hosted multi-agent code-review command. |
+| `Agent` | Spawns a named/custom subagent in the background by default; can run synchronously, in a worktree, or on a gated remote environment. |
+| `Workflow` | Runs explicit deterministic multi-agent orchestration and returns a background task/run ID. |
+| `/fork` / `/subtask` | `/fork` creates a separate background-session copy; `/subtask` launches the old in-session delegation path. |
 
 ## Background agents command flags
 
@@ -63,8 +71,29 @@ The `agents` command accepts settings/integration defaults for dispatched sessio
 - `--permission-mode`
 - `--dangerously-skip-permissions`
 - `--model`
+- `--effort`
+- `--agent`
+- `--json` (non-TTY roster output)
+- `--all` (include completed rows with `--json`)
 
 This shows that background-agent sessions inherit the same core runtime surfaces as foreground sessions: settings, working directories, plugins, MCP, permissions, and models.
+
+## Agent execution contract and limits
+
+The `Agent` tool's current contract differs from the older synchronous Task mental model:
+
+- `run_in_background` defaults to true. Set it to false only when the parent must block on that result before continuing.
+- `name` makes a running agent addressable through `SendMessage`.
+- `model` overrides the agent definition for one call; otherwise the definition or parent model is used.
+- `isolation: "worktree"` creates an isolated checkout; gated `remote` isolation launches in a cloud environment.
+- The deprecated `mode` input is ignored; subagents inherit the parent permission mode unless agent frontmatter overrides it.
+- The deprecated `team_name` input is ignored because every session has one implicit team.
+
+Subagents may spawn subagents up to five levels deep. A process-local session budget defaults to 200 spawned agents; exceeding it returns an explicit stop-delegating message and names `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` as the override. This budget is separate from a Workflow run's own 1,000-agent runaway backstop.
+
+Messages from the launching agent are task direction, not user authorization. Cross-agent messages cannot approve permission requests; permission prompts from background subagents surface in the parent session.
+
+Background-session completion and input-needed states can fire `Notification` hooks (`agent_completed`, `agent_needs_input`). `claude agents --json --all` exposes active/completed state for scripts, including what a waiting row is blocked on.
 
 ## Hosted review
 
@@ -139,6 +168,8 @@ The `Large agent descriptions` warning is produced when custom-agent description
 3. Scheduled tasks re-enter the same loop as prompt injections.
 4. Hosted multi-agent review is gated by a preflight API path and traffic/data policy conditions.
 5. Custom-agent descriptions are budgeted as model context and can trigger token-pressure warnings.
+
+Deterministic multi-agent fan-out is owned by the separate [`Workflow` lifecycle](dynamic-workflows.md). Use individual `Agent` calls for ordinary delegation; use `Workflow` only after explicit user opt-in to multi-agent orchestration.
 
 ## Agent communication protocol handoff
 

@@ -18,6 +18,9 @@ Use [Telemetry and tracing](telemetry-and-tracing.md) for telemetry/export behav
 | DisableSkillShellPolicy | `disableSkillShellExecution` | Managed policy gate for skill/slash shell execution. |
 | XaaEnvGate | `CLAUDE_CODE_ENABLE_XAA` | MCP cross-app access is disabled unless this env gate is set. |
 | RemoteTriggerGate | `tengu_surreal_dali`, `allow_remote_sessions` | Remote routine management is feature-, subscription-, mode-, and policy-gated. |
+| WorkflowGates | `enableWorkflows`, `disableWorkflows`, `CLAUDE_CODE_DISABLE_WORKFLOWS`, `allow_workflows` | User, managed, environment, and organization workflow gates. |
+| SafeModeGate | `--safe-mode`, `CLAUDE_CODE_SAFE_MODE` | Hard-disables customizations for diagnostics. |
+| ScreenReaderGate | `--ax-screen-reader`, `CLAUDE_AX_SCREEN_READER`, `axScreenReader`, `tengu_ax_screen_reader` | CLI/env/settings/feature selection for accessible flat rendering. |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -61,12 +64,14 @@ The table groups source-visible keys by nearby behavior. It does **not** claim e
 | Remote / bridge / CCR | `tengu_ccr_bridge`, `tengu_remote_backend`, `tengu_bridge_repl_v2_cse_shim_enabled`, `tengu_bridge_attestation_enforce`, `tengu_bridge_attestation_enforce_config`, `tengu_ccr_v2_send_events_cli`, `tengu_bridge_requires_action_details`, `tengu_bridge_system_init`, `tengu_surreal_dali`, `CLAUDE_CODE_REMOTE`, `disableRemoteControl`, `allow_remote_sessions` | Remote Control, bridge transport, attestation, event forwarding, and remote routine management. |
 | Scheduled tasks / Kairos cron | `tengu_kairos_cron`, `tengu_kairos_cron_durable`, `tengu_kairos_loop_dynamic`, `tengu_kairos_loop_persistent`, `tengu_kairos_loop_prompt`, `tengu_kairos_push_notifications`, `tengu_kairos_input_needed_push`, `CLAUDE_CODE_DISABLE_CRON` | Cron/scheduled prompt feature family and autonomous-loop behavior. |
 | Agents / background agents | `tengu_auto_background_agents`, `tengu_agent_list_attach`, `tengu_mcp_subagent_prompt`, `tengu_slim_subagent_claudemd`, `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`, `CLAUDE_CODE_DISABLE_AGENT_VIEW` | Agent UI, background agents, subagent prompt/context behavior. |
+| Dynamic workflows | `enableWorkflows`, `disableWorkflows`, `workflowKeywordTriggerEnabled`, `CLAUDE_CODE_DISABLE_WORKFLOWS`, `CLAUDE_CODE_WORKFLOWS`, org `allow_workflows` | Workflow availability, keyword opt-in, and policy enforcement. |
 | Auto-mode / permission automation | `tengu_auto_mode_config`, `tengu_disable_bypass_permissions_mode`, `tengu_auto_notice_once`, policy `defaultMode=auto` | Auto-mode defaults, consent, permission automation. |
 | Tool/runtime security | `tengu_streaming_tool_execution2`, `tengu_harbor_permissions`, `tengu_destructive_command_warning`, `tengu_bash_allowlist_strip_all`, `CLAUDE_CODE_DISABLE_ADVISOR_TOOL`, `CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL` | Tool execution mode, warnings, advisory/permission behavior. |
 | MCP/plugins/skills | `tengu_mcp_directory_visibility`, `tengu_mcp_directory_bff`, `tengu_mcp_singleton_unwrap`, `tengu_skills_dashboard_enabled`, `tengu_plugin_official_mkt_git_fallback`, `CLAUDE_CODE_PLUGIN_PREFER_HTTPS`, `CLAUDE_CODE_PLUGIN_USE_ZIP_CACHE`, `CLAUDE_CODE_SYNC_PLUGIN_INSTALL`, `CLAUDE_CODE_ENABLE_XAA` | MCP discovery, plugin install/update, skills UI, and cross-app OAuth. |
 | Context/model behavior | `CLAUDE_CODE_DISABLE_1M_CONTEXT`, `DISABLE_COMPACT`, `DISABLE_INTERLEAVED_THINKING`, `USE_API_CONTEXT_MANAGEMENT`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`, `tengu_prompt_cache_1h_config`, `tengu_prompt_cache_diagnostics` | Context window, compaction, thinking, prompt cache, beta flags. |
 | Web/search/fetch adjacent | `tengu_tool_search_unsupported_models`, `/api/web/domain_info?domain=` | Web/domain metadata and model support guardrails. |
-| UI/terminal behavior | `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN`, `CLAUDE_CODE_NO_FLICKER`, `CLAUDE_CODE_DISABLE_MOUSE`, `CLAUDE_CODE_FORCE_SYNC_OUTPUT`, `CLAUDE_CODE_ACCESSIBILITY`, `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` | Terminal rendering and accessibility behavior. |
+| UI/terminal behavior | `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN`, `CLAUDE_CODE_NO_FLICKER`, `CLAUDE_CODE_DISABLE_MOUSE`, `CLAUDE_CODE_DISABLE_MOUSE_CLICKS`, `CLAUDE_CODE_FORCE_SYNC_OUTPUT`, `CLAUDE_AX_SCREEN_READER`, `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` | Terminal rendering, pointer, and accessibility behavior. |
+| Recovery/corporate launch | `CLAUDE_CODE_SAFE_MODE`, `disableSideloadFlags`, `processWrapper`, `CLAUDE_CODE_PROCESS_WRAPPER` | Configuration isolation, extension sideload policy, and required launch wrappers. |
 | Updates | `DISABLE_UPDATES`, `DISABLE_AUTOUPDATER`, `FORCE_AUTOUPDATE_PLUGINS`, `auto-update` settings | Native/plugin updater behavior. |
 | Telemetry/diagnostics | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`, `DO_NOT_TRACK`, `DISABLE_ERROR_REPORTING`, `DISABLE_GROWTHBOOK`, `OTEL_LOG_TOOL_DETAILS`, `OTEL_LOG_TOOL_CONTENT`, `OTEL_LOG_USER_PROMPTS` | Observability, analytics, error reporting, feature-evaluation fetching. |
 
@@ -227,7 +232,7 @@ When Bridge is unavailable the UI calls `getBridgeDisabledReason()` to render a 
 | `isPersistentRemoteSessionEnabled()` | (hard-coded `false`) | — | Reserved; currently always disabled. |
 | `getCcrAutoConnectDefault()` | derived | `false` | True only when persistent-remote is enabled AND we are not in a remote env. |
 | `getAttestationFilterPolicy()` | `tengu_bridge_attestation_enforce` (+ `tengu_bridge_attestation_enforce_config`) | enforce off | When enforcement is on, returns a parsed policy object via `BM7(...)`; otherwise returns the default `ZX6`. |
-| `checkBridgeMinVersion()` | `tengu_bridge_min_version` dynamic config | `0.0.0` | Compares the bundle `VERSION` (`2.1.143` for this build) against the required minVersion. Returns the formatted error message if too old, else `null`. |
+| `checkBridgeMinVersion()` | `tengu_bridge_min_version` dynamic config | `0.0.0` | Compares the bundle `VERSION` (`2.1.215` for this build) against the required minVersion. Returns the formatted error message if too old, else `null`. |
 
 ### App-state appliers
 

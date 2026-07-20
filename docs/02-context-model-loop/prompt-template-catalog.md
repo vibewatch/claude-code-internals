@@ -6,42 +6,42 @@ The catalog is regenerated from the Babel AST by [`scripts/extract-prompt-catalo
 
 ## Source provenance
 
-- Input: `claude-code-pkg/src/entrypoints/cli.renamed.js` (23,273,325 bytes)
-- SHA-256: `fd212af5897bf4f5b2c4eee2863ad46140d003abd8569adda2dd32b5857a495b`
-- Generated: 2026-05-18
+- Input: `claude-code-pkg/src/entrypoints/cli.renamed.js` (31,833,579 bytes)
+- SHA-256: `461de0af948a1698a421a7a9072b6168bc5edc9a546e9e666db629cbcc0c72ce`
+- Generated: 2026-07-20
 - AST parser: `@babel/parser` with `typescript` + `jsx` plugins, walked by `@babel/traverse`
 - Minimum literal length: 120 characters
-- String / template literals scanned: 167,464
-- Candidates above length threshold: 2,265
-- Kept after domain / noise filter: **1,086**
+- String / template literals scanned: 228,539
+- Candidates above length threshold: 3,594
+- Kept after domain / noise filter: **1,940**
 
 ## Categories
 
-### [system-context-memory](prompts/system-context-memory.md) — 46 prompts
+### [system-context-memory](prompts/system-context-memory.md) — 65 prompts
 
 Top-level system prompts, memory file blocks, `<environment>` / `<user_*>` reminders, and rolling conversation-summary scaffolding.
 
-### [tool-description-or-guard](prompts/tool-description-or-guard.md) — 74 prompts
+### [tool-description-or-guard](prompts/tool-description-or-guard.md) — 92 prompts
 
 Tool descriptions, usage guards, and tool-output guidance — typically attached to a `LK({ ... })` tool registration.
 
-### [security-permission](prompts/security-permission.md) — 72 prompts
+### [security-permission](prompts/security-permission.md) — 151 prompts
 
 Permission policy text, sandbox / credential rules, and security-relevant guardrails surfaced to the model or hooks.
 
-### [task-and-agent](prompts/task-and-agent.md) — 27 prompts
+### [task-and-agent](prompts/task-and-agent.md) — 56 prompts
 
 Agent (subagent) definitions, Task tool descriptions, and managed-agents reference material.
 
-### [mcp-plugin-hook](prompts/mcp-plugin-hook.md) — 190 prompts
+### [mcp-plugin-hook](prompts/mcp-plugin-hook.md) — 293 prompts
 
 MCP server / plugin / hook descriptions, event documentation, and schema `.describe(...)` text.
 
-### [slash-command-or-agent-file](prompts/slash-command-or-agent-file.md) — 8 prompts
+### [slash-command-or-agent-file](prompts/slash-command-or-agent-file.md) — 17 prompts
 
 Embedded slash-command / sub-agent files (`---`-fenced frontmatter + body) shipped inside the bundle.
 
-### [slash-output-style](prompts/slash-output-style.md) — 3 prompts
+### [slash-output-style](prompts/slash-output-style.md) — 8 prompts
 
 Output-style modifier prompts that change how Claude formats its reply for the current session.
 
@@ -49,7 +49,7 @@ Output-style modifier prompts that change how Claude formats its reply for the c
 
 Prompts that demand strict JSON-only or fixed-shape responses (`RESPOND WITH ONLY A VALID JSON OBJECT`, etc.).
 
-### [misc-prompt-like](prompts/misc-prompt-like.md) — 658 prompts
+### [misc-prompt-like](prompts/misc-prompt-like.md) — 1250 prompts
 
 Long literals that look prompt-shaped but did not match a more specific category.
 

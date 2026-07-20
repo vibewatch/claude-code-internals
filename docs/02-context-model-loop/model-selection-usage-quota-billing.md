@@ -18,6 +18,8 @@ Scope: model aliases and precedence, main/helper/subagent/advisor/fallback model
 | StartupModelState | `startup_resolve_model` | Root startup path stores effective and initial model state. |
 | ModelSelectionFlag | `--model <model>` | Root model-selection flag. |
 | FallbackModelFlag | `--fallback-model <model>` | Print-mode overload fallback flag. |
+| EmbeddedModelCatalog | `claude-sonnet-5`, `claude-opus-4-8`, `claude-fable-5` | Build-local catalog containing provider IDs, aliases, limits, capabilities, and pricing tiers. |
+| ManagedModelAllowlist | `availableModels`, `enforceAvailableModels` | Constrains main, agent, subagent, advisor, and Default model selection. |
 | AdvisorModelSetting | `advisorModel` | Settings surface for the server-side advisor tool model. |
 | SubagentModelOverride | `CLAUDE_CODE_SUBAGENT_MODEL` | Subagent model override. |
 | AutoModeClassifierConfig | `tengu_auto_mode_config`, `twoStageClassifier` | Auto-mode classifier model/config selection. |
@@ -89,7 +91,7 @@ There is no fixed “number of concrete models” baked into the CLI. Concrete I
 
 | Role | Resolver / setting | Purpose |
 |---|---|---|
-| Main loop model | `R7()`, `lJ()`, `--model`, `ANTHROPIC_MODEL`, settings | Normal assistant turns. Defaults to the default main-loop model, commonly Sonnet unless account/provider logic chooses otherwise. |
+| Main loop model | `R7()`, `lJ()`, `--model`, `ANTHROPIC_MODEL`, settings | Normal assistant turns. The concrete default is account/provider/policy aware; do not assume one universal Sonnet ID. |
 | Default Sonnet | `iv()`, `ANTHROPIC_DEFAULT_SONNET_MODEL` | Everyday/default work; also used by memory relevance/fact extraction helpers. |
 | Default Opus / best | `nv()`, alias `opus`, alias `best`, `opusplan` in plan mode | More capable/plan-mode work and “best” alias. |
 | Default Haiku / small-fast | `SxH()`, `LL()`, `ANTHROPIC_SMALL_FAST_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Lightweight helper requests such as quota probing, some web/search/count/token/helper paths, and small-fast mode when available. |
@@ -110,11 +112,27 @@ The alias resolver maps user-facing names to current concrete IDs:
 | `sonnet` | Resolves through `iv()`. |
 | `haiku` | Resolves through `SxH()`. |
 | `opus` | Resolves through `nv()`. |
-| `best` | Resolves through `Itq()`, which currently points at the Opus resolver. |
+| `fable` | Resolves to the current Fable family default. |
+| `best` | Resolves through the catalog's `best` family, which is `fable` in `2.1.215`. |
 | `opusplan` | Resolves to Sonnet normally but can switch to Opus in plan mode through `nG(...)`. |
 | `default` | Treated as the current default concrete model in CLI/fallback handling. |
 
 Because aliases are resolved at runtime, docs should prefer “Sonnet/Opus/Haiku resolver” unless a concrete build-specific model ID is the point of the discussion.
+
+## Current family heads and capabilities
+
+The `2.1.215` catalog is embedded at approximately lines ~15,726–16,029.
+
+| Family head | Catalog ID | Context | Max output | Default effort | Notable capability flags |
+|---|---|---:|---:|---|---|
+| Sonnet 5 | `claude-sonnet-5` | 1M native | 128K upper | `high` | `xhigh_effort`, adaptive thinking, mid-conversation system, context management |
+| Opus 4.8 | `claude-opus-4-8` | 1M native | 128K upper | `high` | fast mode, lean prompt, adaptive thinking, mid-conversation system |
+| Fable 5 | `claude-fable-5` | 1M native | 128K upper | `high` | adaptive thinking, lean prompt, Fable mitigations; disabled-thinking rejection |
+| Haiku 4.5 | `claude-haiku-4-5` | 200K | 64K upper | catalog/provider default | context management; 1M suffix support |
+
+Catalog aliases are provider-specific. The default `sonnet → claude-sonnet-5` and `opus → claude-opus-4-8` mappings do not imply every Bedrock, Vertex, Foundry, Mantle, Anthropic AWS, or gateway deployment serves that exact ID. The resolver applies `per_provider` entries before request construction.
+
+Organization policy is part of resolution, not a picker-only filter. `availableModels` applies to aliases, explicit IDs, subagents, teammates, advisor choices, and server-requested swaps. Managed `enforceAvailableModels` also constrains the Default row and refuses cascade-trust behavior if a policy source failed to load.
 
 ## Provider call path
 
@@ -177,7 +195,7 @@ The runtime classifies:
 | HTTP `429` | Rate limit. |
 | HTTP `529` or `"type":"overloaded_error"` | Server overload; can trigger fallback logic. |
 | HTTP `413` with context-window wording | Prompt/context too long; UI directs the user toward `/compact` or reducing context. |
-| Repeated overload with `--fallback-model` | Emits `tengu_api_opus_fallback_triggered` and raises a fallback-model transition. |
+| Repeated overload with `--fallback-model` / `fallbackModel` | Advances through the ordered fallback chain; the primary is tried again at the next user turn. |
 | Retry exhaustion | Emits `api_request_retry_exhausted`/throws a wrapped execution error. |
 
 ## Usage and cost accounting
@@ -276,7 +294,7 @@ This confirms that billing/quota handling is not just a raw API error. The CLI p
 
 ## Caveats
 
-- Concrete model names and aliases are build/account/provider dependent. The logical roles above are safer anchors than one hard-coded model count.
+- Concrete model names and aliases are build/account/provider dependent. The current catalog table is build-specific; logical roles remain the safer long-lived anchors.
 - Some `rate_limit_error` and SDK examples in the bundle are embedded documentation strings. This page treats them as evidence only when connected to runtime classification, request wrapping, header parsing, or result schemas.
 - Cost is an estimate derived from known model pricing tables and response usage. `hasUnknownModelCost` exists because not every model can be priced by the local table.
 - `--fallback-model` is documented by the CLI as print-mode-only. Interactive model changes use `/model`, Remote Control `set_model`, or session state transitions rather than the fallback flag.

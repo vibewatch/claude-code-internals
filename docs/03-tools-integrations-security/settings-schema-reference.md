@@ -29,6 +29,11 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | IdeIntegrationFlag | `--ide` | Auto-connect IDE integration flag. |
 | ChromeIntegrationFlag | `--chrome` | Chrome integration flag. |
 | StartupFileResourceFlag | `--file <specs...>` | Startup file-resource download integration. |
+| AccessibilitySetting | `axScreenReader` | Selects flat text without decorative borders or animations; env/CLI take precedence. |
+| AutoModeShellSetting | `autoMode.classifyAllShell` | Routes all Bash/PowerShell commands through the auto-mode classifier. |
+| WorkflowSettings | `enableWorkflows`, `disableWorkflows`, `workflowKeywordTriggerEnabled`, `workflowSizeGuideline` | Enables workflows, controls the `ultracode` trigger, and advises default fan-out size. |
+| SandboxCredentialPolicy | `sandbox.credentials` | Protects credential files and environment variables inside sandboxed subprocesses. |
+| ManagedVersionPolicy | `requiredMinimumVersion`, `requiredMaximumVersion` | Refuses startup outside administrator-approved semver bounds. |
 
 ## Bundle module in `cli.renamed.js`
 
@@ -62,6 +67,13 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | Prompt/context | system prompt, append prompt, output styles, memory/context exclusions | Shapes model-visible context and prompt assembly. | [Prompt, context, and memory](../02-context-model-loop/prompt-context-memory.md) |
 | Integrations | `--ide`, `--chrome`, `--file` plus integration settings | Adds editor/browser/file-resource integration surfaces. | [Settings, policy, and integrations](settings-policy-and-integrations.md) |
 | Sandbox/runtime behavior | sandbox mode, ignore-file behavior, tool-specific safety switches | Constrains process/file/network access after permission approval. | [Sandbox and isolation](sandbox-and-isolation.md) |
+| Accessibility/UI | `axScreenReader`, `wheelScrollAccelerationEnabled`, `vimInsertModeRemaps` | Selects accessible rendering and terminal input behavior. | [Command-line reference](../01-runtime-lifecycle/command-line-reference.md) |
+| Permission defaults/auto mode | `permissions.defaultMode`, `autoMode.classifyAllShell` | `manual` aliases historical `default`; auto mode can classify every shell command. | [Built-in tools and permissions](built-in-tools-and-permissions.md) |
+| Workflows | `enableWorkflows`, `disableWorkflows`, `workflowKeywordTriggerEnabled`, global `workflowSizeGuideline` | Controls feature availability, `ultracode` keyword opt-in, and advisory workflow size. | [Dynamic workflows](../06-agents-automation/dynamic-workflows.md) |
+| Memory | `autoMemoryDirectory` | Sets the auto-memory directory; project settings are ignored for this key. | [Prompt, context, and memory](../02-context-model-loop/prompt-context-memory.md) |
+| Model/version policy | `availableModels`, `enforceAvailableModels`, `requiredMinimumVersion`, `requiredMaximumVersion` | Restricts models/default resolution and enforces supported CLI versions. | [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md) |
+| Sideload/process policy | `disableSideloadFlags`, `processWrapper` | Blocks inline plugin/agent/MCP flags or routes background self-spawns through a corporate launcher. | [Settings, policy, and integrations](settings-policy-and-integrations.md) |
+| Credential isolation | `sandbox.credentials.files`, `sandbox.credentials.envVars`, `allowPlaintextInject` | Denies credential-file reads or masks/removes secret env vars in sandboxed commands. | [Sandbox and isolation](sandbox-and-isolation.md) |
 
 ## Settings versus flags versus env vars
 
@@ -85,6 +97,10 @@ The complete settings validator is present in the bundle, but it is embedded as 
 | Sandbox-sensitive settings | `dangerouslyDisableSandbox` schema text and sandbox policy pages | Covered as policy boundary, not as a guarantee that a command bypasses sandboxing. |
 
 The remaining “complete schema” gap is mechanical extraction: a future script could reconstruct or evaluate the embedded schema into a stable JSON/Markdown reference. Until then, this page should stay a known-settings reference with exact anchors for high-signal keys, rather than hand-copying every minified schema branch.
+
+## Source restrictions for sensitive settings
+
+Not every valid key is honored from every source. `autoMemoryDirectory` is ignored in checked-in project settings. `processWrapper` is read from managed, flag/SDK, or user settings (and can be overridden by `CLAUDE_CODE_PROCESS_WRAPPER`), while project/local values are ignored. `sandbox.credentials.allowPlaintextInject` and `sandbox.network.tlsTerminate` are likewise restricted to user, managed/policy, or `--settings` sources. `autoMode` classifier rules reject project/local sources because repositories control those files.
 
 ## De-duplication rule
 

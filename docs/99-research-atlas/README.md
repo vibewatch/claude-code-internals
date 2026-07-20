@@ -1,6 +1,6 @@
 # Research atlas
 
-This appendix keeps discovery machinery separate from the main runtime narrative. Use it when starting from a raw constant, byte offset, minified symbol, `.jsc` bytecode dump, native module, or documentation gap.
+This appendix keeps discovery machinery separate from the main runtime narrative. Use it when starting from a raw constant, generated module record, prompt-catalog entry, byte offset, minified symbol, native module, or documentation gap.
 
 The atlas is a triage layer, not proof. Promote a finding into the main internals sections only after a focused source read confirms behavior.
 
@@ -31,9 +31,10 @@ flowchart TD
 
 | Order | Page or artifact | Research question answered |
 |---:|---|---|
-| 1 | [Artifact map and bytecode notes](artifact-map-and-bytecode.md) | What final artifacts exist, what can be read, and what cannot be decompiled? |
-| 2 | [Decoded-classified decompilation audit](decoded-classified-decompilation-audit.md) | Which major decoded chunks were promoted to docs, skipped as vendor/static/UI, or left as lower-confidence watchpoints? |
-| 3 | [Bundle module map from `cli.renamed.js`](module-map-from-renamed-cli.md) | Which Bun module loaders correspond to which Claude Code subsystems, and at what line ranges in the semantically renamed bundle? |
+| 1 | [Bundle module map from `cli.renamed.js`](module-map-from-renamed-cli.md) | Which Bun module loaders correspond to which Claude Code subsystems, and at what line ranges in the semantically renamed bundle? |
+| 2 | [`data/cli-modules.json`](data/cli-modules.json) | What loader, declaration, and export records did the structural extractor find? |
+| 3 | [`data/cli-module-themes.json`](data/cli-module-themes.json) | Which semantic modules matched each populated runtime/vendor theme? |
+| 4 | [`data/prompt-catalog.json`](data/prompt-catalog.json) | Which long literal prompts passed the domain/noise filter, with line/offset/hash provenance? |
 
 ## Promotion rules
 
@@ -45,6 +46,5 @@ flowchart TD
 ## Navigation
 
 - [Start here](../00-start-here/README.md)
-- [Decoded-classified decompilation audit](decoded-classified-decompilation-audit.md)
 - [Bundle module map from `cli.renamed.js`](module-map-from-renamed-cli.md)
 - [Full table of contents](../SUMMARY.md)

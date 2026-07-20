@@ -18,6 +18,8 @@ This page reverse-engineers the local session and transcript paths that explain 
 | NoSessionPersistenceFlag | `--no-session-persistence` | Disables transcript writes and resume. |
 | ResumeSessionAtGuard | `--resume-session-at requires --resume` | Headless resume validation. |
 | RewindFilesResumeGuard | `--rewind-files requires --resume` | Rewind validation. |
+| BackgroundForkCommand | `Usage: /fork \<directive\>` | Copies the current conversation into a new background session with its own agent-view row. |
+| InSessionSubtaskCommand | `Usage: /subtask \<task\>` | Runs the former in-session `/fork` delegation behavior as a subagent. |
 
 ## Bundle module in `cli.renamed.js`
 
@@ -53,6 +55,18 @@ flowchart TD
 | `--no-session-persistence` | Disables transcript writes and therefore future resume. |
 | `--resume-session-at <message id>` | Truncates resumed context to an assistant message in print mode. |
 | `--rewind-files <user-message-id>` | Restores files to the state at a user message and exits. |
+
+### `/fork`, `/subtask`, and `--fork-session`
+
+These similarly named surfaces now have distinct contracts:
+
+| Surface | Contract in `2.1.215` |
+|---|---|
+| `/fork <directive>` | Copies the current conversation into a new background session while the parent keeps running. The copy gets its own `claude agents` row and is named from the directive when no title exists. |
+| `/subtask <task>` | Launches an in-session delegated subagent; this is the behavior older `/fork` implementations provided. |
+| `--fork-session` | When used with CLI `--resume`/`--continue`, restores the selected transcript under a new session ID rather than mutating the original. |
+
+Background sessions participate in `/resume`; from the agent view, `/resume` opens a picker and resumes the selected entry as a background session. The persisted transcript remains the durable source even when the original agent-view row was deleted.
 
 ## Persistence interpretation
 
@@ -106,6 +120,7 @@ After loading, `SessionDiscovery` normalizes and enriches the result by resolvin
 | File/history | `fileHistorySnapshots`, `attributionSnapshots`, `contentReplacements` |
 | Context collapse | `contextCollapseCommits`, `contextCollapseSnapshot` |
 | Agent identity | `agentName`, `agentColor`, `agentSetting`, `customTitle`, `aiTitle`, `tag`, `mode` |
+| Model/effort | Model history plus the reasoning effort stored on each assistant message; this preserves per-message execution context for transcript/SDK presentation. |
 | Permission/isolation | `permissionMode`, `isolationLatch` |
 | Worktree/PR | `worktreeSession`, `prNumber`, `prUrl`, `prRepository` |
 | Bridge/remote | `bridgeSessionId`, `bridgeLastSeq` |

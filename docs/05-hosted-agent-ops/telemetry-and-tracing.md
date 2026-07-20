@@ -18,6 +18,9 @@ Use [Diagnostics and debug logs](diagnostics-and-debug-logs.md) for local debug 
 | TraceparentEnv | `TRACEPARENT` | Trace-context propagation. |
 | AnalyticsFlushHook | `flushAnalyticsSinks` | Shutdown-time analytics/log/trace flush. |
 | OtelHeadersHelperRuntime | `getOtelHeadersFromHelper`, `CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS` | Settings-provided OTEL headers can come from a debounced helper command. |
+| AssistantResponseLog | `claude_code.assistant_response`, `OTEL_LOG_ASSISTANT_RESPONSES` | Optional assistant-response content event. |
+| OtelContentLimit | `CLAUDE_CODE_OTEL_CONTENT_MAX_LENGTH` | Configures the default 60 KB content-attribute truncation bound. |
+| WorkflowCorrelation | `workflow.run_id`, `workflow.name` | Correlates telemetry emitted by workflow-spawned agents. |
 
 ## Bundle module in `cli.renamed.js`
 
@@ -50,6 +53,20 @@ This distinction matters because essential traffic can still allow network calls
 | Remote/bridge | bridge state, remote backend, CCR-style signals | Remote Control and bridge operation. |
 | Updater | `tengu_native_auto_updater_*` | Native updater lifecycle. |
 | API/model usage | API request duration, token, cost, retry, and quota signals | Provider-call accounting and support evidence. |
+
+### Current log correlation and content controls
+
+`2.1.215` emits or enriches these source-visible OTel log surfaces:
+
+| Surface | Purpose |
+|---|---|
+| `claude_code.assistant_response` | Assistant response text. Redacted unless content logging is enabled. |
+| `message.uuid` | Stable message-level correlation key. |
+| `client_request_id` | Connects runtime logs to one provider request/control path. |
+| `tool_source` | Identifies built-in, MCP, plugin, workflow, or other tool provenance. |
+| `workflow.run_id`, `workflow.name` | Reconstructs activity emitted by all agents in one workflow run. |
+
+`OTEL_LOG_ASSISTANT_RESPONSES=1` opts into assistant text. If unset, it follows `OTEL_LOG_USER_PROMPTS`; deployments that already log prompts therefore also receive assistant-response events after upgrade unless they set it to `0`. `CLAUDE_CODE_OTEL_CONTENT_MAX_LENGTH` changes the shipped 60 KB truncation limit for content attributes.
 
 ## OpenTelemetry and trace export
 
@@ -91,7 +108,7 @@ The `TelemetryStack` module (`cli.renamed.js:374149` onward) is the OpenTelemetr
 
 ### Resource attributes (`sT7`)
 
-Computed once and cached. Include: `service.name = "claude-code"`, `service.version = "2.1.143"` (bundle version); OS attributes via `zg.osDetector.detect()`; host arch only (`SEMRESATTRS_HOST_ARCH`) — no host id, to avoid identifying the workstation; env detector output, optionally filtered to keep only `user.*` / `identity.*` keys when first-party user attributes (`T$8()`) are present; `wsl.version` when running under WSL.
+Computed once and cached. Include: `service.name = "claude-code"`, `service.version = "2.1.215"` (bundle version); OS attributes via the OS detector; host arch only (no host id, to avoid identifying the workstation); env detector output, optionally filtered to keep only user/identity keys when first-party attributes are present; `wsl.version` when running under WSL.
 
 ### Exporter selection (`parseExporterTypes` / `getOtlpLogExporters` / sibling helpers)
 
@@ -147,6 +164,8 @@ The 1P pipeline runs in parallel with the OTel pipeline: one `logEvent` call can
 | `OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE` | Defaults to `delta` if unset. |
 | `CLAUDE_CODE_OTEL_SHUTDOWN_TIMEOUT_MS` / `CLAUDE_CODE_OTEL_FLUSH_TIMEOUT_MS` | Shutdown / flush bounds. |
 | `BETA_TRACING_ENDPOINT` | Beta tracer + logger destination. |
+| `OTEL_LOG_ASSISTANT_RESPONSES` | Enables/disables assistant-response content logs; inherits prompt-content opt-in when unset. |
+| `CLAUDE_CODE_OTEL_CONTENT_MAX_LENGTH` | Content attribute truncation length (60 KB default). |
 
 ## Error log sink and MCP error log fan-out
 

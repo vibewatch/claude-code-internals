@@ -7,7 +7,7 @@ It complements [Agents, tasks, and subagents](agents-tasks-and-subagents.md), [S
 ## Short answer
 
 - The agent system is **orchestration over the existing session runtime**, not a second runtime. Agents/subagents reuse the same context loop, tool permission boundary, hooks, JSONL session storage, and telemetry/debug surfaces.
-- The source-visible agent families are: inline custom agents (`--agents <json>`), the `claude agents` command family, subagents created through task/delegation tools, teammate/background-agent modes, hosted review agents (`ultrareview`), and automation helpers such as slash commands/skills/auto-mode.
+- The source-visible agent families are: inline custom agents (`--agents <json>`), the `claude agents` command family, background-by-default `Agent` subagents, the session's implicit team, deterministic `Workflow` runs, hosted review agents (`ultrareview`), and automation helpers such as slash commands/skills/auto-mode.
 - Tasks are scheduled with a **task store + task message queue + stream-frame patching** pattern. `TaskGet` can block until a terminal status; task updates emit patch events.
 - Completion is detected primarily through task status. In the SDK/task protocol, terminal statuses are `completed`, `failed`, and `cancelled`; internal UI eviction also treats `killed` as terminal.
 - Timed tasks do exist. A Kairos/cron family exposes prompt scheduling with session-only or durable tasks, recurring/one-shot cron expressions, missed-task surfacing, jitter, lock files, and a `CLAUDE_CODE_DISABLE_CRON` kill switch. A separate `RemoteTrigger` tool can manage Claude.ai remote routines through the CCR trigger API when its gates are enabled.
@@ -42,6 +42,9 @@ It complements [Agents, tasks, and subagents](agents-tasks-and-subagents.md), [S
 | CronSchedulerRuntime | `createCronScheduler` | Runtime scheduled-task engine. |
 | ScheduledTaskLockFile | `.claude/scheduled_tasks.lock` | Scheduled-task lock file. |
 | RemoteTriggerTool | `RemoteTriggerTool` | Model-visible tool for managing scheduled remote agent routines. |
+| AgentSpawnCap | `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | Session-wide spawn cap, default 200. |
+| NestedAgentDepth | `Sub-agents can now spawn their own sub-agents (up to 5 levels deep)` | Bounded recursive delegation. |
+| WorkflowRuntime | `Workflow`, `/workflows`, `workflow.run_id`, `workflow.name` | Deterministic background orchestration and correlated progress. |
 | RemoteTriggerGate | `tengu_surreal_dali`, `allow_remote_sessions` | Remote-trigger availability is gated by subscription, remote mode, feature flag, and policy. |
 | RemoteTriggerApi | `/v1/code/triggers`, `tengu_remote_trigger` | Remote routines use the Claude.ai CCR trigger API and emit create/update telemetry. |
 | RemoteTriggerBeta | `ccr-triggers-2026-01-30` | Remote-trigger calls use a dedicated beta header. |
@@ -62,8 +65,17 @@ It complements [Agents, tasks, and subagents](agents-tasks-and-subagents.md), [S
 | Hosted review agents | `ultrareview [target]`, `/v1/ultrareview/preflight` | Explicit hosted multi-agent review workflow. |
 | Skills/slash automation | `Skill`, slash command metadata, keybinding `command:*` | Human/plugin/keybinding-triggered automation that can look agent-like but enters through commands/tools. |
 | Auto-mode classifier | `auto-mode`, `hasAutoModeOptIn`, `tengu_auto_mode_config` | Permission/automation classifier; not an agent itself, but affects whether agents/tools can proceed without prompts. |
+| Dynamic workflows | `Workflow`, `/workflows`, `.claude/workflows/*.js` | Explicit user-opted deterministic fan-out/pipeline/verification over many agents. |
 
 The important design point: these families share the same session envelope, settings/policy, MCP/plugin registry, tool-permission boundary, and transcript system.
+
+## Delegation budgets and implicit team
+
+`Agent` launches asynchronously by default and can be addressed by ID or name through `SendMessage`. Recursive delegation is permitted but bounded to five levels. The session-wide spawn counter defaults to 200 (`CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`) and is reset by `/clear`; the limit protects against runaway delegation independently of context/token limits.
+
+The `team_name` parameter remains accepted for compatibility but is ignored: the session owns one implicit team. `TeamCreate` and `TeamDelete` are no longer model tools, so teammates can be spawned directly with `Agent({name: ...})`. Permission mode is inherited from the parent by default, and agent-to-agent messages never inherit the user's approval authority.
+
+Dynamic workflows add a separate deterministic scheduler over this same agent runtime. A workflow's own concurrency, item, nesting, and lifetime caps are documented in [Dynamic workflows](dynamic-workflows.md); workflow completion still resolves through the normal task registry and notifications.
 
 ## Task scheduling model
 
@@ -136,6 +148,7 @@ The hidden footgun is that **task completion and subagent completion are not ide
 | Hosted preflight | `ultrareview` calls `/v1/ultrareview/preflight` before hosted work. | Hosted runs are explicit and preflighted rather than silently triggered. |
 | Cron prompt injection | Scheduled tasks call `onFire(prompt)` or `onFireTask(task)`. | Timed automation is implemented as prompt/task injection into the existing session. |
 | Remote routine management | `RemoteTrigger` calls `/v1/code/triggers` list/get/create/update/run. | Cloud routines are managed through in-process OAuth and policy gates rather than shelling out with a token. |
+| Deterministic workflow | `Workflow` runs restricted JavaScript with `agent`/`pipeline`/`parallel`. | Makes multi-agent control flow explicit, observable, and resumable rather than model-driven. |
 
 ## Timed tasks and cron
 
@@ -174,6 +187,7 @@ The call path refreshes OAuth in process, requires a Claude.ai access token and 
 7. **Remote and local use the same envelope.** Remote Control can send commands/control responses, but task and permission semantics stay aligned with local runs.
 8. **Hosted review is explicit.** `ultrareview` is a command with preflight, not an ambient background service.
 9. **Feature gates surround advanced automation.** Cron, background agents, bridge behavior, auto-mode, and agent views all have feature/env/policy gates.
+10. **Delegation has hard budgets.** Session, workflow, nesting, and concurrency caps fail explicitly rather than silently truncating coverage.
 
 ## Diagnostics and telemetry for agents
 

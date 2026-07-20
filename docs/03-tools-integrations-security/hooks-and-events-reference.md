@@ -18,6 +18,8 @@ This page is the canonical list of hook names, runtime event families, and exter
 | ToolExecutionBoundary | `function U85` | Permission/execution boundary that invokes tool decision paths. |
 | SdkPermissionBridge | `createCanUseTool`, `permission_denied` | SDK/bridge permission wrapper and denial frame. |
 | HookRuntimeRegistry | `HOOK_EVENT_REGISTRY` | Decoded hook runtime registry and dispatcher surface. |
+| MessageDisplayHook | `MessageDisplay` | Display-only hook that can replace or hide newly completed streamed lines without changing stored/model-visible content. |
+| PostToolBatchHook | `PostToolBatch` | Fires once after all calls in one tool batch resolve, before the next model request. |
 | UserPromptSubmitBlocking | `UserPromptSubmit operation blocked by hook` | User-prompt submission has event-specific blocking feedback. |
 | SessionStateStreamFrame | `session_state_changed` | Runtime/session state stream frame. |
 | BridgeStateStreamFrame | `bridge_state` | Remote bridge state stream frame. |
@@ -39,6 +41,7 @@ This page is the canonical list of hook names, runtime event families, and exter
 | Stop and compaction | `Stop`, `StopFailure`, `PreCompact`, `PostCompact`, `InstructionsLoaded` | Stop requests/failures, compaction boundaries, and instruction loading. |
 | Agent/task lifecycle | `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle` | Subagent/task start, completion, and background-agent idle state. |
 | Config/worktree/file | `ConfigChange`, `WorktreeCreate`, `WorktreeRemove`, `CwdChanged`, `FileChanged` | Runtime configuration, working tree, CWD, and file-change boundaries. |
+| Display | `MessageDisplay` | Transforms newly completed assistant lines for rendering only. |
 | Notification | `Notification` | External or internal notification delivery. |
 
 ## Blocking versus observational hooks
@@ -48,6 +51,13 @@ This page is the canonical list of hook names, runtime event families, and exter
 | Authorization hooks | `PreToolUse`, `PermissionRequest`, `PermissionDenied` | Can affect whether a tool runs, whether approval is requested, whether retry feedback is returned, or whether input is updated. |
 | Lifecycle hooks | `SessionStart`, `SessionEnd`, `SubagentStart`, `SubagentStop`, `PreCompact`, `PostCompact` | Run at major state transitions; may record or shape boundary behavior depending on event type. |
 | Observational hooks | `PostToolUse`, `PostToolUseFailure`, `PostToolBatch`, `TaskCompleted`, `Notification` | Observe outcomes and emit side effects without being the primary approval gate. |
+| Display hooks | `MessageDisplay` | Can return display text or hide a rendered delta; durable transcript content and model context remain unchanged. |
+
+### `PostToolBatch` and `MessageDisplay`
+
+`PostToolUse` and `PostToolUseFailure` are per-tool and may overlap for parallel calls. `PostToolBatch` fires exactly once after every call in that batch has resolved and before the next provider request, with the full batch available to one observer.
+
+`MessageDisplay` fires as completed line batches arrive during assistant streaming. Its `hookSpecificOutput` can replace the displayed delta or suppress it. This is intentionally a presentation boundary: the stored assistant message and the content visible to the model are untouched, so it cannot silently rewrite conversation state.
 
 ### `UserPromptSubmit` blocking
 
@@ -135,7 +145,7 @@ Given an event input the dispatcher derives a **match query** based on event fam
 | `Elicitation` / `ElicitationResult` | `mcp_server_name` |
 | `InstructionsLoaded` | `load_reason` |
 | `FileChanged` | `basename(file_path)` |
-| `TeammateIdle`, `TaskCreated`, `TaskCompleted` | (none — all configured hooks match) |
+| `PostToolBatch`, `MessageDisplay`, `CwdChanged`, `TeammateIdle`, `TaskCreated`, `TaskCompleted` | (none — all configured hooks match) |
 
 Settings hooks declare a `matcher` (regex or string). When a match query is present the dispatcher filters hook records to those whose `matcher` matches (using the session's tool aliases for tool-name events). After matching, hooks are deduplicated per type using a content hash that includes the shell, command, args, and any `if` condition — duplicate hooks across plugin/skill/settings sources collapse to one execution.
 

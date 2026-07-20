@@ -38,12 +38,18 @@ const RESERVED_WORDS = new Set([
   "for",
   "function",
   "if",
+  "implements",
   "import",
   "in",
   "instanceof",
+  "interface",
   "let",
   "new",
   "null",
+  "package",
+  "private",
+  "protected",
+  "public",
   "return",
   "super",
   "switch",
@@ -80,7 +86,7 @@ Options:
   --help, -h           Show this help
 
 Evidence used:
-  - Export tables shaped like j$(module, { semanticName: () => obfuscatedName })
+  - Structurally recognized export tables shaped like helper(module, { semanticName: () => obfuscatedName })
   - Error/class constructors that assign this.name = "SemanticErrorName"
   - String dispatch handlers shaped like if (kind === "semantic_action") return obfuscatedName(...)
   - String constants shaped like obfuscatedName = "semantic_value"
@@ -222,6 +228,23 @@ function returnedIdentifierName(node) {
   return undefined;
 }
 
+function exportTableObject(node) {
+  if (node.callee.type !== "Identifier") return undefined;
+  const objectArg = node.arguments[1];
+  if (!objectArg || objectArg.type !== "ObjectExpression") return undefined;
+  if (objectArg.properties.length === 0) return undefined;
+  if (
+    !objectArg.properties.every(
+      (property) =>
+        property.type === "ObjectProperty" &&
+        returnedIdentifierName(property.value) !== undefined,
+    )
+  ) {
+    return undefined;
+  }
+  return objectArg;
+}
+
 function isSemanticDispatchLiteral(value) {
   return /^[a-z][a-z0-9_]*(?:_[a-z0-9]+)+$/.test(value) && value.length >= 8;
 }
@@ -306,9 +329,8 @@ function collectExportTableCandidates(ast) {
 
   traverse(ast, {
     CallExpression(path) {
-      if (path.node.callee.type !== "Identifier" || path.node.callee.name !== "j$") return;
-      const objectArg = path.node.arguments[1];
-      if (!objectArg || objectArg.type !== "ObjectExpression") return;
+      const objectArg = exportTableObject(path.node);
+      if (!objectArg) return;
 
       for (const property of objectArg.properties) {
         if (property.type !== "ObjectProperty") continue;

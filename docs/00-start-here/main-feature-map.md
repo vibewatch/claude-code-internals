@@ -2,11 +2,13 @@
 
 This document continues the reverse-engineering analysis of Claude Code. Its goal is to answer a product/runtime question: **what major capabilities are implemented by `cli.renamed.js`, and how do those capabilities connect?**
 
-The file is bundled/minified production JavaScript. The document therefore uses semantic aliases such as `OuterBootstrap`, `CommanderRoot`, `HeadlessRunner`, `InteractiveSessionLoop`, `McpCoordinator`, `SessionRestorer`, and `RemoteControlBridge`. Minified names are kept only as search anchors for this exact `@anthropic-ai/claude-code@2.1.143` build.
+The file is bundled/minified production JavaScript. The document therefore uses semantic aliases such as `OuterBootstrap`, `CommanderRoot`, `HeadlessRunner`, `InteractiveSessionLoop`, `McpCoordinator`, `SessionRestorer`, and `RemoteControlBridge`. Minified names are secondary search handles; exact strings below anchor this `@anthropic-ai/claude-code@2.1.215` build.
 
 ## Executive summary
 
-`cli.renamed.js` is not a thin prompt wrapper. It is the main Claude Code agent runtime. It parses the command line, establishes process identity, loads settings and managed policy, initializes authentication and model/provider state, manages sessions, assembles tools, applies permissions, loads MCP servers and plugins, orchestrates custom agents and background agents, routes execution into interactive/headless/remote modes, and handles observability, updates, and shutdown.
+`cli.renamed.js` is not a thin prompt wrapper. It is the main Claude Code agent runtime. It parses the command line, establishes process identity, loads settings and managed policy, initializes authentication and model/provider state, manages sessions, assembles tools, applies permissions, loads MCP servers and plugins, orchestrates custom agents, background agents, and dynamic workflows, routes execution into interactive/headless/remote modes, and handles accessibility, observability, updates, and shutdown.
+
+The `2.1.215` snapshot adds several source-confirmed surfaces that were absent from the previous `2.1.143` documentation baseline: Sonnet 5, Opus 4.8, and Fable 5 model records; the `Workflow` tool and `/workflows` UI; background-by-default and nested subagents; an implicit team model; `/fork` background copies plus `/subtask`; screen-reader and safe modes; MCP tool refresh/auto-backgrounding; richer hooks and telemetry; and hard per-session WebSearch/subagent budgets.
 
 Two useful lenses for the runtime are **context engineering** and **harness engineering**:
 
@@ -17,16 +19,15 @@ Two useful lenses for the runtime are **context engineering** and **harness engi
 
 | Area | Semantic alias | Minified anchor / exact string | Role |
 | --- | --- | --- | --- |
-| Bootstrap | `OuterBootstrap` | `async function J9A` | Handles version fast path and lazy-loads the main bundle. |
-| Full main | `TopLevelMain` | `async function O4A` | Initializes environment identity, deep links, warnings, and calls `w4A`. |
-| Commander | `CommanderRoot` | `async function w4A` | Builds root options, action body, preAction setup, and subcommands. |
-| Headless | `HeadlessRunner` | `async function runHeadless`, `function runHeadlessStreamingForTesting` | Runs print/SDK stream-JSON mode and drains control/message loops. |
-| Interactive | `InteractiveSessionLoop` | `async function pT$`, `async function aa4` | Runs the TUI/session loop and resume/search picker. |
-| MCP | `McpCoordinator` | `function fH9`, `function rR4` | Connects runtime MCP servers and registers the `mcp` command tree. |
-| Sessions | `SessionRestorer` | `async function loadConversationForResume`, `async function OG8` | Finds recent sessions and restores transcript state. |
-| Tools | `BuiltInToolNames` | `Bash`, `Read`, `Edit`, `Write`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, `TodoWrite`, `Skill` | Built-in tool-name constants and model-visible capability names. |
-| Hooks | `HookEvents` | `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd`, `SubagentStart`, `TaskCreated` | Lifecycle hook and automation event surface. |
-| Ops | `TrafficAndDebugGates` | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `CLAUDE_CODE_DEBUG_LOGS_DIR` | Debug-log and telemetry/traffic policy boundaries. |
+| Build identity | `AnalyzedBuild` | `VERSION: "2.1.215"`, `BUILD_TIME: "2026-07-19T00:01:04Z"` | Pins every generated/minified anchor to one package build. |
+| Bootstrap/Commander | `CommanderRoot` | `Claude Code - starts an interactive session by default`, `--print` | Builds root options, mode routing, setup, and subcommands. |
+| Headless | `HeadlessRunner` | `--output-format=stream-json`, `control_request`, `prompt_suggestion` | Runs print/SDK stream-JSON mode and drains control/message loops. |
+| Interactive/accessibility | `InteractiveSessionLoop` | `--ax-screen-reader`, `CLAUDE_AX_SCREEN_READER`, `/resume` | Runs the TUI/session loop, picker, and flat accessibility renderer. |
+| MCP | `McpCoordinator` | `tools/list`, `roots/list`, `notifications/roots/list_changed`, `RefreshMcpTools` | Connects MCP servers, publishes roots, and refreshes tool sets. |
+| Sessions | `SessionRestorer` | `transcriptSource:"local-jsonl"`, `--resume`, `--fork-session` | Finds recent sessions and restores or forks transcript state. |
+| Tools/workflows | `BuiltInToolNames` | `Bash`, `Read`, `Edit`, `WebFetch`, `WebSearch`, `Agent`, `Workflow`, `RefreshMcpTools` | Core coding, delegation, orchestration, and integration capabilities. |
+| Hooks | `HookEvents` | `PreToolUse`, `PostToolBatch`, `MessageDisplay`, `SessionStart`, `TaskCreated` | Authorization, display, lifecycle, task, and automation event surface. |
+| Ops/recovery | `TrafficAndDebugGates` | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `--safe-mode`, `CLAUDE_CODE_SAFE_MODE` | Debug/traffic policy plus configuration-isolation recovery. |
 
 ## Runtime system map
 
@@ -40,6 +41,7 @@ flowchart TB
     Cli --> Integrations[MCP / plugins / IDE / Chrome]
     Cli --> Agents[Agents and automation]
     Cli --> Ops[Diagnostics / telemetry / update]
+    Cli --> Accessibility[Screen reader / safe mode]
 
     Bootstrap --> Commands[auth / mcp / plugin / project / agents / doctor / update / install]
 
@@ -62,6 +64,7 @@ flowchart TB
     Agents --> Custom[custom agents]
     Agents --> Task[Task and background agent commands]
     Agents --> Review[ultrareview / auto-mode]
+    Agents --> Workflows[Workflow tool / ultracode / workflows view]
 ```
 
 ## Major feature matrix
@@ -79,7 +82,7 @@ flowchart TB
 | Settings/policy/integrations | `.claude/settings.json`, managed settings, `--settings`, `--ide`, `--chrome`, `statusLine` | Layered settings, config roots, policy toggles, IDE/Chrome/file integration, API-key helper scripts. | [Settings, policy, and integrations](../03-tools-integrations-security/settings-policy-and-integrations.md) |
 | Sessions and transcripts | `--continue`, `--resume`, `--session-id`, JSONL paths | Local transcript roots, latest-session lookup, resume/continue, fork, no-persistence, rewind. | [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md) |
 | Remote/teleport/control | `--remote`, `--teleport`, `remote-control`, `--rc`, remote token env vars | Remote session creation/attach, teleport hydration, Remote Control bridge, permission forwarding. | [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) |
-| Agents and automation | `agents`, `--agents`, task tool constants, subagent hook events, `ultrareview`, `auto-mode` | Background agents, custom agent JSON, task/subagent lifecycle, multi-agent review, permission classifier inspection. | [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md) |
+| Agents and automation | `agents`, `--agents`, `Agent`, `/fork`, `/subtask`, `Workflow`, `ultrareview`, `auto-mode` | Background sessions, custom agents, background-by-default/nested subagents, implicit teams, deterministic workflows, and classifier inspection. | [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md), [Dynamic workflows](../06-agents-automation/dynamic-workflows.md) |
 | Diagnostics/ops/media | `--debug-file`, `doctor`, `update`, telemetry env vars, image/audio N-API modules | Debug logs, telemetry and traffic gates, native updater, doctor checks, media module extraction. | [Diagnostics and debug logs](../05-hosted-agent-ops/diagnostics-and-debug-logs.md), [Telemetry and tracing](../05-hosted-agent-ops/telemetry-and-tracing.md), [Updater and doctor](../05-hosted-agent-ops/updater-and-doctor.md), [Media native modules](../05-hosted-agent-ops/media-native-modules.md) |
 
 ## Takeaways

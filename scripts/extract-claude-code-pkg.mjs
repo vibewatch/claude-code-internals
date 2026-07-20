@@ -60,7 +60,7 @@ Options:
 Examples:
   node scripts/extract-claude-code-pkg.mjs
   node scripts/extract-claude-code-pkg.mjs --platform linux-arm64
-  node scripts/extract-claude-code-pkg.mjs --version 2.1.143 --out claude-code-pkg
+  node scripts/extract-claude-code-pkg.mjs --version 2.1.215 --out claude-code-pkg
 `;
 }
 

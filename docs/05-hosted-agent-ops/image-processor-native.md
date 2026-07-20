@@ -2,7 +2,7 @@
 
 This page is a binary-level reverse-engineering writeup of `image-processor.node`, the Bun-embedded native addon that backs Claude Code's image pipeline (paste / drag-drop / image attachment resize and re-encode). It is the image-side counterpart of [Audio capture and voice mode](audio-capture-and-voice.md).
 
-The `.node` binary is regenerated locally by [`scripts/extract-claude-code-final-artifacts.mjs`](../../scripts/extract-claude-code-final-artifacts.mjs) (now in the final-keep allow-list) and is held outside git via `*.node` in [`.gitignore`](../../.gitignore). This page works off the linux-x64 build of `@anthropic-ai/claude-code@2.1.143`.
+The `.node` binary is regenerated locally by [`scripts/extract-claude-code-final-artifacts.mjs`](../../scripts/extract-claude-code-final-artifacts.mjs) (now in the final-keep allow-list) and is held outside git via `*.node` in [`.gitignore`](../../.gitignore). This page works off the linux-x64 build of `@anthropic-ai/claude-code@2.1.215`. Its SHA-256 is unchanged from the prior `2.1.143` snapshot.
 
 ## ELF metadata
 
@@ -23,7 +23,7 @@ The `.node` binary is regenerated locally by [`scripts/extract-claude-code-final
 | Minimum glibc | `GLIBC_2.17` (driven by `clock_gettime`); CentOS 7 / Ubuntu 14.04+ compatible. |
 | Rust toolchain | Source paths embedded as panic locations carry the rustc commit `01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf`. |
 | Stack / TLS | Non-executable stack (`GNU_STACK` empty perms), `GNU_RELRO` set on `.data.rel.ro`. |
-| N-API surface | 40 undefined `napi_*` imports: `napi_create_threadsafe_function`, `napi_define_class`, `napi_create_promise`, `napi_resolve_deferred`, `napi_reject_deferred`, `napi_create_external_buffer`, `napi_create_buffer`, `napi_create_function`, `napi_get_cb_info`, full property / reference / typeof / coercion helpers. |
+| N-API surface | 43 unique undefined `napi_*` imports: `napi_create_threadsafe_function`, `napi_define_class`, `napi_create_promise`, `napi_resolve_deferred`, `napi_reject_deferred`, `napi_create_external_buffer`, `napi_create_buffer`, `napi_create_function`, `napi_get_cb_info`, full property / reference / typeof / coercion helpers. |
 
 ## Source provenance — statically linked Rust crates
 
@@ -79,7 +79,7 @@ Once `toBuffer()` or `dispose()` runs, further calls trigger the runtime error `
 
 ### Call path from `cli.renamed.js`
 
-The JS-side façade [`sharp()` at cli.renamed.js#L201822](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L201822) buffers `resize` / `jpeg` / `png` / `webp` calls into a closure queue, then on `toBuffer()` awaits `processImage(input)` and replays the queue. This makes the napi-rs mutable pipeline look like sharp's fluent API — Claude Code only uses `metadata` / `resize` / `jpeg` / `png` / `webp` / `toBuffer`.
+The JS-side façade [`sharp()` at cli.renamed.js#L272868](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L272868) buffers `resize` / `jpeg` / `png` / `webp` calls into a closure queue, then on `toBuffer()` awaits `processImage(input)` and replays the queue. This makes the napi-rs mutable pipeline look like sharp's fluent API — Claude Code only uses `metadata` / `resize` / `jpeg` / `png` / `webp` / `toBuffer`.
 
 The shim that brings the addon into the bundle is the Bun CJS wrapper at [`claude-code-pkg/image-processor.js`](../../claude-code-pkg/image-processor.js); it is the JS half of the `require("/$bunfs/root/image-processor.node")` bridge.
 
@@ -123,7 +123,7 @@ nm -D --undefined-only claude-code-pkg/image-processor.node | grep -c napi_
 strings -n 6 claude-code-pkg/image-processor.node | grep -E "^[a-z][a-z0-9_-]+-[0-9]+\.[0-9]+\.[0-9]+/" | sed 's|/.*||' | sort -u
 ```
 
-The third line confirms the N-API import count (40); the fourth recovers the full crate set with versions.
+The third line confirms the unique N-API import count (43); the fourth recovers the full crate set with versions.
 
 ## Caveats
 

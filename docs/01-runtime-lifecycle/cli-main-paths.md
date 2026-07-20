@@ -5,9 +5,10 @@
 This page is a full-analysis reverse-engineering pass over the extracted Claude Code CLI bundle:
 
 - Artifact: `claude-code-pkg/src/entrypoints/cli.js`
-- Package version: `@anthropic-ai/claude-code@2.1.143`
-- Native package: `@anthropic-ai/claude-code-linux-x64@2.1.143`
-- Extracted file identity: 14,548,665 bytes, approximately 19,592 source lines, SHA-256 `7ee77e22cde2618030c26182d43d8be82f68cbb2ed063f72778c1a5986d0943a`
+- Package version: `@anthropic-ai/claude-code@2.1.215`
+- Native package: `@anthropic-ai/claude-code-linux-x64@2.1.215`
+- Extracted file identity: 20,160,986 bytes, SHA-256 `78007444c51f6828a8c122c97d436038c72c035f9149178d0a8ba13e77cda350`
+- Renamed reading surface: 31,833,579 bytes, SHA-256 `461de0af948a1698a421a7a9072b6168bc5edc9a546e9e666db629cbcc0c72ce`
 - Bun graph entrypoint: `/$bunfs/root/src/entrypoints/cli.js`
 
 The bundle is minified and bundled, but it still contains readable JavaScript and user-facing strings. Source locations below use approximate line numbers and byte offsets plus exact symbols or strings.
@@ -18,7 +19,7 @@ The bundle is minified and bundled, but it still contains readable JavaScript an
 | --- | --- | --- |
 | FinalEntrypointMirror | `FINAL_ROOT_FILES`, `src/entrypoints/cli.js` | Mirrors the Bun graph entrypoint into the retained `claude-code-pkg/src/entrypoints/cli.js` path. |
 | BunGraphEntrypoint | `// @bun @bytecode @bun-cjs` | Confirms the retained file is the Bun standalone graph entrypoint. |
-| OuterBootstrap | `async function J9A` | Outer process bootstrap and fast-path command handling. |
+| OuterBootstrap | `--version`, `-v`, `VERSION: "2.1.215"` | Outer process bootstrap and fast-path version handling. |
 | BootstrapLazyMainImport | `let{main:f}=await Promise.resolve().then(() => (p08(),zo6))` | Lazy load of the bundled CLI module, then `main()`. |
 | MainModuleInitializer | `var p08=T(()=>` | Bundled module initializer for the main CLI module. |
 | MainBundleExports | `var zo6={}; j$(zo6,{startDeferredPrefetches:()=>startDeferredPrefetches,main:()=>O4A})` | Export surface for `main` and deferred prefetches. |
@@ -29,7 +30,7 @@ The bundle is minified and bundled, but it still contains readable JavaScript an
 | SessionStartClassifier | `function Uzq(H)` | Classifies the session start type from argv, including resume/from-PR style starts. |
 | AiAgentEnvBootstrap | `function cV$()` | Environment bootstrap that sets `AI_AGENT` to a Claude Code/version string when appropriate. |
 | CommanderRoot | `async function w4A()` | Commander root command construction and runtime branch routing. |
-| ClaudeRootCommand | `H.name("claude")` | Root CLI command and user-facing description. |
+| ClaudeRootCommand | `Claude Code - starts an interactive session by default` | Root CLI command and user-facing description. |
 | RootActionBody | `.action(async(A,z)=>` | Root command action body; most CLI mode decisions happen inside this action. |
 | PrintFastParsePath | `if($&&!q)return ... H.parseAsync(process.argv)` | Fast parse path for `--print` that skips subcommand registration unless a `cc://`/`cc+unix://` argument is present. |
 | McpHeadlessCoordinator | `function fH9(H)` | MCP connection coordinator used by headless setup. |
@@ -44,7 +45,7 @@ The bundle is minified and bundled, but it still contains readable JavaScript an
 | ResumeRemoteSessionBranch | `else if(z.resume||z.fromPr||AH||wH!==null)` | Resume, PR, teleport, and remote-session branch cluster. |
 | McpCommandRegistrar | `function rR4(H)` | `mcp` subcommand registrar. |
 | PluginCommandRegistrar | `function fC4(H)` | `plugin`/`plugins` subcommand registrar. |
-| UtilitySubcommandRegistry | `H.command("auth")`, `H.command("project")`, `H.command("agents")`, `H.command("install [target]")` | Top-level utility subcommands registered after the root command. |
+| UtilitySubcommandRegistry | `agents`, `auth`, `auto-mode`, `doctor`, `gateway`, `install`, `mcp`, `plugin`, `project`, `setup-token`, `ultrareview`, `update` | Top-level utility subcommands visible in `2.1.215 --help`. |
 | StartupProfilingEvents | `XA9={import_time` | Startup profiling event groups such as `cli_entry`, `main_tsx_imports_loaded`, and `cli_before_main_import`. |
 
 ## Bundle modules in `cli.renamed.js`
@@ -134,7 +135,7 @@ There is one performance-sensitive special case: if the process includes `-p` or
 
 | Runtime path | Trigger | Key semantic anchors | Downstream path |
 |---|---|---|---|
-| Version fast path | `--version`, `-v`, or `-V` as the only command, optional `--verbose` | `OuterBootstrap`, product constant `VERSION:"2.1.143"` | Print version and exit before full main import. |
+| Version fast path | `--version`, `-v`, or `-V` as the only command, optional `--verbose` | `OuterBootstrap`, product constant `VERSION: "2.1.215"` | Print version and exit before full main import. |
 | Deep link trampoline | `--handle-uri <uri>` | `process.argv.indexOf("--handle-uri")`, `handleDeepLinkUri` | Enable config, parse URI, launch terminal/session, then `process.exit(D)`. |
 | Print/headless | `-p`, `--print`, `--init-only`, `--sdk-url...`, or stdout not TTY | `HeadlessInitialPredicate`, headless branch, `HeadlessRunner`, `HeadlessControlLoop` | Build headless app state, connect MCP, run the headless runner, drain the streaming/control loop. |
 | SDK transport | `--sdk-url` plus stream JSON formats | `--sdk-url <url>`, `--input-format=stream-json`, `--output-format=stream-json` checks | Uses remote WebSocket/SSE transport and headless control protocol. |
@@ -226,30 +227,34 @@ The root command registers these main command families outside the print fast pa
 | `update` / `upgrade` | `H.command("update").alias("upgrade")` | Checks for updates and installs if available. |
 | `install [target]` | `H.command("install [target]")` | Installs the native Claude Code build for `stable`, `latest`, or a specific version. |
 
+In `2.1.215`, `auto-mode` exposes `config`, `defaults`, `critique`, and `reset`; `reset` removes the `autoMode` section from user settings after confirmation (or with `--yes`). The `agents` command adds scriptable `--json` output and `--all` for completed rows, while retaining per-dispatch model, effort, permission, settings, MCP, plugin, and directory defaults.
+
 ## Root flag families
 
 The root action consumes a large option surface. The most important groups are:
 
 | Family | Representative flags | Runtime implication |
 |---|---|---|
-| Debug/diagnostics | `--debug`, `--debug-file`, `--verbose`, `--mcp-debug` | Enables debug logging, stderr/file logs, or verbose output. |
-| Headless/output | `-p`, `--print`, `--output-format`, `--input-format`, `--json-schema`, `--include-partial-messages`, `--replay-user-messages`, `--sdk-url` | Selects print/SDK paths and result framing. |
+| Debug/diagnostics | `--debug`, `--debug-file`, `--verbose`, `--safe-mode` | Enables debug logging, file logs, verbose output, or customization-free recovery startup. |
+| Headless/output | `-p`, `--print`, `--output-format`, `--input-format`, `--json-schema`, `--include-partial-messages`, `--include-hook-events`, `--replay-user-messages`, `--forward-subagent-text`, `--prompt-suggestions` | Selects print/SDK paths and result framing. Subagent forwarding and prompt suggestions require stream-JSON. |
 | Minimal startup | `--bare`, `--init`, `--init-only`, `--maintenance` | Reduces or changes setup hook behavior; `--bare` sets `CLAUDE_CODE_SIMPLE=1`. |
 | Permissions/tools | `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`, `--permission-mode`, `--allowedTools`, `--tools`, `--disallowedTools`, `--permission-prompt-tool` | Shapes tool availability and permission prompts. |
 | Prompt/system | `--system-prompt`, `--system-prompt-file`, `--append-system-prompt`, `--append-system-prompt-file`, `--plan-mode-instructions`, `--exclude-dynamic-system-prompt-sections` | Overrides or appends system prompt content and cache-sensitive sections. |
 | Sessions | `--continue`, `--resume`, `--fork-session`, `--from-pr`, `--session-id`, `--no-session-persistence`, `--resume-session-at`, `--rewind-files`, `--name` | Controls local transcript/session restore, forking, persistence, and display naming. |
 | Model/thinking | `--model`, `--fallback-model`, `--effort`, `--thinking`, `--thinking-display`, `--max-thinking-tokens`, `--max-turns`, `--max-budget-usd`, `--task-budget`, `--betas` | Selects model, thinking mode, budget, and beta headers. |
-| MCP/plugins/settings | `--mcp-config`, `--strict-mcp-config`, `--settings`, `--managed-settings`, `--setting-sources`, `--plugin-dir`, `--plugin-url`, `--agents` | Adds dynamic MCP/plugin/agent/settings inputs. |
-| Workspace/integrations | `--add-dir`, `--ide`, `--chrome`, `--no-chrome`, `--file` | Adds tool-access directories and optional IDE/Chrome/file-resource integration. |
+| MCP/plugins/settings | `--mcp-config`, `--strict-mcp-config`, `--settings`, `--setting-sources`, `--plugin-dir`, `--plugin-url`, `--agents` | Adds dynamic MCP/plugin/agent/settings inputs. |
+| Workspace/integrations | `--add-dir`, `--ide`, `--chrome`, `--no-chrome`, `--file`, `--ax-screen-reader` | Adds tool-access directories, IDE/Chrome/file integration, and the flat accessibility renderer. |
 | Deep link/remote hidden flags | `--prefill`, `--deep-link-origin`, `--prefill-b64`, `--deep-link-cwd-b64`, `--teleport`, `--remote`, `--remote-control`, `--rc` | Used by deep-link launching, remote sessions, and Remote Control. |
 
 ## High-signal constants and environment variables
 
 | Constant/string | Anchor | Meaning |
 |---|---|---|
-| `VERSION:"2.1.143"` | line ~11, byte `0xdc5` | Embedded product version used by version output, update checks, and telemetry. |
-| `BUILD_TIME:"2026-05-15T17:39:39Z"` | adjacent to `VERSION` | Embedded build time. |
-| `GIT_SHA:"cfb8132e4c3551e2773f41a1900efd1cc93637db"` | adjacent to `VERSION` | Embedded source revision identifier. |
+| `VERSION: "2.1.215"` | `cli.renamed.js` line ~211 | Embedded product version used by version output, update checks, and telemetry. |
+| `BUILD_TIME: "2026-07-19T00:01:04Z"` | adjacent to `VERSION` | Embedded build time. |
+| `GIT_SHA: "316ce99628e89900bf0b1328fed3b8fec0c0c92d"` | adjacent to `VERSION` | Embedded source revision identifier. |
+| `CLAUDE_CODE_SAFE_MODE` | lines ~16,253 and ~932,411 | Environment equivalent of `--safe-mode`; disables customizations while preserving policy/auth/core tools. |
+| `CLAUDE_AX_SCREEN_READER` | lines ~36,224 and ~187,650 | Environment override for screen-reader-friendly flat output. |
 | `CLAUDE_CODE_ENTRYPOINT` | line ~129, byte `0xe4be7` | Runtime entrypoint classifier; examples include `cli`, `sdk-cli`, `sdk-ts`, `sdk-py`, `remote`, `claude-vscode`, and `claude-desktop`. |
 | `CLAUDE_CODE_SIMPLE` | line ~11, byte `0xe572` | Minimal/bare mode switch; `--bare` sets this env var. |
 | `CLAUDE_CONFIG_DIR` | line ~11, byte `0xe9a0` | Overrides the default `~/.claude` configuration directory. |

@@ -5,6 +5,7 @@ This page documents Claude Code's `Kairos` scheduled-task subsystem: how `/sched
 Use this page alongside:
 
 - [Daemon and background service](../01-runtime-lifecycle/daemon-and-background-service.md) for the `WorktreeDaemonJobScheduler` that hosts scheduled tasks across sessions.
+- [Dynamic workflows](dynamic-workflows.md) for immediate deterministic multi-agent orchestration.
 - [Hooks and events reference](../03-tools-integrations-security/hooks-and-events-reference.md) for the hook events emitted around scheduled fires.
 - [Feature gates reference](../05-hosted-agent-ops/feature-gates-reference.md) for the `tengu_kairos_*` GrowthBook gates that toggle the subsystem.
 
@@ -68,6 +69,16 @@ flowchart TD
     Refresh --> Missed{one-shot fire time in past?}
     Missed -->|yes| Notify[onMissed(missedTasks) or buildMissedTaskNotification]
 ```
+
+## Cron versus workflows and remote routines
+
+| Surface | Primary job | Execution boundary |
+|---|---|---|
+| `CronCreate` / `/loop` / `ScheduleWakeup` | Deliver a prompt later or repeatedly. | Fires back into the normal session loop; tool calls still use normal permissions. |
+| `Workflow` / `/workflows` | Orchestrate many agents now with deterministic JavaScript control flow. | Runs as a background task with phase progress, shared budgets, and a resumable journal. |
+| `RemoteTrigger` | Manage or run a Claude.ai cloud routine. | Uses authenticated remote trigger APIs and policy/feature gates. |
+
+A scheduled task can later ask Claude to run a workflow, but scheduling alone is not workflow opt-in: the assigned task must explicitly request that orchestration.
 
 ## Tools the model invokes
 
@@ -177,3 +188,4 @@ The model is told this in `buildCronCreatePrompt`: "Recurring tasks auto-expire 
 - [Feature gates reference](../05-hosted-agent-ops/feature-gates-reference.md)
 - [Slash commands and automation](slash-commands-and-automation.md)
 - [Agents, tasks, and subagents](agents-tasks-and-subagents.md)
+- [Dynamic workflows](dynamic-workflows.md)

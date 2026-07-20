@@ -18,14 +18,14 @@ This page is the shim-level inventory for the two non-`cli.js` JavaScript stubs 
 
 | Module | Bytes | SHA-256 | Role |
 |---|---:|---|---|
-| `image-processor.js` | 1,976 | `91adae12a122ebe5b60fa631ab73fb3a09314deddc9f372113ada67a0ffd9e91` | JS shim requiring `image-processor.node`. |
-| `audio-capture.js` | 1,974 | `744d40b4aeb92c2305144aba48374a3490fea3d2d7526a6820ec7f49b9e1a27b` | JS shim requiring `audio-capture.node`. |
+| `image-processor.js` | 2,171 | `cdda6dcabf12ffd0f558e922fd268b3c21f92a6b869f806510338c25c51492ef` | `2.1.215` JS shim requiring `image-processor.node`. |
+| `audio-capture.js` | 2,169 | `3d6b83c97b7cf53692407e85053262a1cffca44af3697bb0f5b46c18c500b420` | `2.1.215` JS shim requiring `audio-capture.node`. |
 | `image-processor.node` | 1,464,760 | `37bec7de530676e3dfe963d34a824b49191595809a8072348a2ef4571f1e5f4d` | Stripped N-API image module. Statically links Rust `image-0.25.10` / `png-0.18.1` / `image-webp-0.2.4` / `zune-jpeg-0.5.13`; fully analysed in [Image processor native module](image-processor-native.md). |
-| `audio-capture.node` | 492,184 | `7e89edf4dde9b69b6c55a310788ad999e2d0dd469d8a31c529cf28f3ea5e929c` | Stripped N-API audio capture / playback module. Statically links Rust `cpal-0.15.3` + `alsa-0.9.1`; runtime path documented in [Audio capture and voice mode](audio-capture-and-voice.md), binary-level analysis in [Audio capture native module](audio-capture-native.md). |
+| `audio-capture.node` | 492,184 | `185f990044394fbd4811284cfe9812d261453571c4dfbfa27dadd299c53036eb` | Stripped N-API audio capture / playback module. Statically links Rust `cpal-0.15.3` + `alsa-0.9.1`; runtime path documented in [Audio capture and voice mode](audio-capture-and-voice.md), binary-level analysis in [Audio capture native module](audio-capture-native.md). |
 
 ## Interpretation
 
-The two retained JavaScript files are straightforward Bun CommonJS shims. They do not implement media logic directly; each immediately requires its matching `.node` shared object from the original Bun payload. Because the native modules are stripped and no longer retained, this repository treats them as binary support modules rather than readable implementation targets.
+The two retained JavaScript files are straightforward Bun CommonJS shims. They do not implement media logic directly; each immediately requires its matching `.node` shared object from the original Bun payload. The native modules are regenerated locally and gitignored, so this repository treats them as binary support modules rather than ordinary tracked source.
 
 The likely runtime boundary is media input support: the names indicate image processing and audio capture. The audio path is now source-confirmed in `cli.renamed.js`: voice mode loads the native capture addon when available, falls back to OS recorders, streams audio for transcription, and injects the final transcript into the prompt input. See [Audio capture and voice mode](audio-capture-and-voice.md) for that runtime path.
 

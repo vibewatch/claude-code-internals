@@ -31,6 +31,8 @@ Use this page together with:
 | SystemPromptDynamicBoundary | `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` | Sentinel string separating stable/dynamic system-prompt sections (see [Prompt, context, and memory](../02-context-model-loop/prompt-context-memory.md)). |
 | EscalatingDefaultModeFilter | `filterEscalatingDefaultMode` | Filters permission-mode escalations so the SDK does not surface escalations that are blocked by policy. |
 | SdkAbortError | `class AbortError extends Error` | SDK-exported abort error used by `query` cancellation. |
+| ForwardSubagentText | `--forward-subagent-text`, `CLAUDE_CODE_FORWARD_SUBAGENT_TEXT` | Includes subagent text/thinking as parent-linked stream-JSON messages. |
+| MidTurnModelControl | `set_model` control request | Applies during an active headless/SDK turn; the next model round trip uses the new model. |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -77,6 +79,8 @@ Key options the SDK accepts:
 - `resume`, `forkSession`, `loadTimeoutMs`, `sessionStore` — control how the session is restored, including using an [`InMemorySessionStore`](#in-memory-session-store) instead of disk.
 - `model`, `fallbackModel`, `permissionMode`, `allowedTools`, `disallowedTools`, `mcpServers`, `agents`, `hooks`, `outputStyle`, `appendSystemPrompt` — same shape as the corresponding root flags in [Commands and flags](../01-runtime-lifecycle/commands-and-flags.md).
 - `signal`, `abortController` — cancellation. Triggers a `SdkAbortError`.
+
+In stream-JSON mode, `--forward-subagent-text` (or its environment equivalent) forwards delegated text/thinking with `parent_tool_use_id`, while normal mode keeps that internal to the agent result. Model-control requests are no longer deferred to the following user turn: a valid `set_model` received mid-turn affects the next provider round trip in the current turn.
 
 ### `startup({ options, initializeTimeoutMs }) -> WarmQuery`
 

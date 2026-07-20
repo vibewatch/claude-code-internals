@@ -35,6 +35,9 @@ This page is the canonical inventory for Claude Code tool names, tool families, 
 | McpToolsListSchema | `tools/list` | MCP tool-list protocol schema. |
 | ToolExecutionBoundary | `function U85` | Main tool execution/permission boundary. |
 | PreToolUsePermissionHook | `hookPermissionResult`, `PreToolUse` | `PreToolUse` hook can allow, ask, deny, defer, or update input. |
+| AgentToolContract | `Agents run in the background by default` | Delegated agents are asynchronous unless `run_in_background: false` is supplied. |
+| WorkflowToolContract | `Execute a workflow script that orchestrates multiple subagents deterministically` | Dynamic workflows start in the background and report completion through task notifications. |
+| RefreshMcpToolsContract | `RefreshMcpTools`, status `refreshed` / `error` / `not_connected` | Re-queries live MCP tool lists without dialing disconnected servers. |
 
 ## Built-in tool families
 
@@ -45,7 +48,10 @@ This page is the canonical inventory for Claude Code tool names, tool families, 
 | File write/edit | `Edit`, `Write`, `MultiEdit`, `NotebookEdit` | Modify files and notebooks. | Read-before-write/edit checks and modified-after-read checks. |
 | Web | `WebFetch`, `WebSearch` | Fetch URL/domain content or perform web search. | Domain/search permission validation and provider/tool support gates. |
 | Planning/todos | `TodoWrite`, `ExitPlanMode` | Track plan state and exit plan mode. | Plan-mode state and prompt/context rules. |
-| Skills and agents | `Skill`, `TaskCreate`, `TaskGet`, `TaskList`, `TaskUpdate`, `SendMessage` | Load skills and dispatch/observe task or subagent work. | Agent/task runtime, subagent hooks, task state registry. |
+| Skills and agents | `Skill`, `Agent`, `TaskCreate`, `TaskGet`, `TaskList`, `TaskUpdate`, `SendMessage` | Load skills and dispatch/observe background-by-default subagent or task work. | Agent/task runtime, subagent hooks, task state registry, per-session spawn cap. |
+| Deterministic orchestration | `Workflow` | Run a JavaScript workflow that coordinates many agents with shared concurrency/token budgets. | Workflow enablement/policy, usage warning, permission decision, workflow runtime. |
+| MCP lifecycle | `RefreshMcpTools`, `ListMcpResources`, `ReadMcpResource`, `ReadMcpResourceDir` | Refresh live tool discovery and browse/read MCP resources. | MCP connection state, server schema, normal permission boundary. |
+| Scheduled/monitor work | `CronCreate`, `CronDelete`, `CronList`, `ScheduleWakeup`, `Monitor`, `RemoteTrigger` | Schedule local prompts, arm plugin monitors, or manage gated remote routines. | Cron/monitor/plugin trust and remote-session policy. |
 
 ## Schema ownership
 
@@ -55,6 +61,24 @@ This page is the canonical inventory for Claude Code tool names, tool families, 
 | MCP tools | MCP `tools/list` responses include names and `inputJSONSchema`; `tools/call` executes through the MCP client. | Permission-prompt routing requires a schema-bearing MCP tool; MCP calls still pass guarded runtime boundaries. |
 | Plugin-provided tools/capabilities | Plugin manifests can contribute hooks, MCP servers, skills, agents, output styles, and related capability surfaces. | Plugin-provided capabilities compose with settings, trust, hooks, and permission policy. |
 | Agent/task tools | Task/subagent tool constants are runtime tools exposed to the model or agent controller. | Task lifecycle hooks and task-state updates apply in addition to normal tool permission checks. |
+
+## SDK-declared additions in `2.1.215`
+
+The packaged `sdk-tools.d.ts` union adds the following schema owners relative to `2.1.143`. Presence in the declaration proves a contract shape, not universal availability: several are host-, account-, policy-, or feature-gated.
+
+| Tool/schema | Confirmed role | Availability boundary |
+|---|---|---|
+| `Workflow` | Executes a named or inline deterministic multi-agent workflow and returns a background task ID. | `enableWorkflows`/`disableWorkflows`, org policy, usage confirmation, model/effort support. |
+| `Monitor` | Arms a persistent background script whose stdout lines become task notifications. | Primarily plugin/host supplied; runs at hook-like trust, not as an ordinary sandboxed shell call. |
+| `PushNotification` | Sends a mobile notification when the connected host/Remote Control surface permits it. | Remote Control and notification preference gates. |
+| `RefreshMcpTools` | Re-runs `tools/list` on connected servers and reports added/removed tool names. | Never establishes a new connection; returns `not_connected` when no live client exists. |
+| `Projects`, `Artifact`, `ClaudeDesign` | Hosted project/knowledge, artifact, and design RPC contracts. | Host/account feature gates; do not assume local CLI availability. |
+| `RemoteTrigger` | Lists, creates, updates, or runs remote routines through the authenticated trigger API. | Claude.ai subscription, remote-policy, feature, and local-session gates. |
+| `ReportFindings` | Returns structured code-review findings and optional fix outcomes. | Review workflows/hosts. |
+| `ProposeSkills` | Returns structured skill proposals. | Host/bundled feature gate. |
+| `REPL`, `ShowOnboardingRolePicker`, `SendFeedback` | Host-control and product-UX contracts. | Internal/hosted surfaces rather than guaranteed model-visible local tools. |
+
+`Agent` and `WebSearch` also gained hard process-local budgets: defaults are 200 spawns and 200 searches per session, configurable with `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` and `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION`. `/clear` resets the subagent budget.
 
 ## Descriptor and execution-body map
 

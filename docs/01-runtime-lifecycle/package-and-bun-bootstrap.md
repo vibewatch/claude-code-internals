@@ -9,9 +9,9 @@ This page reverse-engineers how the Claude Code package reaches the bundled `cli
 | PackageInputExtractor | `WRAPPER_PACKAGE`, native package selection, `.bun` section extraction | Downloads package inputs and dumps the raw Bun payload section. |
 | FinalArtifactExtractor | `TRAILER`, `MODULE_RECORD_SIZE`, `FINAL_ROOT_FILES`, `UNWANTED_FINAL_OUTPUTS` | Parses the Bun graph in memory, keeps only selected JS files, and prunes graph/JSC/prompt/native generated outputs. |
 | BunEntrypointWrapper | `// @bun @bytecode @bun-cjs` | Bun wrapper header. |
-| EmbeddedRuntimeVersion | `VERSION:"2.1.143"` | Embedded runtime version constant. |
-| OuterBootstrap | `async function J9A` | Outer JavaScript bootstrap. |
-| BootstrapLazyMainImport | `let{main:f}=await Promise.resolve().then(() => (p08(),zo6))` | Lazy initialization of the main bundled module. |
+| EmbeddedRuntimeVersion | `VERSION: "2.1.215"`, `BUILD_TIME: "2026-07-19T00:01:04Z"` | Embedded runtime version/build constants. |
+| OuterBootstrap | `--version`, `-v`, `VERSION: "2.1.215"` | Outer JavaScript bootstrap fast path. |
+| FullRuntimeBoundary | `Claude Code - starts an interactive session by default` | Root-command string reached after lazy initialization of the full bundle. |
 
 ## Startup layers
 
@@ -35,7 +35,7 @@ sequenceDiagram
 
 ## Bun payload contents
 
-The Bun payload contains five modules. Only one is the full runtime entrypoint; two are JavaScript shims; two are stripped native shared objects. The final retained artifact set keeps the three readable JavaScript files and prunes the native `.node` binaries.
+The Bun payload contains five root modules. Only one is the full runtime entrypoint; two are JavaScript shims; two are stripped native shared objects. The final extractor keeps the three readable JavaScript files and writes both native `.node` binaries locally; `*.node` excludes those binaries from Git.
 
 | Module | Loader | Role |
 |---|---|---|

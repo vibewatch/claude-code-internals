@@ -4,18 +4,26 @@
 
 Prompts that demand strict JSON-only or fixed-shape responses (`RESPOND WITH ONLY A VALID JSON OBJECT`, etc.).
 
-Index: [Prompt template catalog](../prompt-template-catalog.md). Source: [`cli.renamed.js`](../../../claude-code-pkg/src/entrypoints/cli.renamed.js) (SHA-256 `fd212af5897bf4f5b2c4eee2863ad46140d003abd8569adda2dd32b5857a495b`).
+Index: [Prompt template catalog](../prompt-template-catalog.md). Source: [`cli.renamed.js`](../../../claude-code-pkg/src/entrypoints/cli.renamed.js) (SHA-256 `461de0af948a1698a421a7a9072b6168bc5edc9a546e9e666db629cbcc0c72ce`).
 
 Each entry shows the **full literal** as it appears in the bundle; `${…}` marks template-literal interpolation sites that the runtime substitutes at call time.
 
 ---
 
-### prompt-0805
+### prompt-1027
 
-**Anchor:** [cli.renamed.js#L617798](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L617798) (0x127b53f) · **enclosing `Su5`** · **Kind:** template · **Length:** 2104 chars · **SHA-256:** `2447ccc9ea9e4c40…`
+**Anchor:** [cli.renamed.js#L565611](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L565611) (0x110a681) · **enclosing `GVy`** · **Kind:** template · **Length:** 2108 chars · **SHA-256:** `6c4f40ff66c00cad…`
 
 ```text
-You're writing an "At a Glance" summary for a Claude Code usage insights report for Claude Code users. The goal is to help them understand their usage and improve how they can use Claude better, especially as models improve. Use this 4-part structure: 1. **What's working** - What is the user's unique style of interacting with Claude and what are some impactful things they've done? You can include one or two details, but keep it high level since things might not be fresh in the user's memory. Don't be fluffy or overly complimentary. Also, don't focus on the tool calls they use. 2. **What's hindering you** - Split into (a) Claude's fault (misunderstandings, wrong approaches, bugs) and (b) user-side friction (not providing enough context, environment issues -- ideally more general than just one project). Be honest but constructive. 3. **Quick wins to try** - Specific Claude Code features they could try from the examples below, or a workflow technique if you think it's really compelling. (Avoid stuff like "Ask Claude to confirm before taking actions" or "Type out more context up front" which are less compelling.)
+You're writing an "At a Glance" summary for a Claude Code usage insights report for Claude Code users. The goal is to help them understand their usage and improve how they can use Claude better, especially as models improve.
+
+Use this 4-part structure:
+
+1. **What's working** - What is the user's unique style of interacting with Claude and what are some impactful things they've done? You can include one or two details, but keep it high level since things might not be fresh in the user's memory. Don't be fluffy or overly complimentary. Also, don't focus on the tool calls they use.
+
+2. **What's hindering you** - Split into (a) Claude's fault (misunderstandings, wrong approaches, bugs) and (b) user-side friction (not providing enough context, environment issues -- ideally more general than just one project). Be honest but constructive.
+
+3. **Quick wins to try** - Specific Claude Code features they could try from the examples below, or a workflow technique if you think it's really compelling. (Avoid stuff like "Ask Claude to confirm before taking actions" or "Type out more context up front" which are less compelling.)
 
 4. **Ambitious workflows for better models** - As we move to much more capable models over the next 3-6 months, what should they prepare for? What workflows that seem impossible now will become possible? Draw from the appropriate section below.
 
@@ -51,9 +59,9 @@ ${…}
 ${…}
 ```
 
-### prompt-0820
+### prompt-1042
 
-**Anchor:** [cli.renamed.js#L619009](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L619009) (0x1289d49) · **top-level** · **Kind:** template · **Length:** 306 chars · **SHA-256:** `c1ffef43bdb49599…`
+**Anchor:** [cli.renamed.js#L566789](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L566789) (0x1119eb1) · **top-level** · **Kind:** template · **Length:** 306 chars · **SHA-256:** `c1ffef43bdb49599…`
 
 ```text
 Analyze this Claude Code usage data and identify project areas.
@@ -68,9 +76,9 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
 Include 4-5 areas. Skip internal CC operations.
 ```
 
-### prompt-0821
+### prompt-1043
 
-**Anchor:** [cli.renamed.js#L619023](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L619023) (0x1289edc) · **top-level** · **Kind:** template · **Length:** 464 chars · **SHA-256:** `792de63dd17ccea3…`
+**Anchor:** [cli.renamed.js#L566803](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L566803) (0x111a044) · **top-level** · **Kind:** template · **Length:** 464 chars · **SHA-256:** `792de63dd17ccea3…`
 
 ```text
 Analyze this Claude Code usage data and describe the user's interaction style.
@@ -82,9 +90,9 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
 }
 ```
 
-### prompt-0822
+### prompt-1044
 
-**Anchor:** [cli.renamed.js#L619034](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L619034) (0x128a106) · **top-level** · **Kind:** template · **Length:** 402 chars · **SHA-256:** `95ac49cb6ec1264a…`
+**Anchor:** [cli.renamed.js#L566814](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L566814) (0x111a26e) · **top-level** · **Kind:** template · **Length:** 402 chars · **SHA-256:** `95ac49cb6ec1264a…`
 
 ```text
 Analyze this Claude Code usage data and identify what's working well for this user. Use second person ("you").
@@ -100,9 +108,9 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
 Include 3 impressive workflows.
 ```
 
-### prompt-0823
+### prompt-1045
 
-**Anchor:** [cli.renamed.js#L619049](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L619049) (0x128a2f9) · **top-level** · **Kind:** template · **Length:** 512 chars · **SHA-256:** `25c570e32ce39938…`
+**Anchor:** [cli.renamed.js#L566829](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L566829) (0x111a461) · **top-level** · **Kind:** template · **Length:** 512 chars · **SHA-256:** `25c570e32ce39938…`
 
 ```text
 Analyze this Claude Code usage data and identify friction points for this user. Use second person ("you").
@@ -118,9 +126,9 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
 Include 3 friction categories with 2 examples each.
 ```
 
-### prompt-0824
+### prompt-1046
 
-**Anchor:** [cli.renamed.js#L619064](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L619064) (0x128a554) · **top-level** · **Kind:** template · **Length:** 2663 chars · **SHA-256:** `0bfad30c4ea89de8…`
+**Anchor:** [cli.renamed.js#L566844](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L566844) (0x111a6bc) · **top-level** · **Kind:** template · **Length:** 2662 chars · **SHA-256:** `99063889d404a69c…`
 
 ```text
 Analyze this Claude Code usage data and suggest improvements.
@@ -142,7 +150,7 @@ Analyze this Claude Code usage data and suggest improvements.
    - How to use: `claude -p "fix lint errors" --allowedTools "Edit,Read,Bash"`
    - Good for: CI/CD integration, batch code fixes, automated reviews
 
-5. **Task Agents**: Claude spawns focused sub-agents for complex exploration or parallel work.
+5. **Task Agents**: Claude spawns focused subagents for complex exploration or parallel work.
    - How to use: Claude auto-invokes when helpful, or ask "use an agent to explore X"
    - Good for: codebase exploration, understanding complex systems
 
@@ -164,9 +172,9 @@ IMPORTANT for claude_md_additions: PRIORITIZE instructions that appear MULTIPLE 
 IMPORTANT for features_to_try: Pick 2-3 from the CC FEATURES REFERENCE above. Include 2-3 items for each category.
 ```
 
-### prompt-0825
+### prompt-1047
 
-**Anchor:** [cli.renamed.js#L619107](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L619107) (0x128b023) · **top-level** · **Kind:** template · **Length:** 522 chars · **SHA-256:** `f203e0ca7e9708fb…`
+**Anchor:** [cli.renamed.js#L566887](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L566887) (0x111b18a) · **top-level** · **Kind:** template · **Length:** 522 chars · **SHA-256:** `f203e0ca7e9708fb…`
 
 ```text
 Analyze this Claude Code usage data and identify future opportunities.
@@ -182,9 +190,9 @@ RESPOND WITH ONLY A VALID JSON OBJECT:
 Include 3 opportunities. Think BIG - autonomous workflows, parallel agents, iterating against tests.
 ```
 
-### prompt-0826
+### prompt-1048
 
-**Anchor:** [cli.renamed.js#L619123](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L619123) (0x128b294) · **top-level** · **Kind:** template · **Length:** 371 chars · **SHA-256:** `e36a45bbd81298d1…`
+**Anchor:** [cli.renamed.js#L566903](../../../claude-code-pkg/src/entrypoints/cli.renamed.js#L566903) (0x111b3fb) · **top-level** · **Kind:** template · **Length:** 371 chars · **SHA-256:** `e36a45bbd81298d1…`
 
 ```text
 Analyze this Claude Code usage data and find a memorable moment.

@@ -14,6 +14,11 @@ This page documents slash-command and automation surfaces that complement the ag
 | DoctorSlashDiagnosticSurface | `/doctor diagnostics screen` | Slash/UI diagnostic surface. |
 | AutoModeCommand | `H.command("auto-mode")` | Automation/classifier inspection command. |
 | AutoModeConsentDebug | `[auto-mode] hasAutoModeOptIn=` | Auto-mode consent/config debug string. |
+| ConfigKeyValueCommand | `Usage: /config key=value [key=value ...]` | Applies settings without opening the full settings UI. |
+| ChangeDirectoryCommand | `Usage: /cd <path>` | Moves the live session to another working directory. |
+| ForkCommand | `Usage: /fork \<directive\>` | Starts a conversation copy as a background session. |
+| SubtaskCommand | `Usage: /subtask \<task\>` | Starts an in-session delegated subagent. |
+| WorkflowsCommand | `/workflows` | Opens dynamic workflow progress/history and stop controls. |
 
 ## Automation surfaces
 
@@ -26,6 +31,11 @@ This page documents slash-command and automation surfaces that complement the ag
 | Permission UX | `/permissions` manages working-directory/tool permission state. |
 | Doctor UX | `/doctor` is a diagnostic screen in the interactive UI. |
 | `auto-mode` | Command for inspecting classifier defaults/config and critiquing custom rules. |
+| `/config key=value` | Sets one or more settings directly; bare `/config` opens the interactive settings screen. |
+| `/cd <path>` | Changes the session cwd and triggers associated root/MCP/hook updates. |
+| `/fork <directive>` | Creates a separately managed background copy of the conversation. |
+| `/subtask <task>` | Delegates one task inside the current session. |
+| `/workflows` | Shows live and historical deterministic workflow runs. |
 
 ## Slash-command path
 
@@ -41,7 +51,7 @@ flowchart TD
 
 ## Auto-mode
 
-`auto-mode` is registered as a top-level command when the feature is not disabled. It exposes subcommands for defaults/config inspection and an AI critique path for custom rules. Nearby debug strings show opt-in logic from user/local/flag/policy values.
+`auto-mode` is registered as a top-level command when the feature is not disabled. It exposes `config`, `defaults`, `critique`, and `reset`; reset removes the user-level `autoMode` section after confirmation (`--yes` skips the prompt). Classifier rules can only come from user, flag/SDK, or managed settings—project/local rules are ignored because repositories control those files.
 
 ## Subcommand tokenization (`matchSubcommand`)
 

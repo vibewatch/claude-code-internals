@@ -17,6 +17,8 @@ This page reverse-engineers the authentication and provider-selection paths that
 | SmallFastModelOverride | `ANTHROPIC_SMALL_FAST_MODEL` | Small/fast model override. |
 | ModelSelectionFlag | `--model <model>` | Root model-selection flag. |
 | FallbackModelFlag | `--fallback-model <model>` | Print-mode fallback model flag. |
+| EmbeddedModelCatalog | `display_name: "Sonnet 5"`, `display_name: "Opus 4.8"`, `display_name: "Fable 5"` | Hand-maintained runtime catalog with provider IDs, context, output, capability, pricing, and alias metadata. |
+| ManagedModelPolicy | `availableModels`, `enforceAvailableModels` | Organization policy can restrict aliases, explicit model picks, subagents, and the resolved Default model. |
 | XaaEnableGate | `CLAUDE_CODE_ENABLE_XAA` | Cross-app access OAuth flow is gated when server config requests `oauth.xaa`. |
 | XaaTokenExchangeError | `XaaTokenExchangeError`, `shouldClearIdToken` | Failed XAA token exchange can carry cache-clearing guidance. |
 | McpOAuthStore | `mcpOAuth` | MCP OAuth credentials are stored by server-derived key. |
@@ -42,6 +44,21 @@ The provider classifier visible around `Dq()` uses environment gates to choose a
 | Mantle | `CLAUDE_CODE_USE_MANTLE` |
 
 The bundle also contains region/base URL surfaces such as `AWS_REGION`, `AWS_DEFAULT_REGION`, `CLOUD_ML_REGION`, and `ANTHROPIC_BASE_URL`.
+
+## Current model catalog (`2.1.215`)
+
+The embedded catalog near `cli.renamed.js` lines ~15,726–16,029 is the build-local source of truth. Aliases are provider-aware: the default column below is the catalog default, but `per_provider` can deliberately pin an older deployment where the newest family member is unavailable.
+
+| Family alias | Catalog default | Context | Output tokens (default / upper) | Key capabilities |
+|---|---|---:|---:|---|
+| `sonnet` | `claude-sonnet-5` | 1M native | 64K / 128K | effort through `xhigh`, adaptive thinking, mid-conversation system updates, context management |
+| `opus` | `claude-opus-4-8` | 1M native | 64K / 128K | effort through `xhigh`, adaptive thinking, fast mode, lean prompt, mid-conversation system updates |
+| `fable` | `claude-fable-5` | 1M native | 64K / 128K | effort through `xhigh`, adaptive thinking, lean prompt, Fable mitigations; rejects explicit disabled thinking |
+| `haiku` | `claude-haiku-4-5` | 200K (1M suffix support) | 32K / 64K | context management |
+
+`best` resolves to the `fable` family in this build. Provider exceptions are explicit catalog data: for example, `sonnet` remains on older Sonnet deployments for several third-party providers, while `opus` maps to Opus 4.6 on Foundry and Opus 4.7 on the generic gateway. Full IDs bypass alias mapping but still pass availability and policy checks.
+
+The newer catalog entries use adaptive thinking and effort rather than a fixed thinking-token budget. Sonnet 5 and Opus 4.8 accept disabled thinking; Fable 5 rejects an explicit disabled value, so the runtime omits the parameter when thinking is not requested.
 
 ## Credential sources
 
@@ -78,12 +95,16 @@ When enabled, the XAA path performs an IdP/client/token-exchange flow and stores
 | `--model <model>` | Selects a model alias or concrete model for the session. |
 | `ANTHROPIC_MODEL` | Environment-level default model source. |
 | `ANTHROPIC_SMALL_FAST_MODEL` | Overrides the small/fast model used by helper paths. |
-| `--fallback-model <model>` | Enables a print-mode fallback when the default model is overloaded. |
+| `--fallback-model <model>` | Accepts a comma-separated fallback chain for print mode; the runtime retries the primary at the next user turn. Persisted `fallbackModel` settings also support ordered fallback candidates. |
 | `--thinking`, `--thinking-display`, `--max-thinking-tokens` | Controls thinking mode and legacy thinking-token budget. |
 | `--max-budget-usd`, `--task-budget`, `--max-turns` | Enforces budget/turn constraints in headless or task-like paths. |
 | `--betas <betas...>` | Adds beta headers for API-key users. |
 
 For the detailed runtime model resolver, logical model roles, provider-call shape, retries, rate-limit events, usage accounting, quota probes, and billing/overage UI, see [Model selection, calls, usage, quota, and billing](model-selection-usage-quota-billing.md).
+
+## Organization model and version policy
+
+`availableModels` constrains model choices, including agent/subagent overrides. With managed `enforceAvailableModels: true`, the Default row is constrained too: if its resolved model is not allowed, the first surviving allowed model becomes the default. `requiredMinimumVersion` and `requiredMaximumVersion` are managed semver bounds; out-of-range clients refuse startup and direct the user to an approved build. These are fail-closed policy surfaces, not ordinary preferences.
 
 ## Error and availability hints
 

@@ -49,6 +49,7 @@ Use [Data models and frame schemas](data-models-and-frame-schemas.md) for the ca
 | SessionStateFrame | `session_state_changed` | Runtime/session state stream frame. |
 | TranscriptMirrorFrame | `transcript_mirror` | Local/remote transcript mirror frame. |
 | PromptSuggestionFrame | `prompt_suggestion` | Predicted next-prompt frame. |
+| MessageDisplayHook | `MessageDisplay` | Display-only assistant-stream transformation; stored/model-visible content is unchanged. |
 
 ## Bundle module in `cli.renamed.js`
 
@@ -178,7 +179,7 @@ The hook event array at line ~185 contains this source-visible list:
 | Context/compaction | `PreCompact`, `PostCompact`, `InstructionsLoaded` |
 | Permission/elicitation | `PermissionRequest`, `PermissionDenied`, `Elicitation`, `ElicitationResult` |
 | Config/worktree/file | `ConfigChange`, `WorktreeCreate`, `WorktreeRemove`, `CwdChanged`, `FileChanged` |
-| Misc notification | `Notification` |
+| Display/notification | `MessageDisplay`, `Notification` |
 
 ### Stream/headless/SDK frames
 
@@ -197,6 +198,8 @@ The hook event array at line ~185 contains this source-visible list:
 | `rate_limit_event` | Rate-limit state surfaced to clients. |
 | `relevant_memories` | Memory recall supervisor surfaced memories for a turn. |
 | `elicitation_complete` | MCP URL-mode elicitation completed. |
+
+Assistant transcript records in this build also carry the reasoning effort level used for that message. OpenTelemetry correlation fields (`message.uuid`, `client_request_id`) and tool provenance (`tool_source`) let external consumers tie the durable message to request/tool events without treating telemetry as the transcript itself.
 
 ### MCP request/notification methods
 
