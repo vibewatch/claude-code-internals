@@ -4,14 +4,15 @@
 
 This page is a full-analysis reverse-engineering pass over the extracted Claude Code CLI bundle:
 
-- Artifact: `claude-code-pkg/src/entrypoints/cli.js`
+- Raw retained entrypoint: `claude-code-pkg/src/entrypoints/cli.js`
+- Primary behavioral reading surface: `claude-code-pkg/src/entrypoints/cli.renamed.js`
 - Package version: `@anthropic-ai/claude-code@2.1.215`
 - Native package: `@anthropic-ai/claude-code-linux-x64@2.1.215`
 - Extracted file identity: 20,160,986 bytes, SHA-256 `78007444c51f6828a8c122c97d436038c72c035f9149178d0a8ba13e77cda350`
 - Renamed reading surface: 31,833,579 bytes, SHA-256 `461de0af948a1698a421a7a9072b6168bc5edc9a546e9e666db629cbcc0c72ce`
 - Bun graph entrypoint: `/$bunfs/root/src/entrypoints/cli.js`
 
-The bundle is minified and bundled, but it still contains readable JavaScript and user-facing strings. Source locations below use approximate line numbers and byte offsets plus exact symbols or strings.
+The bundle is minified and bundled, but the renamed derivative still contains readable JavaScript and user-facing strings. Source locations below use approximate line numbers plus exact symbols or strings. The raw `cli.js` corroborates artifact identity; behavioral claims use enclosing control flow in `cli.renamed.js`.
 
 ## Source anchors
 
@@ -19,34 +20,27 @@ The bundle is minified and bundled, but it still contains readable JavaScript an
 | --- | --- | --- |
 | FinalEntrypointMirror | `FINAL_ROOT_FILES`, `src/entrypoints/cli.js` | Mirrors the Bun graph entrypoint into the retained `claude-code-pkg/src/entrypoints/cli.js` path. |
 | BunGraphEntrypoint | `// @bun @bytecode @bun-cjs` | Confirms the retained file is the Bun standalone graph entrypoint. |
-| OuterBootstrap | `--version`, `-v`, `VERSION: "2.1.215"` | Outer process bootstrap and fast-path version handling. |
-| BootstrapLazyMainImport | `let{main:f}=await Promise.resolve().then(() => (p08(),zo6))` | Lazy load of the bundled CLI module, then `main()`. |
-| MainModuleInitializer | `var p08=T(()=>` | Bundled module initializer for the main CLI module. |
-| MainBundleExports | `var zo6={}; j$(zo6,{startDeferredPrefetches:()=>startDeferredPrefetches,main:()=>O4A})` | Export surface for `main` and deferred prefetches. |
-| TopLevelMain | `async function O4A()` | Top-level CLI `main`. |
+| OuterBootstrap | `async function ZIS()` at ~983,909 | Outer process router and version/helper/daemon/background fast paths. |
+| BootstrapLazyMainImport | `let { main: f } = await Promise.resolve().then(() => (dri(), uri))` | Lazy load of the normal main module after all pre-main routes decline the invocation. |
+| MainBundleExports | `var uri = {}; nt(uri, { main: () => UkS })` | Export surface for the normal CLI `main`. |
+| TopLevelMain | `async function UkS()` at ~978,259 | Early warning/exit setup, URI trampoline, import rewrite, and Commander handoff. |
 | DeepLinkTrampoline | `process.argv.indexOf("--handle-uri")` | Early deep-link URI trampoline branch. |
-| HeadlessInitialPredicate | `let $=process.argv.slice(2),q=$.includes("-p")||$.includes("--print")` | Initial non-interactive/headless predicate. |
-| EntrypointEnvNormalizer | `function pzq(H)` | Sets or normalizes `CLAUDE_CODE_ENTRYPOINT` based on CLI mode. |
-| SessionStartClassifier | `function Uzq(H)` | Classifies the session start type from argv, including resume/from-PR style starts. |
-| AiAgentEnvBootstrap | `function cV$()` | Environment bootstrap that sets `AI_AGENT` to a Claude Code/version string when appropriate. |
-| CommanderRoot | `async function w4A()` | Commander root command construction and runtime branch routing. |
+| CommanderRoot | `async function jkS()` at ~978,305 | Gets the root program, preserves print fast parsing, registers utility commands, and parses argv. |
+| RootProgramFactory | `rYf({ ... runInteractiveSession: (i, s) => qkS(i, s) ... })` | Constructs root options/action and injects interactive-session collaborators. |
 | ClaudeRootCommand | `Claude Code - starts an interactive session by default` | Root CLI command and user-facing description. |
-| RootActionBody | `.action(async(A,z)=>` | Root command action body; most CLI mode decisions happen inside this action. |
-| PrintFastParsePath | `if($&&!q)return ... H.parseAsync(process.argv)` | Fast parse path for `--print` that skips subcommand registration unless a `cc://`/`cc+unix://` argument is present. |
-| McpHeadlessCoordinator | `function fH9(H)` | MCP connection coordinator used by headless setup. |
-| HeadlessMcpSetup | `let o4=fH9({regularMcpConfigs:Ww` | Headless branch creates the MCP coordinator. |
-| HeadlessRunnerLazyImport | `let{runHeadless:u7}=await Promise.resolve().then(() => (M89(),O89))` | Lazy import of the print/headless runner. |
+| PrintFastParsePath | `if (t && !r) ... await e.parseAsync(process.argv)` in `jkS()` | `--print` skips heavier utility-command registration unless argv contains `cc://` or `cc+unix://`. |
+| InternalHostFastPaths | `--claude-in-chrome-mcp`, `--chrome-native-host`, `--computer-use-mcp` | Dedicated host processes selected by `ZIS()`. |
+| BackgroundHelperFastPaths | `--daemon-worker`, `--bg-pty-host`, `--bg-spare`, `--preload` | Dedicated background process roles selected by `ZIS()`. |
+| DaemonAndBackgroundFastPaths | `vel(t)`, `cli_daemon_path`, `cli_bg_path` | Daemon CLI and background job operations selected before normal main import. |
+| BridgeFastPath | `remote-control`, `rc`, `remote`, `sync`, `bridge` | Direct `bridgeMain` route selected by `ZIS()`. |
 | HeadlessRunner | `async function runHeadless` | Implementation of `runHeadless`. |
 | HeadlessControlLoop | `function runHeadlessStreamingForTesting` | Headless streaming/control loop. |
-| InteractiveBranchSetup | `if(!ZH){let W8=ua4(!1)` | Interactive UI branch initialization. |
-| InteractiveSessionLoop | `await pT$(Y7` | Interactive TUI/session loop entry. |
-| InteractiveResumePicker | `await aa4(Y7` | Interactive resume/search picker fallback. |
-| ContinueRecentSessionBranch | `if(z.continue)` | Continue-most-recent-session branch. |
-| ResumeRemoteSessionBranch | `else if(z.resume||z.fromPr||AH||wH!==null)` | Resume, PR, teleport, and remote-session branch cluster. |
-| McpCommandRegistrar | `function rR4(H)` | `mcp` subcommand registrar. |
-| PluginCommandRegistrar | `function fC4(H)` | `plugin`/`plugins` subcommand registrar. |
+| InteractiveSessionSetup | `async function qkS(e, t)` | Interactive fresh, continue, resume, teleport, and remote-session setup. |
+| InteractiveSessionLoop | `launchRepl` | Interactive TUI/session loop entry. |
+| ContinueRecentSessionBranch | `if (t.continue)` inside `qkS()` | Continue-most-recent-session branch. |
+| ResumeRemoteSessionBranch | `else if (t.resume || t.fromPr || Re || n !== null)` | Resume, PR, teleport, and cloud-session branch cluster. |
 | UtilitySubcommandRegistry | `agents`, `auth`, `auto-mode`, `doctor`, `gateway`, `install`, `mcp`, `plugin`, `project`, `setup-token`, `ultrareview`, `update` | Top-level utility subcommands visible in `2.1.215 --help`. |
-| StartupProfilingEvents | `XA9={import_time` | Startup profiling event groups such as `cli_entry`, `main_tsx_imports_loaded`, and `cli_before_main_import`. |
+| StartupProfilingEvents | `profileCheckpoint("cli_entry")`, `cli_before_main_import`, `main_function_start`, `run_function_start` | Checkpoints spanning bootstrap, normal main, and command parsing. |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -61,15 +55,20 @@ The bundle is minified and bundled, but it still contains readable JavaScript an
 ```mermaid
 flowchart TD
    A[ELF Bun standalone entrypoint] --> B[Outer bootstrap]
-  B --> C{fast path?}
+   B --> C{pre-main route?}
   C -->|--version/-v/-V| V[print VERSION and exit]
-  C -->|background/daemon helpers| D[daemon/background handlers]
+   C -->|internal MCP/native host| HostProc[dedicated host process]
+   C -->|daemon worker/PTY/spare/preload| W[dedicated helper process]
+   C -->|bridge aliases| BridgeProc[Remote Control bridge]
+   C -->|daemon/background operations| D[daemon/background handlers]
+   C -->|eligible agents view| FV[fleet UI fast path]
+   C -->|tmux + worktree| TW[exec handoff when enabled]
    C -->|normal CLI| E[main module init + exported main]
    E --> F[Top-level main]
   F --> G{--handle-uri?}
-  G -->|yes| H[handleDeepLinkUri and process.exit]
+   G -->|yes| DeepLink[handleDeepLinkUri and process.exit]
    G -->|no| I[Commander root]
-  I --> J{root action mode}
+   I --> J{root action mode}
   J -->|print/sdk/init/non-TTY| K[headless branch]
    K --> L[MCP runtime coordinator]
    L --> M[Headless runner]
@@ -77,49 +76,41 @@ flowchart TD
   J -->|interactive TTY| O[interactive branch]
   O --> P{resume/continue/remote?}
   P -->|continue/resume/teleport/remote| Q[session restore or remote attach]
-   P -->|picker needed| R[Interactive resume picker]
+   P -->|picker needed| Picker[Interactive resume picker]
    P -->|fresh session| S[Interactive TUI/session loop]
 ```
 
 ## Bootstrap path
 
-`OuterBootstrap` is not just a trivial wrapper: it contains fast paths before the full main bundle is loaded.
+`ZIS()` is not just a trivial wrapper: it contains an ordered pre-main router before the normal main bundle is loaded.
 
-1. It reads `process.argv.slice(2)`.
-2. If the arguments are only `--version`, `-v`, or `-V` with an optional `--verbose`, it prints the embedded product version without importing the full main path.
-3. It checks background/daemon helper flags before normal CLI dispatch.
-4. For normal CLI startup, it records startup profiling events, starts early input capture, lazily initializes the main module, reads the exported `main`, and awaits it.
+1. It validates argv and reads `process.argv.slice(2)`.
+2. If the arguments are only `--version`, `-v`, or `-V` with optional `--verbose`, it prints the embedded version (and commit for verbose output) without importing `UkS()`.
+3. It routes internal Chrome/computer-use hosts, daemon workers, PTY hosts, warm spares, and preload processes to dedicated handlers.
+4. It routes direct bridge aliases, daemon CLI operations, and background job operations before standard command parsing. These paths load only their required policy/settings and telemetry pieces.
+5. It can mount the gated agent fleet view directly for an eligible TTY invocation, and can hand an enabled `--tmux` plus worktree invocation to an exec-style fast path.
+6. It normalizes legacy root `--update`/`--upgrade`, applies `--bare`, starts early input/keychain work where appropriate, then lazily imports `uri.main` (`UkS`) for ordinary CLI startup.
 
-The `BootstrapLazyMainImport` anchor means the exported `TopLevelMain` path is reached only after the bundled module initializer runs.
+The `BootstrapLazyMainImport` anchor means `UkS()` is reached only if every earlier branch declines the invocation.
 
 ## Top-level `main` path
 
-`TopLevelMain` is the first full CLI main function.
+`UkS()` is the small normal-main handoff rather than the full mode router:
 
-1. It initializes warning/exit handling and checks `--handle-uri` before normal command parsing.
-2. The initial mode predicate is:
-   - `-p` or `--print`
-   - `--init-only`
-   - any `--sdk-url...` argument
-   - `!process.stdout.isTTY`
-3. If that predicate is true, it enables non-interactive setup (`JfH()` in the minified bundle).
-4. It calls startup classifiers and environment setup:
-   - `jv8(!A)` — records whether this is an interactive-style run.
-   - `pzq(A)` — normalizes `CLAUDE_CODE_ENTRYPOINT`; when no entrypoint exists, headless-like runs become `sdk-cli` and interactive runs become `cli`.
-   - `Nv8(Uzq($))` — records session start type from argv.
-   - `cV$()` — sets `AI_AGENT` to a Claude Code/version string when it is absent or already Claude Code-owned.
-5. It derives a client type from constants such as `GITHUB_ACTIONS`, `CLAUDE_CODE_ENTRYPOINT`, `CLAUDE_CODE_SESSION_ACCESS_TOKEN`, and `CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR`.
-6. It eagerly loads settings and then awaits `CommanderRoot`.
+1. It records `main_function_start`, initializes warning handling, and installs an early process-exit callback.
+2. It handles `--handle-uri <uri>` before Commander: config is enabled, the URI handler runs, and the process exits with that handler's result. Invalid argv exits with code 1.
+3. It recognizes the gated `import` command and, when its remaining arguments are limited to the supported source/options, rewrites it into an interactive `/import ...` prompt.
+4. It configures detected interactivity, records `main_before_run`, awaits `jkS()`, then records `main_after_run`.
 
-The important split is that `TopLevelMain` decides process-level mode and environment identity, while `CommanderRoot` owns Commander setup and the deeper headless/interactive path split.
+Entrypoint/client identity and the deeper mode context are resolved by the root-program setup and action layers reached from `jkS()`; they should not be attributed to the small `UkS()` wrapper.
 
 ## Commander root setup
 
-`CommanderRoot` constructs a Commander-like instance with configured help and positional options. The root command is named `claude` and has the user-facing description:
+`jkS()` obtains a Commander-like program from `rYf(...)`. The factory receives callbacks for security/config dialogs, onboarding, invalid-settings handling, pending connections, and `qkS()` as the interactive-session launcher. The root command is named `claude` and has the user-facing description:
 
 > `Claude Code - starts an interactive session by default, use -p/--print for non-interactive output`
 
-The root command accepts an optional `[prompt]`, many options, and a large root action. The `preAction` hook performs shared initialization before subcommands or root action handlers run:
+The root command accepts an optional `[prompt]`, many options, and a large root action. Shared command setup covers:
 
 - device/MDM and startup initialization;
 - terminal title setup;
@@ -129,24 +120,27 @@ The root command accepts an optional `[prompt]`, many options, and a large root 
 - remote/gateway settings refresh;
 - settings cache invalidation subscriptions.
 
-There is one performance-sensitive special case: if the process includes `-p` or `--print` and the argv does not include a `cc://` or `cc+unix://` URI, `CommanderRoot` parses immediately after root options are built. In that fast path, it returns before registering heavier subcommands such as `mcp`, `plugin`, `auth`, and `agents`.
+There is one performance-sensitive special case visible directly in `jkS()`: if the process includes `-p` or `--print` and argv does not include a `cc://` or `cc+unix://` URI, it calls `parseAsync` immediately. It returns before `jkS()` registers heavier utility commands such as `gateway`, `auth`, `project`, `agents`, `auto-mode`, and `remote-control`.
 
 ## Main mode decision table
 
 | Runtime path | Trigger | Key semantic anchors | Downstream path |
 |---|---|---|---|
 | Version fast path | `--version`, `-v`, or `-V` as the only command, optional `--verbose` | `OuterBootstrap`, product constant `VERSION: "2.1.215"` | Print version and exit before full main import. |
+| Internal host/helper | `--claude-in-chrome-mcp`, `--chrome-native-host`, `--computer-use-mcp`, `--daemon-worker`, `--bg-pty-host`, `--bg-spare`, or `--preload` | `ZIS()` exact-string branches | Load the dedicated handler and return without `UkS()`. |
+| Daemon/background | daemon syntax recognized by `vel(t)`; `logs`, `attach`, `stop`, `kill`, `respawn`, `rm`; or `--bg`/`--background` | `cli_daemon_path`, `cli_bg_path` | Run daemon control or fleet/background handlers before normal main import. |
+| Direct bridge | `remote-control`, `rc`, `remote`, `sync`, or `bridge` positional command | `cli_bridge_path`, `bridgeMain` | Validate policy/auth, initialize narrow sinks, and run the bridge directly. |
 | Deep link trampoline | `--handle-uri <uri>` | `process.argv.indexOf("--handle-uri")`, `handleDeepLinkUri` | Enable config, parse URI, launch terminal/session, then `process.exit(D)`. |
-| Print/headless | `-p`, `--print`, `--init-only`, `--sdk-url...`, or stdout not TTY | `HeadlessInitialPredicate`, headless branch, `HeadlessRunner`, `HeadlessControlLoop` | Build headless app state, connect MCP, run the headless runner, drain the streaming/control loop. |
+| Print/headless | `-p`, `--print`, `--init-only`, `--sdk-url...`, or stdout not TTY | root-action headless predicate, `HeadlessRunner`, `HeadlessControlLoop` | Build headless app state, connect MCP, run the headless runner, drain the streaming/control loop. |
 | SDK transport | `--sdk-url` plus stream JSON formats | `--sdk-url <url>`, `--input-format=stream-json`, `--output-format=stream-json` checks | Uses remote WebSocket/SSE transport and headless control protocol. |
-| Interactive fresh session | TTY output, no print/sdk/init-only branch, no resume/remote branch | `InteractiveBranchSetup`, `InteractiveSessionLoop` | Create UI root, run setup screens, load tools/agents/MCP, enter TUI loop. |
+| Interactive fresh session | TTY output, no print/sdk/init-only branch, no resume/remote branch | `qkS()`, `launchRepl` | Create UI root, run setup screens, load tools/agents/MCP, enter TUI loop. |
 | Continue last session | `-c` or `--continue` | `ContinueRecentSessionBranch`, `SessionDiscovery`, `SessionRestore`, `InteractiveSessionLoop` | Load most recent transcript, restore runtime state, enter TUI. |
 | Resume/search picker | `-r`, `--resume`, `--from-pr` | `ResumeRemoteSessionBranch`, `InteractiveResumePicker` | Resolve session ID/title/PR, restore if exact, otherwise open picker. |
-| Teleport | hidden `--teleport [session]` | `AH=z.teleport??null`, `teleportWithProgress` | Validate remote session/repo state, hydrate messages, enter TUI. |
-| Remote session | hidden `--remote [description|session_id|url]` | `wH=YH===!0?"":YH??null`, `Gp4(...)`, `remoteSessionConfig` | Create or attach to remote session and enter TUI backed by remote transport. |
+| Teleport | hidden `--teleport [session]` | `Re` branch in `qkS()`, `teleportWithProgress` | Validate remote session/repo state, hydrate messages, enter TUI. |
+| Remote session | hidden cloud/remote session option | `n !== null` branch in `qkS()`, `attachRemote`, `remoteSessionConfig` | Create or attach to a remote session and enter TUI backed by remote transport. |
 | Remote Control | hidden `--remote-control [name]` / `--rc` or `remote-control` subcommand | `remote-control`, `rc`, `bridgeMain`, `initReplBridge` | Exposes local sessions to claude.ai/code or mobile control channels. |
 
-`ZH` is a minified local variable in the root action. The branch it guards is identified semantically as the non-interactive/headless branch because it validates print-only options, sets JSON output handling, creates headless app state, connects MCP, imports `runHeadless`, and returns without creating the interactive UI root.
+No root `--server`, `--headless`, or `--acp` mode appears in this artifact. Long-lived protocol or helper roles use the explicit `ZIS()` process branches above; ordinary non-interactive execution uses `runHeadless`.
 
 ## Headless/print path
 
@@ -159,7 +153,7 @@ Confirmed steps:
    - `--input-format=stream-json` requires `--output-format=stream-json`.
    - `--sdk-url` requires both stream JSON input and output.
    - `--include-partial-messages` requires print mode and `stream-json` output.
-2. Read prompt/stdin through `M4A(...)`, including a 10 MiB piped-stdin limit.
+2. Read prompt/stdin through `v5f(...)`, including a 10 MiB piped-stdin limit (`E5f = 10485760`).
 3. Run setup and load command/tool/agent definitions.
 4. Build a headless state store with model, MCP, permission, effort, fast-mode, and advisor fields.
 5. Construct an MCP coordinator and call `connect()`.
@@ -171,9 +165,9 @@ Inside `HeadlessRunner`:
 - validates resume-only flags such as `--resume-session-at` and `--rewind-files`;
 - sets up SDK/stream JSON output guards;
 - initializes sandboxing when enabled;
-- loads initial messages through `A89` for `--continue`, `--resume`, teleport, or session-start hooks;
+- loads initial messages through `loadInitialMessages()` for `--continue`, `--resume`, teleport, or session-start hooks;
 - checks that print mode has input unless a resumed deferred-tool marker or SDK transport supplies it;
-- prepares permission prompt behavior through `K89`/`q89`;
+- prepares permission prompt behavior through `getCanUseToolFn()` and `createCanUseToolWithPermissionPrompt()`;
 - drains the streaming/control loop through `HeadlessControlLoop`;
 - writes final output as plain text, JSON result, or stream JSON frames.
 
@@ -185,8 +179,8 @@ The interactive branch begins when the root action does not take the headless br
 
 Confirmed steps:
 
-1. Create render options through `ua4(false)` and an interactive root via `createRoot`.
-2. Run setup/login/trust screens via `ba4(...)` and related policy checks.
+1. Create render options through `getBaseRenderOptions(false)` and an interactive root via `createRoot()`.
+2. Continue through the setup/login/trust screens and related policy checks inside `qkS()`.
 3. Load settings, tools, commands, MCP configs, plugin state, custom agents, and model configuration.
 4. Emit startup telemetry and notifications.
 5. Resolve the session path:
@@ -271,9 +265,9 @@ The root action consumes a large option surface. The most important groups are:
 
 The main paths identified from `cli.renamed.js` are:
 
-1. **Outer Bun/bootstrap path** — `OuterBootstrap` handles version and daemon/background shortcuts, then lazy-loads the main module export.
+1. **Outer Bun/bootstrap path** — `ZIS()` handles version, internal hosts/helpers, direct bridge, daemon/background, eligible fleet-view, and tmux/worktree shortcuts, then lazily loads `UkS()`.
 2. **Deep-link path** — `TopLevelMain` handles `--handle-uri` before Commander setup.
-3. **Commander root path** — `CommanderRoot` builds root flags, preAction setup, root action, and subcommands.
+3. **Commander root path** — `jkS()` obtains the root program from `rYf(...)`, preserves the print fast parse, registers utility commands, and parses argv.
 4. **Headless/print path** — selected by `-p`, `--print`, `--init-only`, `--sdk-url`, or non-TTY stdout; connects MCP and runs `HeadlessRunner`/`HeadlessControlLoop`.
 5. **Interactive fresh-session path** — creates the UI root, runs setup screens, and enters `InteractiveSessionLoop`.
 6. **Resume/continue path** — loads transcripts through `SessionDiscovery`, restores state through `SessionRestore`, then enters `InteractiveSessionLoop` or `InteractiveResumePicker`.
@@ -292,33 +286,21 @@ The main paths identified from `cli.renamed.js` are:
 
 ## Shutdown coordinator and signal-exit
 
-Long-lived resources register their teardown with a single global drain queue named `SK` (`registerShutdownTask`) at [cli.renamed.js line 3538](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L3538). The implementation wraps the input in a `Y19` adapter so callers may pass an async function, a `Symbol.dispose` object, or a `Symbol.asyncDispose` object, and stores the wrapped task in a `Set`:
+The source exposes two global disposer registries near [cli.renamed.js line 3,500](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L3500): `_a`/`A5t` and `qnl`/`$Hn`, backed by class `bsi`. Registration adapts an async function or disposable object and returns a removable/disposable registration. A drain snapshots the `Set`, clears it first, and executes that snapshot with `Promise.all`; callbacks in the same registry therefore run in parallel and cannot depend on insertion order.
 
-```js
-lt6 = class lt6 {
-  #H = new Set();
-  register(H) {
-    let $ = Y19(H);
-    this.#H.add($);
-    let q = () => { this.#H.delete($); };
-    return Object.assign(q, { [Symbol.dispose]: q });
-  }
-  async drain() {
-    let H = Array.from(this.#H);
-    (this.#H.clear(), await Promise.all(H.map(async ($) => $())));
-  }
-};
-```
+The process-level coordinator near [line 577,500](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L577500) is a separate, ordered contract:
 
-`register` returns an unregister handle that is itself a `Symbol.dispose`, so `using cleanup = SK(...)` deregisters automatically when the holder goes out of scope. `ZIH()` (`drainShutdownTasks`) clears the set and awaits every task in parallel — there is no ordering guarantee, so consumers must own their own dependencies.
+1. `Uut` lets only one caller claim graceful shutdown.
+2. The primary registered cleanup is given a two-second race. A timeout is recorded but does not skip later phases.
+3. Session-end hooks run with their own abort timeout.
+4. Pending writes, analytics sinks, debug output, secondary cleanup, and stdout queues are drained before the final exit.
+5. A failsafe timer can force process exit if the complete shutdown sequence stalls.
 
-Posix signal delivery is wired to the same queue through the `signal-exit` shim at [line 52680](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L52680). `APH` lists the trapped signals (`SIGHUP`, `SIGINT`, `SIGTERM`, `SIGABRT`, `SIGALRM`, `SIGVTALRM`, `SIGXCPU`, `SIGXFSZ`, `SIGUSR2`, `SIGTRAP`, `SIGSYS`, `SIGQUIT`, `SIGIOT`, `SIGIO`, `SIGPOLL`, `SIGPWR`, `SIGSTKFLT`). The shim's `fOq` emitter exposes `onExit($listener, { alwaysLast })` and rewires `process.emit` plus `process.reallyExit` so that exit-time work happens once and only once, with `afterExit` listeners always last. The shim also re-dispatches the original signal via `process.kill(pid, signal === "SIGHUP" ? this.#H : signal)` after listeners run, so the parent shell sees the correct exit cause.
-
-Long-running spawned children plug into the same machinery through `Wc(() => H.kill())` ([line 52884](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L52884)) — every `execa`-style child registers a teardown that the signal-exit emitter calls before the process really exits, so MCP servers, sandbox monitors, voice recorders, and the bridge child are all SIGTERM'd before Claude Code's own exit completes. The `forceKillAfterTimeout` helper (`DOq`, default `_h9 = 5000` ms) escalates to SIGKILL when a child ignores SIGTERM.
+`gracefulShutdownSync` supplies the synchronous emergency variant; mode-specific callers choose their exit code and optional final message. Child-process escalation is **not** a universal property of this coordinator. Specific owners implement it where needed—for example, daemon registry worker `hri.stop()` attempts an IPC shutdown or SIGTERM and schedules SIGKILL after five seconds. MCP, sandbox, media, bridge, and other children must be described from their own owner paths rather than generalized from that daemon behavior.
 
 ## Caveats
 
-- The analyzed file is bundled/minified output. Exact anchors behind aliases such as `TopLevelMain`, `CommanderRoot`, `HeadlessRunner`, and `InteractiveSessionLoop` are stable only for this extracted build and should be paired with exact strings or byte offsets.
+- The analyzed file is bundled/minified output. Exact anchors behind aliases such as `TopLevelMain`, `CommanderRoot`, `HeadlessRunner`, and `InteractiveSessionLoop` are stable only for this extracted build and should be paired with exact strings and enclosing control flow.
 - Several early helpers live on very long lines; line numbers are approximate and less stable than byte offsets plus exact symbols.
 - No sourcemaps were found during temporary Bun module graph inspection, so this analysis does not recover the original TypeScript source tree.
 - JavaScriptCore bytecode can corroborate compiled code existence through optional dumps, but it is not retained here or used as recovered source.

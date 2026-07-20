@@ -13,6 +13,8 @@ This subsystem already existed in the retained `2.1.143` baseline. It is documen
 | AppTierClassifier | [~449,650](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L449650) | `read`, `click`, `full` | Restricts browser/trading and terminal/IDE applications by category. |
 | AccessRequestHandler | [~450,390](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L450390) | `handleRequestAccess`, `request_access` | TCC, app allowlist, grant flags, user deny, and policy deny flow. |
 | ActionDispatcher | [~451,600](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L451600) | `hQu`, `m_s`, `handleComputerBatch` | Precondition checks and per-action execution. |
+| TeachStepNormalizer | [~450,752](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L450752) | `cQu` | Validates a teaching step envelope and resolves its anchor against current pre-execution screenshot state. |
+| TeachBatchHandler | [~450,864](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L450864) | `handleTeachBatch`, `uQu` | Pre-normalizes every step, then executes the normalized steps sequentially. |
 | ToolSchemaFactory | [~451,700](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L451700) | `aDt` | Builds the MCP tool list and JSON Schemas. |
 | SessionBoundMcpServer | [~453,000](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L453000) | `Hgo`, `g_s` | Binds per-session state to MCP `tools/list` and `tools/call`. |
 | TurnCleanup | [~455,000](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L455000) | `qlt` | Unhides applications, unregisters Escape, and emits exit notification. |
@@ -68,6 +70,18 @@ Each action re-checks live state rather than trusting an old screenshot or appro
 - `computer_batch` applies the same guard before every action and returns completed/failed/remaining segments on the first failure.
 
 The runtime clears a held mouse button on error/abort paths to avoid leaving the desktop in a stuck drag state.
+
+## Guided-teaching batch semantics
+
+`teach_batch` is available only while teach mode supplies `onTeachStep`, and it requires a non-empty `steps` array. Its validation and execution are deliberately split (`cli.renamed.js:450752-450900`):
+
+1. `handleTeachBatch` first walks **every** step and calls `cQu` before invoking any step. `cQu` checks the step's `explanation`, `next_preview`, action-list shape and allowed action names, and optional anchor tuple; it also converts the anchor to logical coordinates immediately.
+2. Only after all step envelopes normalize successfully does a second loop call `uQu` for each step in order. `uQu` presents the teaching tooltip and executes that step's actions sequentially.
+3. Action-specific arguments are still validated by their handlers at execution time. Thus an invalid step envelope prevents the entire batch from starting, while a later action error can stop a batch after earlier steps/actions completed.
+
+All anchor and click coordinates in one batch use the full-screen screenshot that existed **before the batch**. Prevalidation resolves every step anchor against the same `lastScreenshot`, and intermediate screenshot actions do not rebase later coordinates inside that batch. The embedded `teach_batch` schema states this contract explicitly and tells the caller to anchor the **next** batch against the final returned screenshot (around `cli.renamed.js:452145`).
+
+On exit or failure the result reports completed/failed/remaining progress. A fully successful batch returns a final screenshot only when at least one step contained actions; an all-tooltip/no-action batch returns structured counts without taking that final screenshot.
 
 ## Cross-session lock
 

@@ -14,9 +14,10 @@ This page centralizes observable session data models, transcript record families
 | --- | --- | --- |
 | LocalJsonlTranscriptSource | `transcriptSource:"local-jsonl"` | Sessions default to local JSONL transcript storage. |
 | CurrentSessionJsonlName | `` `${v$()}.jsonl` `` | Current-session JSONL file naming. |
-| SessionDiscovery | `async function jHH` | Resume/latest-session discovery. |
-| TranscriptRestore | `async function OG8` | Transcript restore into the live envelope. |
+| SessionDiscovery | `async function loadConversationForResume` | Resume/latest-session discovery. |
+| TranscriptRestore | `async function f7o` | Transcript restore into the live envelope. |
 | TranscriptRecorder | `recordTranscript` | Durable transcript append/export surface. |
+| OrderedTranscriptStore | `class ROd`, `drainQueuesOnce` | Per-file queue that appends locally before emitting mirror frames. |
 | FileHistorySnapshotRecorder | `recordFileHistorySnapshot` | File-history snapshot storage. |
 | ContextCollapseSnapshotRecorder | `recordContextCollapseSnapshot` | Context-collapse snapshot storage. |
 | EndedByModelRecorder | `markSessionEndedByModel`, `ended-by-model` | Durable marker that prevents resumed work in a model-ended conversation. |
@@ -24,6 +25,7 @@ This page centralizes observable session data models, transcript record families
 | SdkSessionStoreAdapter | `sessionStore` | SDK/external storage adapter hook. |
 | SessionStateFrame | `session_state_changed` | Runtime/session state stream frame. |
 | TranscriptMirrorFrame | `transcript_mirror` | Transcript mirror stream frame. |
+| BridgeSessionRecord | `type:"bridge-session"` | Persists the Remote Control bridge identity and replay cursor. |
 | BridgeStateFrame | `bridge_state` | Remote bridge state stream frame. |
 | ControlRequestFrame | `control_request` | Host/SDK control request frame. |
 | ControlResponseFrame | `control_response` | Host/bridge control response event type. |
@@ -38,12 +40,12 @@ This page centralizes observable session data models, transcript record families
 
 | Layer | Observable fields or records | Responsibility |
 |---|---|---|
-| Session identity | Session UUID, JSONL filename, optional alias/name. | Stable address for local, resumed, forked, and remote-projected state. |
-| Durable transcript | User/assistant messages, tool use/results, hook/event records, context-collapse records. | Append and replay history for restore/continue/fork. |
+| Session identity | Local session UUID, JSONL filename, optional alias/name; optional hosted bridge ID in metadata. | Stable address for local state plus an explicit link to a distinct Remote Control object. |
+| Durable transcript | User/assistant messages, tool use/results, hook/event records, context-collapse and bridge records. | Ordered append and branch replay history for restore/continue/fork. |
 | Live envelope | Model state, cwd, permission mode, visible tools, hooks, agents/tasks, bridge state. | Process-time runtime state rebuilt from flags/settings/transcript. |
 | Metadata/index | Title/summary, cwd, git branch/tag, timestamps, alias records. | Session picker, latest-session discovery, and restore metadata. |
 | File/checkpoint state | File-history snapshots, leaf checkpoints, context-collapse snapshots. | Rewind and checkpoint restore. |
-| External mirror | `sessionStore`, `transcript_mirror` frames. | Optional SDK/external mirroring fed by local persistence. |
+| External mirror | `sessionStore`, `transcript_mirror` frames. | Optional SDK/external mirroring emitted only after successful local append. |
 
 ## Transcript record families
 
@@ -57,6 +59,7 @@ This page centralizes observable session data models, transcript record families
 | Session-lifecycle records | `ended-by-model` with timestamp/session ID. | Conversation termination and resume guard. |
 | Sidechain/subagent records | Parent session ID, task/subagent transcript linkage, optional `observer-ref`. | Agent/task and observer runtime. |
 | Queue/control records | Pending task/control operations and bridge messages. | SDK/remote/task control plane. |
+| Remote Control linkage | `bridge-session` with local `sessionId`, `bridgeSessionId`, `lastSequenceNum`, optional `declaredDialogKinds`, optional `sessionGroupingId`. | Reattaches a non-fork local resume to a distinct hosted bridge and its replay cursor. |
 
 ### `2.1.215` lifecycle records
 
@@ -67,12 +70,27 @@ This page centralizes observable session data models, transcript record families
 
 Neither record is an ordinary model message. `ENTRY_APPEND_POLICY` stores `ended-by-model` as `always` and routes `observer-ref` by agent so persistence can outlive the in-memory lifecycle registries.
 
+### `bridge-session` record
+
+The record is append-only metadata; the loader takes later values for a local `sessionId`.
+
+| Field | Meaning |
+|---|---|
+| `type: "bridge-session"` | Record discriminator. |
+| `sessionId` | Local session UUID whose transcript contains the link. |
+| `bridgeSessionId` | Hosted Remote Control bridge ID; an empty string is the clear/tombstone value. |
+| `lastSequenceNum` | Last accepted bridge sequence used for replay on reattach; clear writes `0`. |
+| `declaredDialogKinds?` | Last non-empty set of dialog kinds declared by the bridge. |
+| `sessionGroupingId?` | Optional hosted grouping identity, parsed into `bridgeSessionGroupingId` on intermediate log objects. |
+
+Metadata re-append preserves the current in-memory bridge fields near the transcript tail. A clear/tombstone record writes an empty bridge ID and sequence `0`; because it omits dialog/grouping fields, the parser deletes their prior values too. Ordinary `loadConversationForResume()` returns bridge ID, sequence, and dialog kinds but omits the parsed `bridgeSessionGroupingId`. Its non-fork CLI restore therefore does not rehydrate grouping through this path, while a CLI fork explicitly clears the returned ID, sequence, and dialog kinds. The fork does not write a grouping tombstone to the original transcript.
+
 ## Stream and control frame families
 
 | Frame or subtype | Direction | Observable role |
 |---|---|---|
 | `session_state_changed` | runtime → SDK/host | Session state changed. |
-| `transcript_mirror` | runtime → SDK/external store | Local JSONL line mirrored outward. |
+| `transcript_mirror` | runtime → SDK/external store | Batch of transcript entries emitted after the corresponding local append succeeds. |
 | `bridge_state` | runtime → remote host | Remote bridge status changed. |
 | `control_request` | runtime → host | Runtime asks a host to approve or perform control-plane work. |
 | `control_response` | host → runtime | Host resolves a prior control request. |
@@ -106,6 +124,17 @@ The source-visible frame schemas are not a complete public protocol specificatio
 | Control response event | host/bridge → runtime | `payload.type` or `event_type` equals `control_response` | Control responses are routed as bridge events and pass device-attestation checks before being accepted. |
 
 Remote Control frame detail remains feature-gate and transport dependent. Consumers should treat these shapes as observed bundle anchors, not as a frozen external API, and should keep accepting unknown optional fields.
+
+### Sequence and reconnect notes
+
+- Remote Control worker SSE sends both `from_sequence_num` and `Last-Event-ID`, advances a monotonic local cursor for numeric IDs, and suppresses recently seen duplicate sequence numbers. That cursor is the value persisted in `bridge-session`.
+- Hosted `--remote` uses a separate `SessionsV2Client`. It also resumes by sequence, stops after five reconnect attempts, and surfaces `catch_up_truncated` when the server cannot provide a complete catch-up range.
+- Direct Connect and the Chrome browser-tool `BridgeClient` do not share this persisted transcript cursor. Direct Connect has no source-visible reconnect loop.
+- These fields and client rules do not prove server-side exactly-once delivery, replay retention length, or compatibility across versions.
+
+### Persistence ordering note
+
+The main store serializes queued drains in-process and preserves record order for one target file. Each chunk is appended locally before mirror callbacks run; a failed append logs/telemeters the failure, resolves the remaining batch waiters, and does not emit that chunk to mirrors. External SDK storage is a later batched/retried stage and cannot roll back local JSONL. No cross-process lock or atomic multi-line transaction is visible.
 
 ## Remote/session storage areas
 

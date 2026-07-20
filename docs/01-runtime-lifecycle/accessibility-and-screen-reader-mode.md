@@ -11,6 +11,7 @@ The exact `CLAUDE_AX_SCREEN_READER` and `axScreenReader` anchors are absent from
 | ScreenReaderSetting | [~70,214](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L70214) | `axScreenReader` | Persistent setting with the flat-text/no-decoration description. |
 | ScreenReaderResolver | [~187,645-187,692](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L187645) | `class $Bc`, `RM`, `NBc`, `vrt` | Resolves activation, reports its source, and propagates the mode to child environments. |
 | ScreenReaderGate | [~187,658](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L187658) | `tengu_ax_screen_reader` | Feature gate that can veto an otherwise requested mode. |
+| BooleanParsers | [~1](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L1), [~27,000](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L27000) | `qt`, `gu`, `Pe.triBool()` | Trimmed, case-insensitive true/false parsing with `undefined` for an unrecognized value. |
 | RendererSelection | [~196,890-196,960](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L196890) | `sr_auto_off` | Forces the classic/default renderer instead of fullscreen rendering. |
 | TerminalSetupGuard | [~621,073-621,126](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L621073) | `screen-reader mode leaves the audible bell setting unchanged` | Preserves an audible terminal cue during newline-key setup. |
 | StartupAnnouncement | [~932,482](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L932482) | `[Screen Reader Mode: on via ...]` | Announces activation on an interactive TTY. |
@@ -18,14 +19,22 @@ The exact `CLAUDE_AX_SCREEN_READER` and `axScreenReader` anchors are absent from
 
 ## Activation and precedence
 
-The resolver caches one decision per process and evaluates sources in this order:
+The resolver evaluates sources in this order:
 
 1. `--ax-screen-reader` enables the mode.
 2. `CLAUDE_AX_SCREEN_READER` supplies a tri-state environment override; an explicit false value can override the setting.
 3. `axScreenReader: true` in merged settings enables the mode when neither higher-priority source decided it.
 4. `tengu_ax_screen_reader` is evaluated last and can gate the requested mode off.
 
-When enabled, the resolver remembers `flag`, `env`, or `settings` as the activation source. Interactive startup prints that source, while `vrt()` returns `CLAUDE_AX_SCREEN_READER=1` for covered child processes.
+`Pe.triBool()` uses the shared `qt()`/`gu()` parsers. Values are trimmed and compared case-insensitively:
+
+| Result | Accepted environment values |
+|---|---|
+| `true` | `1`, `true`, `yes`, `on` |
+| `false` | `0`, `false`, `no`, `off` |
+| `undefined` | missing or any other value |
+
+The resolver caches both the resulting decision and its `flag`, `env`, or `settings` source. Subsequent calls reuse that snapshot until `$Bc.reset()` clears it; changing argv, env, settings, or the gate after the first resolution is not by itself enough to recompute the mode. The feature gate is a final veto, not another positive source: a requested mode can resolve off when `tengu_ax_screen_reader` is disabled. When the final result is enabled, `NBc()` exposes the remembered source for the startup announcement and `vrt()` adds `CLAUDE_AX_SCREEN_READER=1` to covered child environments.
 
 ```mermaid
 flowchart LR
@@ -34,7 +43,7 @@ flowchart LR
     Setting[axScreenReader] --> Resolve
     Resolve --> Gate[tengu_ax_screen_reader]
     Gate -->|enabled| Classic[Classic flat renderer]
-    Gate -->|disabled| Normal[Normal renderer selection]
+    Gate -->|vetoed| Normal[Normal renderer selection]
     Classic --> Child[Child env: CLAUDE_AX_SCREEN_READER=1]
 ```
 
@@ -59,6 +68,7 @@ It is also distinct from `prefersReducedMotion`: reduced motion can stop animati
 
 - The analyzed implementation is the terminal TUI path. It does not claim to configure OS accessibility APIs or desktop-app accessibility settings.
 - The source promises flat text, no decorative borders, and no animations; it does **not** promise that every color escape is removed.
+- An unrecognized `CLAUDE_AX_SCREEN_READER` value is not an explicit false override; tri-state parsing returns `undefined`, allowing the settings source to decide.
 - Approximate line anchors are build-specific. Search for `CLAUDE_AX_SCREEN_READER`, `sr_auto_off`, and `tengu_ax_screen_reader` when analyzing a later package.
 
 ## Related docs

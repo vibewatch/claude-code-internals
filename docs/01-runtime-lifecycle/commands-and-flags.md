@@ -1,6 +1,6 @@
 # Commands and flags
 
-This page reverse-engineers the user-facing command surface built by `CommanderRoot`, the Commander root setup function in the analyzed `cli.renamed.js`.
+This page reverse-engineers the user-facing command surface parsed on the normal `ZIS()` → `UkS()` → `jkS()` path. `jkS()` obtains the Commander-like root program from `rYf(...)`; some internal and operational invocations are deliberately consumed by `ZIS()` before that program is imported.
 
 Use [Command-line reference](command-line-reference.md) for the canonical table of flags, subcommands, aliases, and mode surfaces. This page remains the narrative explanation of how those surfaces route runtime behavior.
 
@@ -8,7 +8,9 @@ Use [Command-line reference](command-line-reference.md) for the canonical table 
 
 | Semantic alias | Anchor | Meaning |
 | --- | --- | --- |
-| CommanderRoot | `Claude Code - starts an interactive session by default` | Commander root construction and mode routing. |
+| OuterBootstrap | `async function ZIS()` at ~983,909 | Ordered pre-main routing for version, internal hosts/helpers, bridge, daemon/background, fleet, and normal main. |
+| TopLevelMain | `async function UkS()` at ~978,259 | URI trampoline/import rewrite before `jkS()`. |
+| CommanderRoot | `async function jkS()`, `rYf(...)`, `Claude Code - starts an interactive session by default` | Root-program construction, print fast parse, utility registration, and argv parsing. |
 | ClaudeRootCommand | `Usage: claude [options] [command] [prompt]` | Root command name and invocation shape. |
 | PrintModeFlag | `-p, --print` | Selects non-interactive print/headless mode. |
 | ToolAllowListFlag | `--allowedTools, --allowed-tools <tools...>` | Tool allow-list flag. |
@@ -37,6 +39,8 @@ The root command is named `claude` and describes itself as an interactive sessio
 - session resume/continue/remote selection;
 - settings, MCP, plugins, tools, and agents loaded for the selected mode.
 
+Before this command exists, `ZIS()` has already consumed exact process-role invocations such as `--claude-in-chrome-mcp`, `--chrome-native-host`, `--computer-use-mcp`, `--daemon-worker`, `--bg-pty-host`, `--bg-spare`, and `--preload`, as well as direct bridge and daemon/background operation families. These are not hidden root modes and should not be inferred from Commander help. `UkS()` also handles `--handle-uri` before parsing and can rewrite a narrow gated `import` invocation into an interactive `/import ...` prompt.
+
 ## Root flag families
 
 | Family | Representative flags | Runtime implication |
@@ -49,7 +53,7 @@ The root command is named `claude` and describes itself as an interactive sessio
 | Sessions | `--continue`, `--resume`, `--fork-session`, `--no-session-persistence`, `--resume-session-at`, `--rewind-files`, `--session-id`, `--name` | Controls local transcript restore, session IDs, fork/rewind, and persistence. |
 | Models/auth | `--model`, `--fallback-model`, `--betas` | Selects model aliases, fallback model behavior, and beta headers. |
 | Settings/integrations | `--settings`, `--setting-sources`, `--mcp-config`, `--strict-mcp-config`, `--plugin-dir`, `--plugin-url`, `--agents`, `--ide`, `--chrome`, `--file` | Adds runtime settings, MCP/plugin/agent definitions, IDE/browser/file integrations. |
-| Accessibility | `--ax-screen-reader` | Forces screen-reader-friendly flat text; env and settings can select the same renderer. |
+| Accessibility | `--ax-screen-reader` | Forces screen-reader-friendly flat text. `CLAUDE_AX_SCREEN_READER` is a higher-priority tri-state override over settings; accepted true strings are `1`, `true`, `yes`, `on`, and false strings are `0`, `false`, `no`, `off` (trimmed, case-insensitive). |
 | Remote hidden paths | `--teleport`, `--remote`, `--remote-control`, `--rc`, `--remote-control-session-name-prefix`, `--prefill`, `--deep-link-origin` | Used by remote sessions, teleport, Remote Control, and deep-link launch flows. |
 
 ## Main command families
@@ -73,7 +77,12 @@ The plugin command handlers additionally confirm `init`, `list`, `prune`, and `t
 
 ## Parse-time optimization
 
-`CommanderRoot` has a fast path for `-p`/`--print`: when the process is in print mode and no `cc://` or `cc+unix://` URI argument is present, it parses after root options are built and returns before registering heavier subcommands. This keeps common headless runs lighter.
+There are two distinct optimization layers:
+
+1. `ZIS()` routes complete process roles and operational families before the normal `UkS()` import.
+2. In `jkS()`, `-p`/`--print` with no `cc://` or `cc+unix://` argv calls `parseAsync` immediately after the root program is obtained. It returns before `jkS()` registers heavier utility commands such as `gateway`, `auth`, `project`, `agents`, `auto-mode`, and hidden `remote-control`.
+
+Thus “print fast path” means reduced command registration, not a separate `--headless` server mode. The artifact has no root `--server`, `--headless`, or `--acp` option.
 
 ## Related docs
 

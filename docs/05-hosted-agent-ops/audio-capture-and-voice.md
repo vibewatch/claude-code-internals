@@ -2,7 +2,7 @@
 
 This page uses reverse-engineered `cli.renamed.js` and shim anchors to answer the voice question: **does Claude Code support voice, and how is it designed?**
 
-Yes. The runtime contains a source-confirmed voice dictation path. It is local microphone capture plus remote transcription: `/voice` enables hold-to-talk or tap-to-toggle recording, audio is captured through a native N-API module or OS recorder fallback, a voice stream receives transcript chunks, and the final transcript is injected into the prompt input.
+Yes. The runtime contains a source-confirmed voice dictation path. It is local microphone capture plus remote transcription: `/voice` enables hold-to-talk or tap-to-toggle recording, one capture backend is selected before recording, a WebSocket client sends 16-bit mono PCM to the voice service, and final transcript text is passed back to the normal input editor.
 
 ## Source anchors
 
@@ -72,7 +72,7 @@ The state model contains `voiceState`, `voiceError`, `voiceInterimTranscript`, `
 
 ### Native N-API path
 
-The original Bun payload ships `audio-capture.js` and `audio-capture.node`; the local extraction pipeline now writes the `.node` binary alongside the shim (`*.node` is gitignored). The full binary-level reverse engineering of the addon — cpal + ALSA dependency set, 49-function PCM surface, N-API export list, microphone-authorization Linux stub — lives in [Audio capture native module](audio-capture-native.md).
+The original Bun payload ships `audio-capture.js` and `audio-capture.node`; the local extraction pipeline writes the `.node` binary alongside the shim (`*.node` is gitignored). The artifact-specific ABI evidence—ALSA linkage, imported PCM symbols, and the observed N-API export list—lives in [Audio capture native module](audio-capture-native.md). Those surfaces do not reveal the addon's internal thread, recovery, or cleanup order.
 
 `cli.renamed.js` loads the native addon when it is available at runtime and exports wrappers such as:
 
@@ -95,7 +95,7 @@ When native capture is unavailable, the runtime falls back to command-line recor
 - A SoX `rec` path exists and produces user-facing guidance when missing.
 - WSL has explicit failure messaging when no working recorder exists.
 
-This fallback design keeps the JS/TUI voice state machine independent from any one capture backend.
+This selection design keeps the JS/TUI voice state machine independent from any one capture backend. The readable path selects a backend before recording; it does **not** establish that a native error after startup automatically transfers the same recording to `arecord` or SoX.
 
 ## Transcription stream and injection
 
@@ -128,6 +128,31 @@ sequenceDiagram
 ```
 
 The source strings `Final transcript assembled` and `Injecting transcript` confirm that the transcribed text is not merely displayed; it becomes input to the regular prompt flow.
+
+### Wire contract and buffering
+
+`connectVoiceStream()` constructs the client protocol directly in readable source:
+
+| Field | Value or behavior |
+|---|---|
+| Path | `/api/ws/speech_to_text/voice_stream` on the configured Claude API WebSocket origin (or `VOICE_STREAM_BASE_URL`). |
+| Audio query | `encoding=linear16`, `sample_rate=16000`, `channels=1`. |
+| Endpointing query | `endpointing_ms=300`, `utterance_end_ms=1000`. |
+| Other query state | Language, `use_conversation_engine=true`, `stt_provider=deepgram-nova3`, and optional typed interim forwarding. |
+| Authentication | OAuth bearer token plus CLI client headers; sanitized key terms can be sent in `x-config-keyterms`. |
+| Keepalive | `{"type":"KeepAlive"}` immediately after open and every 8 seconds. |
+| Finalization | `{"type":"CloseStream"}`; finalization also has 1.5-second no-data and 5-second safety timeouts. |
+| Server frames handled | `TranscriptInterim`, `TranscriptText`, `TranscriptEndpoint`, `TranscriptError`, and generic `error`. |
+
+Capture starts while the socket connects. The JS layer queues chunks, then coalesces them into frames of at most 32,000 bytes when `onReady` fires. Live chunks are sent directly after that. Audio arriving after `CloseStream` is dropped.
+
+The resilience behavior is bounded rather than an open-ended reconnect loop:
+
+- an error before any transcript can trigger one early stream retry after 250 ms;
+- a completed recording that had audio and a connected socket but timed out with no text can replay its saved chunks once over a fresh connection;
+- replay uses the same 32,000-byte coalescing limit;
+- a mid-stream error preserves already accumulated final text before cleanup;
+- an unreported interim is promoted to final on endpoint, close, error, or finalization resolution where applicable.
 
 ## Availability and gates
 
@@ -178,7 +203,7 @@ The voice recorder picks one of three backends at start time. Selection lives in
 
 `MN4()` (the install-command picker) probes `apt-get`, `dnf`, then `pacman` in that order with `WJH` (3,000 ms `--version` execFile check), returning `{ cmd, args, displayCommand }` so `checkVoiceDependencies()` can surface a single-line install hint like `sudo apt-get install sox`.
 
-Permission gating runs through `requestMicrophonePermission()`: when the N-API addon is available it triggers a brief no-silence-detection recording and immediately stops it, which fires the OS permission prompt on macOS; everywhere else the function returns `true` because the OS gate is enforced by the recorder process. `microphoneAuthorizationStatus()` exposes the addon's reported status (`0` when the addon is missing).
+Permission gating runs through `requestMicrophonePermission()`: when the N-API addon is available it triggers a brief no-silence-detection recording and immediately stops it, which is intended to exercise an OS permission prompt where applicable; everywhere else the function returns `true` because the recorder process enforces access. `microphoneAuthorizationStatus()` exposes the addon's reported numeric status (`0` when the addon is missing). The inspected Linux-x64 addon returned `3` in a runtime probe; the native page records that observation without assigning a cross-platform semantic contract to the number.
 
 ## Relationship to media native modules
 
@@ -187,7 +212,7 @@ The older [Media native modules](media-native-modules.md) inventory correctly id
 ## Caveats
 
 - The `.node` binary itself is stripped. This page documents the JavaScript call boundary, exported wrapper names, and user-visible behavior, not native implementation details such as device enumeration internals.
-- The stream endpoint and server-side transcription implementation are not recoverable from this source alone. The bundle proves a client-side voice stream and auth/error handling, not the backend model details.
+- The client endpoint, query parameters, and frame handling are readable. The server-side transcription implementation and the semantics of the named provider beyond the client parameter are not recoverable from this source alone.
 - Voice mode should be described as dictation. There is no evidence here that the agent loop itself becomes audio-native; text remains the prompt handoff after transcription.
 
 ## Related docs

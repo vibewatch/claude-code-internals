@@ -28,6 +28,8 @@ Use this page alongside:
 | HostedSearchSkills | `SearchSkills` | Searches the hosted organization/account skill catalog by intent keywords. |
 | HostedSuggestSkills | `SuggestSkills` | Finds not-yet-enabled skills and renders an add card. |
 | SkillProposalTool | `propose_skills`, `tengu_propose_skills` | Presents up to three complete new/improved `SKILL.md` drafts for host review. |
+| BundledSkillWrapper | `Lu` | Wraps bundled commands that carry embedded files and defers extraction until invocation. |
+| BundledSkillExtractor | `klt`, `Zry`, `vzu`, `rny`, `nny`, `getBundledSkillsRoot` | Materializes contained, exclusively-created files beneath the bundled-skills root. |
 | CommandBudgetConstants | `const ww6 = 20` (minimum-per-skill chars), `const Yz_ = 200000` (default token budget) | Budget thresholds used by `formatCommandsWithinBudget`. |
 
 ## Bundle modules in `cli.renamed.js`
@@ -139,6 +141,24 @@ The `Ce4`/`Se4`/`wKA` helpers in the `claude-api` skill use this to materialize 
 `matchSubcommand(text)` allows the user to type `/claude-api migrate` or `/claude-api managed-agents-onboard`; anything else resolves to `"none"`.
 
 The skill's hard-coded description (`CLAUDE_API_SKILL_DESCRIPTION`) embeds an explicit trigger list ("when: code imports `anthropic`/`@anthropic-ai/sdk`; user asks for the Claude API…") and a skip list ("`openai`/other-provider SDK, provider-neutral code") so the model invokes it only when it actually fits.
+
+## Lazy extraction of bundled Skill files
+
+Bundled commands can carry a `files` object (or an async function returning one) in addition to their prompt. `Lu` does not write those files at registration time. Instead, it wraps `getPromptForCommand` with a memoized first-invocation extraction:
+
+1. `klt(skillName)` selects a directory below `getBundledSkillsRoot()`.
+2. On the first prompt request, the wrapper resolves `files` and calls `Zry`; concurrent/later requests share the same stored promise for that command record.
+3. `vzu` groups files by parent directory, creates those directories recursively with mode `0700`, and writes files through `rny`.
+4. On success, the wrapper prefixes the prompt with `Base directory for this skill: <path>`. On extraction failure, `Zry` logs/telemeters the failure and the wrapper returns the original prompt without that extraction-directory prefix.
+
+The extraction boundary has several source-visible containment rules (`cli.renamed.js:421026-421174`):
+
+- `nny` normalizes each embedded relative path and rejects absolute paths or any `..` segment before joining it beneath the skill directory.
+- `rny` opens each file with write/create/exclusive flags and mode `0600`; the first extraction therefore does not silently overwrite an existing path.
+- The open flags include `O_NOFOLLOW` when `fs.constants.O_NOFOLLOW` exists. The code uses `O_NOFOLLOW ?? 0`, so no-follow enforcement is platform-dependent and must not be described as universal.
+- The separate additional-file path (`mhs`) may tolerate `EEXIST`; that does not change the first extraction's exclusive-create behavior.
+
+This mechanism applies to bundled embedded assets, not ordinary filesystem-discovered `SKILL.md` directories, which already have a real `skillRoot`.
 
 ## Budget-aware presentation
 

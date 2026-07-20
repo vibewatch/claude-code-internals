@@ -21,6 +21,9 @@ Use [Diagnostics and debug logs](diagnostics-and-debug-logs.md) for local debug 
 | AssistantResponseLog | `claude_code.assistant_response`, `OTEL_LOG_ASSISTANT_RESPONSES` | Optional assistant-response content event. |
 | OtelContentLimit | `CLAUDE_CODE_OTEL_CONTENT_MAX_LENGTH` | Configures the default 60 KB content-attribute truncation bound. |
 | WorkflowCorrelation | `workflow.run_id`, `workflow.name` | Correlates telemetry emitted by workflow-spawned agents. |
+| FirstPartyInit | `initialize1PEventLogging` | Starts the sampled first-party event route during general initialization. |
+| ThirdPartyInit | `initializeTelemetryAfterTrust`, `tKa` | Separately initializes configured OTel providers after trust/managed-settings handling. |
+| PendingOtelDisposition | `discardPendingOTelEvents("not_configured" | "init_failed")` | Closes the pre-initialization OTel window with an explicit drop reason. |
 
 ## Bundle module in `cli.renamed.js`
 
@@ -54,6 +57,23 @@ This distinction matters because essential traffic can still allow network calls
 | Updater | `tengu_native_auto_updater_*` | Native updater lifecycle. |
 | API/model usage | API request duration, token, cost, retry, and quota signals | Provider-call accounting and support evidence. |
 
+## Route and initialization boundaries
+
+“Telemetry” is not one universal event bus. The readable source exposes these distinct routes:
+
+| Route | Initialization and dispatch |
+|---|---|
+| First-party events | `PgS()` starts `initialize1PEventLogging()` during general initialization and reinitializes it when GrowthBook configuration changes. The analytics sink applies event sampling and calls the first-party event logger. |
+| Datadog events | The same analytics sink additionally calls `trackDatadogEvent()` only when `shouldTrackDatadog()` passes its traffic/gate checks. |
+| OpenTelemetry | `initializeTelemetryAfterTrust()` invokes the separate `tKa()`/`initializeTelemetry()` path. Instrumentation must explicitly emit OTel metrics, logs, or spans; an arbitrary `logEvent()` call is not automatically copied to all three signals. |
+| BigQuery metrics | When eligible, a five-minute BigQuery metric reader is added to the OTel meter provider. It exports emitted metric instruments, not the generic first-party event payload by implication. |
+| Debug log | `logForDebugging()` writes the redacted text log described in [Diagnostics and debug logs](diagnostics-and-debug-logs.md). |
+| Error/MCP JSONL | `initializeErrorLogSink()` registers separate date-stamped local writers for errors and per-server MCP debug/error records. |
+
+When remote managed settings are active, third-party telemetry waits for those settings, reapplies their environment variables, captures the administrative steering snapshot, reloads extra CA and mTLS material, and refreshes global agents if network material changed before calling `tKa()`. Without that remote-settings path, `tKa()` is called directly after the trust-oriented entry point.
+
+`tKa()` is guarded against duplicate initialization. Its `finally` block closes the pending-event window: queued OTel events are discarded as `not_configured` if no configured path materialized, or `init_failed` when configured telemetry initialization threw. This is bounded pre-initialization handling, not a promise that arbitrary telemetry remains buffered until a sink recovers.
+
 ### Current log correlation and content controls
 
 `2.1.215` emits or enriches these source-visible OTel log surfaces:
@@ -81,7 +101,7 @@ This distinction matters because essential traffic can still allow network calls
 | `OTEL_LOG_TOOL_DETAILS`, `OTEL_LOG_TOOL_CONTENT`, `OTEL_LOG_USER_PROMPTS` | Controls how much tool/user detail can be logged. |
 | `--add-trace-attribute key=value` | Adds runtime trace attributes. |
 
-The source installs final flush hooks on exit paths, so logs/traces get a best-effort drain during shutdown.
+The source installs final flush hooks on exit paths, so initialized OTel providers get a bounded best-effort drain during shutdown. Other routes have their own shutdown/drain functions.
 
 `otelHeadersHelper` is a settings-provided command helper for OTEL headers. The decoded runtime debounces helper execution with `CLAUDE_CODE_OTEL_HEADERS_HELPER_DEBOUNCE_MS`, requires the helper to return a JSON object with string values, and logs helper failures as OpenTelemetry header errors. Project/local helper commands are also workspace-trust gated; see [Settings, policy, and integrations](../03-tools-integrations-security/settings-policy-and-integrations.md).
 
@@ -149,7 +169,7 @@ The `EventSamplingControl` module (loaders at `cli.renamed.js:167043, 167244`) g
 - `logGrowthBookExperimentTo1P(experimentId, variationId, attributes)` is the bridge from GrowthBook experiment exposure to the 1P pipeline.
 - `shutdown1PEventLogging()` and `reinitialize1PEventLoggingIfConfigChanged()` drain the queue on shutdown and re-arm when the sampling config changes mid-session.
 
-The 1P pipeline runs in parallel with the OTel pipeline: one `logEvent` call can fan out to BigQuery metrics, the 1P event sink, and any operator-configured OTLP backend.
+The first-party route and OTel stack can both be active in one process, but they are not automatic mirrors. A generic analytics `logEvent` is sampled into the first-party event sink and may additionally go to Datadog. OTel logs, spans, and metric instruments are emitted at explicit OTel call sites; the BigQuery reader consumes metric instruments from that meter pipeline.
 
 ### Environment variables that shape the stack
 

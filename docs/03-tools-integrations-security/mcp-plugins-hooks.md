@@ -41,6 +41,10 @@ Use [Hooks and events reference](hooks-and-events-reference.md) for the canonica
 | PluginUpdateTelemetry | `tengu_plugin_updated_cli` | CLI update telemetry after version check. |
 | PluginCacheStaging | `generateTemporaryCacheNameForPlugin`, `cachePlugin` | Plugin sources are staged in a temporary cache directory before manifest validation. |
 | PluginManifestLoad | `loadPluginManifest` | Cache materialization depends on `.claude-plugin/plugin.json` or alternate manifest paths. |
+| MarketplaceDeclarations | `extraKnownMarketplaces`, `sQ`, `Uhy`, `bJr` | Merged, scoped settings declarations; distinct from downloaded/materialized state. |
+| MarketplaceStateFile | `known_marketplaces.json`, `Ng`, `lxe` | Validated local records containing source, install location, and update metadata. |
+| MarketplaceMaterializer | `cct`, `bSs` | Policy-checks, de-duplicates, acquires, validates, caches, and records a marketplace source. |
+| MarketplaceRemoval | `DDt` | Removes one declaration or, on final removal, state/cache/plugin records. |
 | MarketplaceTargetedBulkUpdate | `marketplaceUpdateHandler`, `tengu_marketplace_updated_all` | Marketplace update has targeted and all-marketplace branches. |
 | HookEventSchema | `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd` | Hook event schema. |
 
@@ -98,13 +102,26 @@ Current CLI handlers also expose `plugin init <name>` (scaffold under `.claude/s
 
 ## Plugin marketplace lifecycle
 
-The plugin path has two user-facing entry surfaces: an in-session slash/TUI plugin menu and the CLI `plugin` / `plugins` command family. The CLI tree contains a marketplace root with add/list/update/remove-style wording, while settings and policy carry the durable state.
+The plugin path has two user-facing entry surfaces: an in-session slash/TUI plugin menu and the CLI `plugin` / `plugins` command family. The CLI command tree registers four source-visible handlers—`marketplaceAddHandler`, `marketplaceListHandler`, `marketplaceRemoveHandler`, and `marketplaceUpdateHandler`—around `cli.renamed.js:657137-657390`, with the `plugin marketplace add|list|remove|update` commands around `660963-661030`.
+
+The durable lifecycle has **two independent layers**:
+
+| Layer | Owner | Contents and role |
+|---|---|---|
+| Declaration | `extraKnownMarketplaces` in user/project/local/flag/policy settings; merged by `sQ` / `Uhy`; written by `bJr` | Says that a named marketplace source is declared in a particular scope. Multiple scopes can declare the same name. |
+| Materialized state | `~/.claude/plugins/known_marketplaces.json` path from `Uyo`; loaded by `Ng`; validated/written by `lxe` | Records the resolved source, `installLocation`, `lastUpdated`, and optional update state for a locally usable marketplace. |
+
+This distinction is observable in the add handler: it first calls `cct` to materialize and record the source, then calls `bJr` to write the selected declaration. Those writes are not one transaction; the visible handler does not roll back materialized state if the later settings write fails.
 
 ```mermaid
 flowchart TD
-    Source[Marketplace source: URL / path / GitHub repo / settings] --> Register[extraKnownMarketplaces]
-    Policy[strictKnownMarketplaces / blockedMarketplaces] --> Register
-    Register --> Catalog[Known marketplace catalog]
+    Source[Marketplace source] --> Policy[strict / blocked source policy]
+    Policy --> Materialize[cct -> bSs]
+    Materialize --> State[known_marketplaces.json]
+    Materialize --> Cache[validated marketplace cache or local path]
+    State --> Declare[bJr -> extraKnownMarketplaces scope]
+    Declare --> Catalog[Usable marketplace catalog]
+    Cache --> Catalog
     Catalog --> Install[Install plugin + dependencies]
     Install --> Enabled[enabledPlugins setting]
     Enabled --> Runtime[hooks / MCP / skills / agents / output styles]
@@ -113,20 +130,24 @@ flowchart TD
 
 | Stage | Source-visible evidence | Runtime implication |
 |---|---|---|
-| Register marketplace | `marketplace add <source>`, `extraKnownMarketplaces`, sparse checkout and scope options | Marketplaces can be declared from CLI or settings and scoped to user/project/local contexts. |
+| Add and declare | `marketplaceAddHandler`, `cct`, `bJr`, `--scope`, `--sparse` | The source is policy-checked/materialized first, then declared in user/project/local settings. Sparse paths apply only to GitHub/Git sources. An equivalent materialized source is reused. |
+| List | `marketplaceListHandler`, `Ng` | CLI list reads materialized `known_marketplaces.json` entries, not merely the merged declarations. JSON output includes source-specific fields and `installLocation`. |
 | Apply policy | `strictKnownMarketplaces`, `blockedMarketplaces`, `dependency-marketplace-blocked-by-policy` | Managed policy can allowlist or block sources before plugin/dependency installation completes. |
 | Install plugin | `plugin_installed`, dependency closure handling, `enabledPlugins` writes | Install resolves dependency closure, writes enabled plugin state, and emits plugin/marketplace telemetry. |
-| Update plugin | `tengu_plugin_updated_cli`, `autoUpdate` settings | Updates can be triggered from CLI and may be gated by marketplace auto-update configuration. |
-| Disable or uninstall | `tengu_plugin_disabled_cli`, `tengu_plugin_uninstalled_cli` | Disable changes enabled state; uninstall can also run orphan scans/pruning. |
+| Update marketplace | `marketplaceUpdateHandler`, `cxe` / `Zhy`, `Drd` | A named update refreshes one state entry; no name refreshes all eligible entries. Seed-managed, settings-sourced, and policy-blocked cases have explicit skip/error behavior. |
+| Remove one declaration | `DDt(name, scope)` | If another editable scope, managed policy, or seed still declares the name, only that scope's declaration is removed; materialized state and installed plugins remain. |
+| Final removal | `DDt(name)` or removal of the last declaration | Deletes the state entry and cache, strips declarations and marketplace-specific `enabledPlugins`, removes installed-plugin records, and marks orphaned paths for cleanup. |
 | Runtime contribution | plugin `hooks`, `mcpServers`, `skills`, `agents`, `outputStyles` | Enabled plugins become capability injectors, but still flow through settings, hooks, MCP, and permission boundaries. |
 
-This narrows the previous marketplace gap from “command surfaces only” to a lifecycle model: source registration, policy filtering, dependency resolution, enabled-state writes, update/disable/uninstall operations, and runtime capability reloads. The remaining gap is exact per-command UI flow and every option branch inside the lazy-loaded marketplace handlers.
+`bSs` implements URL, GitHub, generic Git, local file, local directory, and settings-backed synthetic-manifest acquisition (`cli.renamed.js:467471-467675`). Although the source schema and formatter recognize an `npm` marketplace source, that branch explicitly throws `NPM marketplace sources not yet implemented`. Schema presence is therefore not implementation evidence. This limitation is specific to **marketplace acquisition**.
+
+Seed ownership is another separate layer. An unscoped attempt to permanently remove a seed-managed marketplace is rejected because startup would restore it. Scoped removal can still remove a matching editable declaration while retaining the seed-backed materialization.
 
 ### Plugin cache staging
 
 The decoded plugin-cache chunk shows a write-then-validate flow. `cachePlugin` creates a temporary cache directory under the plugin cache root, copies or installs the source there, then calls `loadPluginManifest` before returning a materialized plugin record. The observed temporary name includes source kind, timestamp, and a random suffix (`temp_<source>_<time>_<rand>`), but the stable behavior to rely on is the staging boundary: source acquisition happens before manifest validation and final cache reuse.
 
-Supported source branches include local copies, npm packages, GitHub/git URLs, and git subdirectories. The same chunk also preserves safety details such as contained path resolution, safe symlink handling during local copy, and POSIX filtering for exported plugin `bin` paths.
+Supported **plugin package** source branches include local copies, npm packages, GitHub/git URLs, and git subdirectories. This does not imply support for an NPM **marketplace source**: the marketplace materializer's NPM branch throws as described above. The same plugin-cache chunk also preserves safety details such as contained path resolution, safe symlink handling during local copy, and POSIX filtering for exported plugin `bin` paths.
 
 `marketplaceUpdateHandler` has two visible branches: a named marketplace update emits `tengu_marketplace_updated`, while the no-name branch loads all configured marketplaces and emits `tengu_marketplace_updated_all` with a count. Individual plugin update still delegates to a lower-level updater, so this page documents the update surface and telemetry rather than every update/install branch.
 

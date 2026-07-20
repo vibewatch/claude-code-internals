@@ -17,10 +17,11 @@ Use this page together with:
 | SdkStartup | `async function startup({ options, initializeTimeoutMs = 60000 } = {})` | Pre-warms the subprocess, runs initialization, returns a one-shot `WarmQuery` with `query()`, `close()`, and `Symbol.asyncDispose`. |
 | SdkResolveSettings | `async function resolveSettings(H)` | Returns the merged settings the runtime would apply for the given options, without starting the loop. |
 | SdkMcpServerFactory | `function createSdkMcpServer(H)` | Builds an in-process MCP server from JavaScript tool callbacks so SDK callers do not need a separate process. |
-| DirectConnectTransport | `class DirectConnectTransport` | Bridge/Remote-Control transport for connecting an SDK client directly to an existing Claude Code session. |
+| DirectConnectTransport | `class DirectConnectTransport` | HTTP session-creation plus WebSocket transport for SDK Direct Connect. |
 | DirectConnectError | `class DirectConnectError extends Error` | Error type raised by the direct-connect transport. |
 | DirectConnectUrlParser | `function parseDirectConnectUrl(H)` | Parses `cc://` / `cc+unix://` URLs into a transport descriptor. |
-| InMemorySessionStore | `class InMemorySessionStore` | Session store implementation that keeps transcripts in memory instead of on disk; used by tests and headless callers that opt out of persistence. |
+| TranscriptMirrorBatcher | `class VOs` | Coalesces child `transcript_mirror` frames before calling an external store. |
+| InMemorySessionStore | `class InMemorySessionStore` | In-memory implementation of the external session-store adapter. |
 | SessionApi | `listSessions`, `getSessionInfo`, `getSessionMessages` | Read-only API over the configured session store. |
 | SessionMutationApi | `renameSession`, `tagSession`, `deleteSession`, `forkSession`, `importSessionToStore` | Mutations over the configured session store. |
 | TranscriptFoldHelper | `foldSessionSummary` | Returns a folded transcript summary suitable for resume/picker UI. |
@@ -60,11 +61,14 @@ flowchart TD
     SessionApi --> Store{configured session store}
     SubagentApi --> Store
     SessionMutation[renameSession / tagSession / forkSession / deleteSession / importSessionToStore] --> Store
-    Store -->|sessionStore option| InMem[InMemorySessionStore]
-    Store -->|default| LocalDisk[Local JSONL transcripts]
+    Store -->|sessionStore option| InMem[External SessionStore<br/>including InMemorySessionStore]
+    Subprocess --> LocalDisk[Required local JSONL staging]
+    LocalDisk --> Mirror[transcript_mirror after successful append]
+    Mirror --> InMem
 
     McpHelper --> McpServer[In-process MCP server bound to JS callbacks]
-    DirectConnect --> Bridge[Bridge / Remote Control client]
+    DirectConnect --> CreateSession[POST /sessions]
+    CreateSession --> WebSocket[Returned WebSocket URL]
 ```
 
 ## Core entry points
@@ -76,15 +80,19 @@ flowchart TD
 Key options the SDK accepts:
 
 - `cwd`, `dir`, `env` — process identity for the subprocess.
-- `resume`, `forkSession`, `loadTimeoutMs`, `sessionStore` — control how the session is restored, including using an [`InMemorySessionStore`](#in-memory-session-store) instead of disk.
+- `resume`, `forkSession`, `loadTimeoutMs`, `sessionStore` — control how the session is restored, including mirroring through an [`InMemorySessionStore`](#external-session-store-and-local-staging).
 - `model`, `fallbackModel`, `permissionMode`, `allowedTools`, `disallowedTools`, `mcpServers`, `agents`, `hooks`, `outputStyle`, `appendSystemPrompt` — same shape as the corresponding root flags in [Commands and flags](../01-runtime-lifecycle/commands-and-flags.md).
 - `signal`, `abortController` — cancellation. Triggers a `SdkAbortError`.
 
 In stream-JSON mode, `--forward-subagent-text` (or its environment equivalent) forwards delegated text/thinking with `parent_tool_use_id`, while normal mode keeps that internal to the agent result. Model-control requests are no longer deferred to the following user turn: a valid `set_model` received mid-turn affects the next provider round trip in the current turn.
 
+An external `sessionStore` does not replace the subprocess's local writer. The option is rejected with `persistSession: false`: a local append must succeed before the child emits a `transcript_mirror` frame. For ephemeral staging, the source error recommends a temporary `CLAUDE_CONFIG_DIR`. A custom subprocess launcher must give parent and child the same normalized config-directory path or mirror frames are dropped.
+
 ### `startup({ options, initializeTimeoutMs }) -> WarmQuery`
 
 `startup` pre-warms a subprocess: it runs `initializationResult()` to wait for full SDK startup, then returns a `WarmQuery` wrapper exposing exactly one `.query(input)` call plus `.close()` and `Symbol.asyncDispose`. The wrapper guards against re-use and ensures cleanup callbacks run even if `query()` throws.
+
+The default initialization timeout is 60 seconds. Closing/disposal first runs cleanup callbacks, flushes any transcript mirror batcher best-effort, rejects pending control/MCP requests, closes SDK MCP transports, and closes the subprocess transport. The transport ends stdin, sends `SIGTERM` after its close grace period, and escalates to `SIGKILL` five seconds later if needed; query cleanup waits at most two seconds for process exit. These are cleanup bounds, not an `fsync` durability guarantee.
 
 ### `resolveSettings(options) -> ResolvedSettings`
 
@@ -98,17 +106,21 @@ Returns the same settings object the runtime would apply, without spawning the l
 | `getSessionInfo(id, options)` | Returns session metadata (title, tags, model, agent name, transcript path). |
 | `getSessionMessages(id, options)` | Returns the message history; uses the configured session store. |
 | `renameSession(id, newName, options)` | Updates the stored session title; persists to disk when using the default store. |
-| `tagSession(id, tags, options)` | Updates session tags. |
+| `tagSession(id, tag, options)` | Appends a tag frame; `null` clears the tag. |
 | `deleteSession(id, options)` | Removes the session from the configured store. |
 | `forkSession(id, options)` | Creates a new session that branches from the existing transcript at the resume point. |
-| `importSessionToStore(payload, store)` | Imports an external session transcript into an `InMemorySessionStore` or similar. |
+| `importSessionToStore(sessionId, store, options?)` | Reads a local transcript (and, by default, subagents) and appends it to the supplied store in batches. |
 | `foldSessionSummary(messages)` | Returns a folded summary suitable for resume/search UI. |
 
-All mutating functions accept an `options.sessionStore` to redirect from the default local-jsonl store. See [Session resume and transcripts](session-resume-and-transcripts.md) and [Session API, events, and storage](session-api-events-and-storage.md) for the underlying behavior.
+All mutating functions accept an `options.sessionStore` to redirect from the default local-jsonl store. Rename and tag remain append-only operations in that store; delete is a no-op when the adapter does not implement optional `delete()`. Fork requires `load()` plus `append()`. See [Session resume and transcripts](session-resume-and-transcripts.md) and [Session API, events, and storage](session-api-events-and-storage.md) for the underlying behavior.
 
-### In-memory session store
+### External session store and local staging
 
-`InMemorySessionStore` is exported so SDK callers can pass a `sessionStore` option without touching disk. Tests and short-lived headless callers use this to avoid leaving transcript files behind.
+The required adapter methods are `append(key, entries)` and `load(key)`. Optional methods such as `listSessions`, `listSessionSummaries`, `delete`, and `listSubkeys` unlock the corresponding listing/deletion/subagent APIs. `InMemorySessionStore` implements these in process memory, but it does **not** make an SDK query disk-free: the child still writes local JSONL before the parent receives the mirror.
+
+Ordering is local append → child `transcript_mirror` frame → parent batcher → `SessionStore.append()`. The batcher coalesces records by file path, flushes above 500 entries or 1 MiB, applies a 60-second timeout per append call, and retries ordinary failures after 200 and 800 ms (three attempts total). A timeout is not retried. Final failure emits a `system/mirror_error`; it does not roll back the local JSONL append.
+
+When resuming from an external store, setup loads the entries into a temporary local config/transcript tree, starts the child against that path, and removes the tree after the subprocess exits. External-store read/parse failure therefore happens before process initialization, while temporary cleanup remains best-effort rather than transactional.
 
 ## Subagent inspection API
 
@@ -125,7 +137,13 @@ These read the subagent transcripts off the same on-disk layout described in [Ag
 
 ## Direct-connect transport
 
-`parseDirectConnectUrl` accepts `cc://host:port` or `cc+unix:///socket/path` URLs and returns a transport descriptor. `DirectConnectTransport` then opens a duplex stream to that endpoint, letting SDK callers attach to a Claude Code Remote Control session instead of spawning their own subprocess. Failures throw `DirectConnectError`. See [Remote control and teleport](remote-control-and-teleport.md) for the Remote Control side.
+`parseDirectConnectUrl` parses `cc://host:port` into HTTP connection metadata and treats the path component as a bearer token. It recognizes `cc+unix:///socket/path` only to reject it as not yet supported. Session creation sends `POST /sessions` with optional `cwd`, caller-supplied `session_key`, and `permission_mode`. A successful response must contain `session_id` and `ws_url`; `work_dir` and `session_key` are optional. The visible response adapter retains the session ID, WebSocket URL, and work directory, but does not copy a returned `session_key` into transport state.
+
+The returned WebSocket must open within 15 seconds. Incoming data is newline-delimited JSON: complete valid lines are enqueued, malformed lines are debug-logged and dropped without terminating the connection, and an unterminated trailing fragment is retained only until another chunk supplies a newline. If the socket closes first, that fragment is not emitted. Session-create failures, non-2xx responses, malformed creation payloads, connection timeout, socket errors, and abnormal close surface as transport/query failures.
+
+The decoded transport has no reconnect or sequence-resume loop. A caller that wants to retry must create a new Direct Connect session. Do not transfer the replay behavior of Remote Control or hosted `SessionsV2Client` onto this transport. Server-side session lifetime, persistence, and authentication semantics remain outside the client artifact.
+
+When `deleteSessionOnClose` is enabled, a client-initiated `close()` after session creation fires a best-effort `DELETE /sessions/:session_id`. The call is not awaited, response status is not checked, and network errors are swallowed. A socket that has already transitioned the transport to closed causes a later `close()` to return early, so this option is not proof that every peer-terminated session is deleted or that server-side data is erased.
 
 ## Exported constants
 
@@ -140,7 +158,8 @@ These read the subagent transcripts off the same on-disk layout described in [Ag
 - This module is the SDK's public surface; the actual subprocess is still the bundled `cli.renamed.js` runtime. The SDK does not bypass permission rules, hooks, or remote-control gates.
 - `query` always opens a fresh subprocess; reuse the same `WarmQuery` only inside one logical conversation. `startup` is designed for one-shot use.
 - Mutating session APIs operate on whichever `sessionStore` the caller passes; without one they touch the local-jsonl transcript directory. Always pass an explicit store in tests.
-- The direct-connect transport requires Remote Control to be enabled on the target session; failures are surfaced as `DirectConnectError` and should be retried rather than swallowed.
+- External-store append is a bounded retry path, not an exactly-once transaction. The source exposes no idempotency token or rollback, so adapters should tolerate a repeated batch if a call's outcome is ambiguous.
+- Direct Connect failures are surfaced, but automatic retry is not implemented; callers must choose whether creating a new server session is safe.
 
 ## Related docs
 

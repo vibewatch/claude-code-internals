@@ -8,11 +8,11 @@ Use [Data models and frame schemas](data-models-and-frame-schemas.md) for the ca
 
 ## Short answer
 
-- A session is designed as a **durable local JSONL transcript plus a live runtime envelope** addressed by one session ID.
-- Remote control **does exist**. The visible entrypoints are `--remote`, `--teleport`, `--remote-control`, and `--rc`; the implementation projects the same session envelope over bridge/session-ingress transports instead of creating a separate remote runtime.
+- A local session is designed as a **durable local JSONL transcript plus a live runtime envelope** addressed by one local UUID. Hosted sessions and Remote Control bridge sessions add distinct service-side IDs.
+- Remote control **does exist**, but the entrypoints are not aliases for one implementation. `--remote` owns a hosted loop, `--teleport` imports hosted history into a local loop, and `--remote-control` / `--rc` expose a running local loop through a resumable hosted bridge.
 - API calls are not one neat table in source. `cli.renamed.js` embeds several families: Claude Code cloud/runtime endpoints, Anthropic SDK generated endpoints, MCP JSON-RPC methods, telemetry/OTEL endpoints, and third-party integration endpoints.
 - Events are also plural: hook event names, stream/SDK frames, bridge/control frames, MCP JSON-RPC notifications, telemetry events, and JSONL transcript entries.
-- Internal storage exists and is mostly **file-backed**: per-session JSONL, per-project metadata, file-history/context-collapse/checkpoint records, task/session queues, optional SDK `sessionStore` mirroring, scheduled-task files/locks, debug logs, and caches.
+- Internal storage exists and is mostly **file-backed**: ordered per-session JSONL, per-project metadata, file-history/context-collapse/checkpoint records, task/session queues, optional downstream SDK `sessionStore` mirroring, scheduled-task files/locks, debug logs, and caches.
 
 ## Source anchors
 
@@ -21,9 +21,11 @@ Use [Data models and frame schemas](data-models-and-frame-schemas.md) for the ca
 | LocalJsonlTranscriptSource | `transcriptSource:"local-jsonl"` | Sessions default to local JSONL transcript storage. |
 | ProjectStateRoot | `projects` | Per-project state helper under the Claude config root. |
 | CurrentSessionJsonlName | `` `${v$()}.jsonl` `` | Current-session JSONL file naming. |
-| SessionDiscovery | `async function jHH` | Resume/latest-session discovery. |
-| TranscriptRestore | `async function OG8` | Transcript restore into the live envelope. |
+| SessionDiscovery | `async function loadConversationForResume` | Resume/latest-session discovery and transcript normalization. |
+| TranscriptRestore | `async function f7o` | Applies discovered state to the current live envelope. |
 | TranscriptRecorder | `recordTranscript` | Durable transcript append/export surface. |
+| OrderedTranscriptStore | `class ROd`, `drainQueuesOnce` | Per-file queued/batched local append. |
+| TranscriptShutdownFlush | `flushSessionStorageAtExit` | Drains transcript and auxiliary queues during coordinated shutdown. |
 | FileHistorySnapshotRecorder | `recordFileHistorySnapshot` | File-history snapshot storage. |
 | ContextCollapseSnapshotRecorder | `recordContextCollapseSnapshot` | Context-collapse snapshot storage. |
 | SdkSessionStoreAdapter | `sessionStore` | SDK/external storage adapter hook. |
@@ -47,7 +49,11 @@ Use [Data models and frame schemas](data-models-and-frame-schemas.md) for the ca
 | PreToolUseHook | `PreToolUse` | Hook event list begins. |
 | SessionEndHook | `SessionEnd` | Hook session lifecycle event. |
 | SessionStateFrame | `session_state_changed` | Runtime/session state stream frame. |
-| TranscriptMirrorFrame | `transcript_mirror` | Local/remote transcript mirror frame. |
+| TranscriptMirrorFrame | `transcript_mirror` | Successful local transcript append mirrored to an SDK host. |
+| TranscriptRetentionSweep | `async function kIp()` | `mtime`-based local retention cleanup controlled by `cleanupPeriodDays`. |
+| RetentionHousekeeping | `startBackgroundHousekeeping`, `.last-cleanup` | Starts process-local transcript heartbeats and schedules deferred cleanup work. |
+| RemoteControlSse | `from_sequence_num`, `seenSequenceNums` | Remote Control sequence replay and local duplicate suppression. |
+| HostedRemoteSse | `SessionsV2Client`, `catch_up_truncated` | Separate hosted `--remote` sequence/reconnect client. |
 | PromptSuggestionFrame | `prompt_suggestion` | Predicted next-prompt frame. |
 | MessageDisplayHook | `MessageDisplay` | Display-only assistant-stream transformation; stored/model-visible content is unchanged. |
 
@@ -69,24 +75,27 @@ flowchart TD
     Envelope --> Jsonl[local-jsonl: sessionId.jsonl]
     Envelope --> Tools[Tool + permission runtime]
     Envelope --> Hooks[Hook event runtime]
-    Envelope --> Remote[Remote / teleport / Remote Control bridge]
+    Envelope --> RemoteControl[Remote Control bridge]
+    Hosted[Hosted --remote session] --> Teleport[Teleport import]
+    Teleport --> Restore
     Envelope --> SDK[Headless / SDK stream]
     Jsonl --> Resume[future continue/resume/fork/rewind]
 ```
 
 | Layer | Evidence | Responsibility |
 |---|---|---|
-| Session identity | `` `${v$()}.jsonl` `` and `--session-id <uuid>` | Gives every local and remote projection one stable key. |
-| Durable transcript | `transcriptSource:"local-jsonl"`, `recordTranscript`, `loadTranscriptFromFile` | Stores message/event history as append-only JSONL. |
+| Session identity | `` `${v$()}.jsonl` `` and `--session-id <uuid>` | Gives the local transcript/envelope a stable UUID; hosted and bridge objects retain separate IDs. |
+| Durable transcript | `transcriptSource:"local-jsonl"`, `recordTranscript`, `loadTranscriptFromFile` | Stores message/event history as queued, ordered append-only JSONL. |
 | Restore/discovery | `SessionDiscovery`, `SessionRestore` | Turns `--continue`/`--resume`/picker/search into a restored envelope. |
 | Live envelope | `session_state_changed`, permission/model/agent restore paths | Holds process-time state: model, cwd, permissions, agents, tools, hooks, queues. |
-| External mirroring | `sessionStore`, `transcript_mirror` | Allows SDK/remote consumers to mirror local writes. |
-| Retention/cleanup | `cleanupPeriodDays` | Bounds how long local project/session files remain. |
+| External mirroring | `sessionStore`, `transcript_mirror` | Allows an SDK host to mirror records only after local append succeeds. |
+| Retention/cleanup | `cleanupPeriodDays`, `kIp` | Actively sweeps stale transcripts, recordings, sidecars, and associated session state. |
 
 Two important constraints fall out of the source:
 
 1. `sessionStore` is not a replacement for local writes. The explicit error says it cannot be used with `persistSession: false`; mirroring is fed from the local transcript stream.
-2. Remote variants do not bypass the session envelope. They add bridge frames and tokens around the same session model.
+2. Persistence is ordered but best-effort. One in-process queue serializes each file, a successful local append triggers mirroring, and write failure is logged/telemetered while queued callers are released. There is no cross-process lock or rollback of an already-written local batch when an external mirror fails.
+3. Only Remote Control adds bridge frames around a local session envelope. `--remote` owns a hosted loop; teleport imports hosted events before local restore; Direct Connect and the Chrome browser-tool bridge are separate protocols.
 
 ## Remote control and remote sessions
 
@@ -117,7 +126,9 @@ Remote Control is implemented through bridge/control frames. The high-signal fra
 | `bash_command` | host → runtime | Injects a command into the headless bash path and posts the output back as user-visible content. |
 | `transcript_mirror` | runtime → host/SDK | Mirrors local transcript records to external consumers. |
 
-The bridge path also wires callbacks such as inbound prompt message handling, permission responses, interrupt, model changes, and max-thinking-token changes. That makes Remote Control a control-plane projection over the session, not just screen sharing.
+The bridge path also wires callbacks such as inbound prompt message handling, permission responses, interrupt, model changes, and max-thinking-token changes. That makes Remote Control a control-plane projection over a local session, not just screen sharing. Its local transcript stores the bridge-session ID and last accepted sequence so a non-fork resume can reattach; a fork clears both.
+
+Remote Control resumes worker SSE from its last sequence, suppresses recently seen numeric IDs, detects liveness loss, and can rebuild selected credential failures. Hosted `--remote` instead uses `SessionsV2Client`, with a five-attempt reconnect budget and an explicit `catch_up_truncated` gap event. Teleport fetches hosted logs through an endpoint fallback and reconstructs a local session. See [Remote control and teleport](remote-control-and-teleport.md) for the separate failure and cleanup contracts.
 
 ## API call surfaces
 
@@ -186,7 +197,7 @@ The hook event array at line ~185 contains this source-visible list:
 | Frame | Meaning |
 |---|---|
 | `session_state_changed` | Session state changed, e.g. idle/running/requires-action surfaces. |
-| `transcript_mirror` | Transcript line mirrored to host/SDK/remote consumer. |
+| `transcript_mirror` | Transcript entries mirrored to a registered SDK/host listener after local append. |
 | `bridge_state` | Remote bridge state update. |
 | `control_request` / `control_response` | Host/runtime control-plane request/response pair. |
 | `permission_denied` | Tool call was denied without an interactive approval path. |
@@ -232,7 +243,18 @@ Telemetry strings mostly use the `tengu_*` prefix, for example scheduled-task, a
 | Scheduled tasks | `.claude/scheduled_tasks.lock`, durable scheduled-task prompt mentions `.claude/scheduled_tasks.json` | Session/durable scheduled prompt state and scheduler lock. |
 | Debug/ops logs | `CLAUDE_CODE_DEBUG_LOGS_DIR`, debug `latest` symlink | Support/debug log files outside the transcript. |
 
-The main design pattern is **append and replay**. Runtime code appends transcript/internal records; resume restores by scanning those records into a live envelope; remote/SDK consumers can mirror the same stream.
+The main design pattern is **queue, append, mirror, and replay**:
+
+1. records are routed by append policy and queued per target file;
+2. drains are chained so one process preserves per-file order;
+3. a successful local append fires SDK mirror listeners;
+4. the SDK host independently batches/retries its `SessionStore.append()` call;
+5. resume scans local or temporarily materialized records into a live envelope;
+6. coordinated shutdown drains the queues best-effort.
+
+Local write failure prevents that drain's mirror callback but does not automatically disable all later persistence. External-store failure emits a mirror error without rolling back local JSONL.
+
+The retention path is likewise executable rather than merely declarative. `startBackgroundHousekeeping()` schedules the first check after five seconds and runs only once per process. Recent interactive activity or a `.last-cleanup` sentinel younger than 24 hours moves the sweep to the ten-minute slow-work interval; after `kIp()` completes, the sentinel is rewritten. Interactive sessions also touch their current transcript immediately and hourly. The sweep compares filesystem `mtime`, removes stale JSONL, cast files and sidecars, and recursively cleans associated session/subagent/workflow/remote-agent state. Cleanup is skipped when disabled or when settings-source errors make the configured period unsafe to determine; the unreferenced timers do not keep a process alive.
 
 ## Mental model
 
@@ -243,12 +265,14 @@ flowchart LR
     Envelope --> Events[Hook + stream + bridge events]
     Events --> Jsonl
     Events --> SDK[SDK/headless host]
-    Events --> Remote[Remote Control / teleport]
+    Events --> RemoteControl[Remote Control]
+    Hosted[Hosted --remote] --> Teleport[Teleport import]
+    Teleport --> Restore
     Envelope --> Storage[metadata, snapshots, queues]
     Storage --> Restore
 ```
 
-The important implementation takeaway: **session, API, event, and storage logic are intentionally coupled by the session ID**. A local session can become a remote-controlled session because the bridge adds control frames around the same envelope rather than translating it into a different object model.
+The important implementation takeaway: **local session, event, and storage logic are coupled by the local UUID, while remote services add explicit foreign identities and replay cursors**. A local session can become remote-controlled because a bridge is linked to the envelope; a hosted `--remote` session is not thereby the same object.
 
 ## Caveats
 
@@ -256,6 +280,8 @@ The important implementation takeaway: **session, API, event, and storage logic 
 - The API list includes embedded SDK declarations and integration constants. It is a source-visible endpoint inventory, not a network trace.
 - Event names span hooks, stream frames, bridge control frames, MCP methods, and telemetry. Consumers should not assume one subscription mechanism receives all of them.
 - Remote/session ingress paths are documented from static strings. A live run may choose different paths depending on account, policy, feature gates, and environment.
+- Client code establishes local ordering, retry budgets, cursor persistence, and archive requests. It does not establish server-side retention, exactly-once delivery, archive erasure, or cross-version replay guarantees.
+- In-process append chains are not cross-process locking. Concurrent processes targeting one JSONL file have no source-visible global ordering guarantee.
 
 ## Related docs
 

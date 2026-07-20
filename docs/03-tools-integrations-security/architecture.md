@@ -29,10 +29,14 @@ This design makes adding a capability source cheap and adding a security control
 | --- | --- | --- |
 | BuiltInToolNameConstant | `var Rq="Bash"` | Built-in tool name constant; representative of the catalog shape. |
 | CapabilityConstantGroup | `TaskCreate`, `TaskGet`, `TaskList`, `TaskUpdate`, `Skill`, `TodoWrite` | Capability constants grouped with skill/task tools. |
-| ToolExecutionBoundary | `function U85` | Single tool-execution boundary; schema validate → permission decision → execute. |
+| ToolExecutionBoundary | `async function Yny` | Main tool-execution boundary; initial validation → hooks → permission decision → final replacement validation → execute. |
+| ToolCallBlockPlanner | `Y3g`, `J3g`, `X3g` | Partitions one model response into contiguous concurrency-safe blocks and singleton ordering barriers. |
+| ToolConcurrencyCap | `K3g`, `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY` | Positive environment override, otherwise a default parallel-block cap of `10`. |
 | ToolUseRejectedTelemetry | `tengu_tool_use_can_use_tool_rejected` | Denial telemetry inside the execution boundary. |
 | ToolUseAllowedTelemetry | `tengu_tool_use_can_use_tool_allowed` | Allow telemetry inside the same boundary. |
-| PermissionDeniedRetryFeedback | `The PermissionDenied hook indicated you may retry this tool call.` | Denial feedback the model can act on. |
+| HookInputValidation | `hYr`, `returned updatedInput that failed schema validation` | `PreToolUse.updatedInput` is checked in the pre-hook path. |
+| PermissionInputValidation | `n8u`, `PERMISSION_UPDATED_INPUT` | A later permission-handler `updatedInput` is independently checked before `tool.call`. |
+| PermissionDeniedRetryFeedback | `The PermissionDenied hook indicated you may retry this tool call.` | Model feedback from the auto-mode classifier-denial hook branch; it is not an automatic retry. |
 | PreToolUseAuthorizationHook | `hookPermissionResult`, `PreToolUse` | `PreToolUse` participates in authorization, not just notification. |
 | CanUseToolBridge | `createCanUseTool` | Host/SDK/Remote Control bridge wrapping the same permission resolver. |
 | PermissionDeniedFrame | `permission_denied` | System frame for deny-shortcut decisions sent to SDK hosts. |
@@ -63,17 +67,22 @@ flowchart TD
 
     Visible --> ToolUse[Tool-use delta from model]
     ToolUse --> Boundary[Tool execution boundary]
-    Boundary --> Schema[Schema validation]
-    Schema --> PreHook[PreToolUse hook]
-    PreHook --> Decision[Permission decision]
-    Decision -->|allow| Guards[Tool-specific guards]
-    Decision -->|deny| Denial[permission_denied frame and PermissionDenied hook]
+    Boundary --> Schema[Schema parse and tool validateInput]
+    Schema --> PreHook[PreToolUse hook and hook-input check]
+    PreHook --> Decision[Merged permission decision]
+    Decision -->|allow with replacement| FinalInput[Independent permission-input validation]
+    Decision -->|allow unchanged| Guards[Tool body and live guards]
+    FinalInput --> Guards
+    Decision -->|ordinary deny| Denial[denial result / permission_denied frame]
+    Decision -->|auto-mode classifier deny| DenialHook[PermissionDenied hook]
+    DenialHook --> Denial
     Decision -->|ask| Host[createCanUseTool -> can_use_tool control request]
     Host --> Decision
     Guards --> Execute[Tool body]
-    Execute --> PostHook[PostToolUse / PostToolUseFailure / PostToolBatch]
-    Denial --> ModelFeedback[denial message to model and optional retry hint]
-    PostHook --> SessionEvents[session events / telemetry]
+    Execute --> PerCall[PostToolUse or PostToolUseFailure]
+    PerCall --> Batch[PostToolBatch after the result batch]
+    DenialHook --> ModelFeedback[denial message and optional retry guidance]
+    Batch --> SessionEvents[session events / telemetry]
 ```
 
 | Sub-component | Responsibility |
@@ -86,6 +95,12 @@ flowchart TD
 | `McpRuntimeCoordinator` | Connects always-load, regular, and claude.ai connector groups; bridges elicitation completion. |
 | `PluginCommandRegistrar` | Loads plugin-provided agents, skills, hooks, MCP servers, output styles, and slash commands. |
 | Integration adapters | IDE auto-connect, Chrome, file-resource startup, status line, helper scripts. |
+
+### Ordering within one model response
+
+The scheduler does not run every tool call in a model response concurrently. `Y3g` first checks each call's schema shape and `isConcurrencySafe` predicate, then coalesces only **contiguous** safe calls. A schema-invalid or concurrency-unsafe call becomes a singleton block and therefore an ordering barrier. `J3g` runs a safe block through the bounded parallel executor, while `X3g` runs singleton blocks serially. `K3g` uses a positive `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY` value when present and otherwise returns `10` (`cli.renamed.js:343251-343333`).
+
+Success/failure hooks are per call, so `PostToolUse` or `PostToolUseFailure` dispatches can overlap for calls in the same parallel block. The aggregate `PostToolBatch` hook runs only after the result batch has settled. In the normal query loop it can append context or stop continuation before the next model request (`executePostToolBatchHooks`, around `cli.renamed.js:462457`). The end-turn path also dispatches it, but logs blocking/prevent-continuation output as discarded because the tool result or MCP metadata has already ended the turn and no model re-invocation remains (`Fmy`, around `cli.renamed.js:459780`). Abort and other termination branches should not be inferred to have the normal continuation semantics.
 
 ## Public interface
 
@@ -127,7 +142,7 @@ flowchart TD
 1. **Single boundary, multiple sources.** Every tool call goes through `ToolExecutionBoundary` regardless of source. This keeps telemetry, hooks, and permission policy consistent for built-in, MCP, plugin, skill, and task tools.
 2. **`PreToolUse` participates in authorization.** Hooks can `allow`, `ask`, `deny`, `defer`, supply `updatedInput`, or add `additionalContext`. Treating hooks as authorization (not just notification) lets policy logic live outside the bundle.
 3. **Permission decisions are tri-modal.** Allow/deny shortcut directly through telemetry; ask is surfaced as a structured `can_use_tool` control request. SDK hosts only see ask flows; deny is observable but never blocks on a host round-trip.
-4. **Deny is opinionated, not silent.** A `PermissionDenied` hook can return retry information, which is converted into a model-visible meta message: *"The PermissionDenied hook indicated you may retry this tool call."* This keeps the model loop self-correcting.
+4. **Auto-mode classifier denial has an extra feedback branch.** When the final denial reason is specifically `classifier: "auto-mode"`, the boundary dispatches `PermissionDenied`. A hook result with `retry: true` appends the model-visible message *"The PermissionDenied hook indicated you may retry this tool call."* It does not re-run the tool. Rule, mode, user, hook, and other denials still produce their normal denial result/frame, but this build does not source-confirm the same `PermissionDenied` dispatch for those branches.
 5. **MCP and plugins are first-class capability sources.** They go through the same registry and visibility filter as built-ins; they cannot bypass the boundary.
 6. **Required vs optional MCP.** `McpRuntimeCoordinator` splits configs into `alwaysLoad` and normal groups so essential capabilities are present before the model runs, while optional servers can defer or fail without blocking startup.
 7. **Helper tools can prompt for permission.** `--permission-prompt-tool` lets an MCP tool with a JSON schema be the approval UI; this keeps the runtime's approval channel pluggable.
@@ -141,19 +156,23 @@ flowchart TD
     Source[capability source] --> Visible{visible?}
     Visible -->|no| Hidden[not in model schema]
     Visible -->|yes| Call[tool call]
-    Call --> Schema[schema validation]
+    Call --> Schema[schema parse and validateInput]
     Schema --> PreHook[PreToolUse hook]
-    PreHook -->|allow / updatedInput| Decision[permission resolver]
+    PreHook --> HookCheck[validate PreToolUse updatedInput]
+    HookCheck --> Decision[permission resolver]
     PreHook -->|deny| Block[deny path]
     PreHook -->|ask| Host[can_use_tool control_request]
     PreHook -->|defer| Decision
     Host --> Decision
-    Decision -->|allow| Guards[read-before-write / web syntax / mcp timeout]
+    Decision -->|allow with updatedInput| FinalCheck[validate permission replacement]
+    Decision -->|allow unchanged| Guards[tool body / live guards]
+    FinalCheck --> Guards
     Decision -->|deny| Block
     Guards --> Run[tool body]
-    Run --> Events[PostToolUse / telemetry / session events]
-    Block --> Frame[permission_denied frame + PermissionDenied hook]
-    Frame --> ModelMeta[model meta message + optional retry hint]
+    Run --> Events[per-call post hook, then aggregate PostToolBatch]
+    Block --> Frame[denial result / permission_denied frame]
+    Block -. auto-mode classifier only .-> DeniedHook[PermissionDenied]
+    DeniedHook --> ModelMeta[optional model retry guidance]
 ```
 
 The pipeline is intentionally one-way except for the ask loop. Hooks can shape the decision, but they cannot bypass the registry or the boundary.
@@ -184,7 +203,7 @@ The pipeline is intentionally one-way except for the ask loop. Hooks can shape t
 ## Caveats
 
 - The capability registry's exact internal shape is bundled; this page documents what the registry must produce, not the precise object layout.
-- Hook dispatch order and concurrency rules are implementation-defined for related events (`PostToolBatch` vs many `PostToolUse`); rely on the implementation pages for current details.
+- The ordering above is source-confirmed for the normal model loop and the observed end-turn branch in `2.1.215`; do not generalize it to every abort or exceptional termination path.
 - `--dangerously-skip-permissions` is intentionally a sharp tool; documents should not describe it as a normal operating mode.
 
 ## Related docs

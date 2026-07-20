@@ -1,6 +1,6 @@
 # Image processor native module
 
-This page is a binary-level reverse-engineering writeup of `image-processor.node`, the Bun-embedded native addon that backs Claude Code's image pipeline (paste / drag-drop / image attachment resize and re-encode). It is the image-side counterpart of [Audio capture and voice mode](audio-capture-and-voice.md).
+This page is an artifact-level reverse-engineering writeup of `image-processor.node`, the Bun-embedded native addon behind Claude Code's sharp-compatible image façade. It combines the exact Linux-x64 binary surface with the readable JavaScript resize/re-encode policy. Native scheduling and clipboard implementation details remain opaque unless directly observed.
 
 The `.node` binary is regenerated locally by [`scripts/extract-claude-code-final-artifacts.mjs`](../../scripts/extract-claude-code-final-artifacts.mjs) (now in the final-keep allow-list) and is held outside git via `*.node` in [`.gitignore`](../../.gitignore). This page works off the linux-x64 build of `@anthropic-ai/claude-code@2.1.215`. Its SHA-256 is unchanged from the prior `2.1.143` snapshot.
 
@@ -40,12 +40,12 @@ Rust embeds the source file path of each function into panic locations; the bina
 | `flate2` | 1.1.9 | High-level DEFLATE façade. |
 | `fdeflate` | 0.3.7 | Fast DEFLATE (PNG zlib hot path). |
 | `miniz_oxide` | 0.8.9 | Pure-Rust DEFLATE fallback. |
-| `tokio` | 1.50.0 | Async runtime that backs napi-rs `AsyncTask` (decode / encode run off the Node main loop). |
-| `once_cell` | 1.21.4 | Lazily-initialised globals (constructor reference, module singleton). |
+| `tokio` | 1.50.0 | Async-runtime code is linked; the stripped artifact does not establish which image operations it schedules. |
+| `once_cell` | 1.21.4 | Lazy/global storage support; the concrete stored values are not recovered here. |
 
 `addr2line-0.25.1` / `gimli-0.32.3` / `hashbrown-0.16.1` / `rustc-demangle-0.1.26` are present too but only service Rust panic backtraces; they are not part of the image pipeline.
 
-**Implication**: this is *not* a `sharp` / `libvips` binding. It is a direct napi-rs wrapper around the Rust `image` ecosystem, deliberately keeping the deployment surface to a single 1.4 MiB binary with zero external `.so` dependencies. The trade-off is format coverage: PNG / JPEG / WebP are supported end-to-end; GIF / TIFF / BMP / AVIF / HEIF appear as enum strings (`ftypavif`, `Gif`, `Tiff`, `Bmp`, `Hdr`, `Pnm`) but **no decoder crate is linked** for them, so they fail with `Unable to determine image format`.
+**Implication**: the artifact is not dynamically linked to `sharp`/libvips or external PNG/JPEG/WebP shared libraries. It contains napi-rs and Rust image-codec code in one addon. That dependency inventory does not by itself establish every accepted format. In a safe exact-artifact probe, GIF input rejected with `The image format Gif is not supported`; PNG/JPEG/WebP are the formats exercised by the readable Claude Code transformation façade.
 
 ## JavaScript surface
 
@@ -55,10 +55,10 @@ Recovered from error strings such as `Failed to register function \`process_imag
 
 | Export | Kind | Linux behaviour |
 |---|---|---|
-| `processImage(input)` | async standalone fn | Returns a `Promise<ImageProcessor>` resolved on a tokio worker. |
-| `hasClipboardImage()` | sync standalone fn | Stub on Linux — no X11 / Wayland deps are linked, so it returns `false`. |
-| `readClipboardImage()` | sync standalone fn | Stub on Linux — throws / returns nothing for the same reason. |
-| `ImageProcessor` (class) | `napi_define_class` | Instance methods exposed below; one-shot, `dispose`-after-consume. |
+| `processImage(input)` | standalone fn | Returned a Promise in an exact-artifact probe. Which native executor performs its work is not established. |
+| `hasClipboardImage()` | standalone fn | Export observed. Its Linux return behavior was not exercised in this audit. |
+| `readClipboardImage()` | standalone fn | Export observed. Its Linux return/error behavior was not exercised in this audit. |
+| `ImageProcessor` | class/export | Export observed; the readable façade consumes instances returned by `processImage`. |
 
 ### `ImageProcessor` class
 
@@ -75,20 +75,38 @@ class ImageProcessor {
 }
 ```
 
-Once `toBuffer()` or `dispose()` runs, further calls trigger the runtime error `ImageProcessor already consumed (toBuffer/dispose was called)`.
+The binary contains the error string `ImageProcessor already consumed (toBuffer/dispose was called)`, consistent with a one-shot native object. The readable façade independently guarantees that its own `metadata()` and `toBuffer()` paths call `dispose()` in `finally`.
 
 ### Call path from `cli.renamed.js`
 
-The JS-side façade [`sharp()` at cli.renamed.js#L272868](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L272868) buffers `resize` / `jpeg` / `png` / `webp` calls into a closure queue, then on `toBuffer()` awaits `processImage(input)` and replays the queue. This makes the napi-rs mutable pipeline look like sharp's fluent API — Claude Code only uses `metadata` / `resize` / `jpeg` / `png` / `webp` / `toBuffer`.
+The JS-side façade [`sharp()` at cli.renamed.js#L272868](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L272868) lazily loads the addon, buffers `resize` / `jpeg` / `png` / `webp` calls into a closure queue, then on `toBuffer()` awaits `processImage(input)` and replays the queue. `metadata()` does not replay transformations. Both terminal operations dispose the returned native object in `finally`, including when metadata lookup or encoding throws.
 
 The shim that brings the addon into the bundle is the Bun CJS wrapper at [`claude-code-pkg/image-processor.js`](../../claude-code-pkg/image-processor.js); it is the JS half of the `require("/$bunfs/root/image-processor.node")` bridge.
 
-## Concurrency model
+## Concurrency evidence and limit
 
-- `tokio-1.50.0` is statically linked and used as napi-rs's `AsyncTask` executor.
-- The threadsafe-function imports (`napi_create_threadsafe_function`, `napi_call_threadsafe_function`, `napi_release_threadsafe_function`) carry the decode / encode result back to the Node event loop via `napi_resolve_deferred` / `napi_reject_deferred`.
-- Error strings `Panic in async function`, `Failed to initialize napi function call`, and `Resolve deferred value failed` mark the Rust → JS boundary failure paths.
-- CPU-bound decoding therefore does not block the Node main loop; the JS `await processImage(buf)` returns once the worker has produced an `ImageProcessor` handle, and `await .toBuffer()` later runs the configured pipeline on the worker again.
+The addon imports Promise/deferred and threadsafe-function N-API calls and contains Tokio code. `processImage()` returned a Promise in the exact-artifact probe, and the JS façade awaits both it and `toBuffer()`. These facts establish an asynchronous JavaScript contract, not the native execution schedule. Without disassembly or tracing, this audit cannot prove:
+
+- that every decode or encode runs on a Tokio worker;
+- that `processImage()` and `toBuffer()` use separate worker jobs;
+- that CPU-heavy work can never execute on the JS thread;
+- how cancellation, panic, or disposal interacts with in-flight native work.
+
+Strings such as `Panic in async function`, `Resolve deferred value failed`, and threadsafe-function imports are possible boundary machinery, not a recovered call path.
+
+## Source-confirmed transformation policy
+
+The high-level resize policy is readable in `oit()` around [`cli.renamed.js:279205`](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L279205):
+
+1. Reject an empty input and inspect native metadata.
+2. Return the original bytes when raw size and dimensions are already within the caller's limits.
+3. For an over-byte-limit PNG, first try PNG compression level 9 with palette conversion.
+4. Try JPEG qualities `80`, `60`, `40`, then `20` when re-encoding is needed.
+5. If dimensions exceed the API bounds, scale inside the maximum width/height with `withoutEnlargement: true`, then repeat PNG/JPEG compression as needed.
+6. As a last encoding attempt, cap width at 1,000 pixels and emit JPEG quality 20.
+7. If native processing fails, preserve the original only when header-derived dimensions and base64 size are still safe; otherwise return a text-facing resize/compression error rather than forwarding an unsafe attachment.
+
+This policy is JavaScript orchestration. It does not reveal native interpolation kernels, codec defaults omitted from calls, memory ownership, or task scheduling.
 
 ## Defensive limits and error surfaces
 
@@ -101,15 +119,9 @@ The shim that brings the addon into the bundle is the Bun CJS wrapper at [`claud
 | Metadata caps | `ICC profile too large`, `Unable to compress text metadata`, `The text metadata cannot be encoded into valid ISO 8859-1` | PNG tEXt / iCCP guards. |
 | JPEG feature gating | `The library cannot yet decode images encoded using Extended Sequential Huffman encoding scheme yet.`, `… Lossless Huffman …`, `… Extended Sequential DCT Arithmetic …`, `… Progressive DCT Arithmetic …`, `… Lossless Arithmetic …` | `zune-jpeg` is the baseline / progressive Huffman path only — uncommon JPEG variants surface explicit errors instead of crashing. |
 
-## Clipboard story
+## Clipboard boundary
 
-The `has_clipboard_image` / `read_clipboard_image` registrations are present in every build, but the Linux native module ships them as stubs:
-
-- No `libX11` / `libwayland-client` / `arboard` / `copypasta` symbols are linked.
-- The only `dlsym` / `dl_iterate_phdr` usage comes from Rust's `addr2line` + `gimli` backtrace plumbing — not a lazy clipboard backend.
-- The expectation is that the macOS and Windows native packages carry real implementations (NSPasteboard / `OpenClipboard`) while Linux falls through to a `false` / `Err` return.
-
-If you want clipboard images on Linux, the runtime path is `xclip` / `wl-paste` invoked from JS, not this addon.
+`hasClipboardImage` and `readClipboardImage` are exported by the exact artifact. No `libX11` or `libwayland-client` dynamic dependency was observed, but that absence does not prove the functions are stubs, their return values, or whether another mechanism is used. This audit did not invoke clipboard access because it is environment-affecting. Linux clipboard behavior and other-platform implementations therefore remain open native questions.
 
 ## Recovery script
 
@@ -127,9 +139,9 @@ The third line confirms the unique N-API import count (43); the fourth recovers 
 
 ## Caveats
 
-- This page works off the linux-x64 binary; macOS and Windows builds are not analysed here. The N-API export list and JS surface should match, but the clipboard backends likely differ.
-- Internal Rust function layout is not recovered. The page treats panic-location source paths as ground truth (they are emitted by the Rust compiler from real source) but does not disassemble the `.text` section. Deeper analysis would feed the binary to Ghidra / IDA, follow `napi_register_module_v1` to the `napi_define_class` call, and reverse the property-setter table to recover the exact `resize` / `jpeg` / `png` / `webp` argument parsing (default quality, kernel choice, …).
-- Crate versions above are exact because Rust embeds them verbatim into panic locations; the rustc commit (`01f6ddf7…`) is similarly authoritative.
+- This page works only from the Linux-x64 binary; macOS and Windows builds were not inspected, so export parity and clipboard behavior are unknown.
+- Internal Rust function layout is not recovered. Panic-location paths, imports, exports, and runtime observations identify artifact content but not full native control flow.
+- Crate-version strings and the rustc commit identify linked build inputs; they do not prove every linked codec or async path is reachable.
 
 ## Related docs
 

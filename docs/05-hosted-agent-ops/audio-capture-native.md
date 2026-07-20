@@ -1,6 +1,6 @@
 # Audio capture native module
 
-This page is the binary-level reverse-engineering writeup of `audio-capture.node`, the Bun-embedded Rust addon that powers Claude Code's voice mode capture / playback path. It is the companion page to [Audio capture and voice mode](audio-capture-and-voice.md) — that page documents the JS-side state machine; this page documents what actually lives inside the `.node` shared object.
+This page is the artifact-level reverse-engineering writeup of `audio-capture.node`, the Bun-embedded addon that exposes recording and playback functions. It is the companion page to [Audio capture and voice mode](audio-capture-and-voice.md): that page documents the source-confirmed recording consumer and JS state machine; this page inventories the exact Linux-x64 binary boundary. No readable Claude Code call site for the playback wrappers was found, so playback is an exported capability rather than a confirmed active product path.
 
 The `.node` binary is regenerated locally by [`scripts/extract-claude-code-final-artifacts.mjs`](../../scripts/extract-claude-code-final-artifacts.mjs) and is held outside git via `*.node` in [`.gitignore`](../../.gitignore). This page works off the linux-x64 build of `@anthropic-ai/claude-code@2.1.215`.
 
@@ -23,7 +23,7 @@ The `.node` binary is regenerated locally by [`scripts/extract-claude-code-final
 | Minimum glibc | `GLIBC_2.17` (same floor as `image-processor.node`). |
 | ALSA symbol versions used | `ALSA_0.9` (base) and `ALSA_0.9.0rc4` / `ALSA_0.9.0rc8` (for `*_set_period_time_near`, `*_set_buffer_time_near`, `*_get_*_min/max`, `*_status_get_htstamp`, `*_status_get_trigger_htstamp`). |
 | Rust toolchain | Same rustc commit `01f6ddf7588f42ae2d7eb0a2f21d44e8e96674cf` as the image addon. |
-| N-API imports | 36 undefined `napi_*`. Notable absences: **no `napi_create_promise` / `napi_resolve_deferred` / `napi_reject_deferred`** — the JS surface is purely synchronous-or-callback, not Promise-based. Present: `napi_create_threadsafe_function`, `napi_call_threadsafe_function`, `napi_release_threadsafe_function` for streaming PCM data back to JS. |
+| N-API imports | 36 undefined `napi_*`. Notable absences: **no `napi_create_promise` / `napi_resolve_deferred` / `napi_reject_deferred`**. Threadsafe-function imports are present. This constrains the ABI shape, but does not by itself recover when callbacks are queued or how worker threads are managed. |
 
 ## Source provenance — statically linked Rust crates
 
@@ -34,17 +34,17 @@ Recovered from panic-location source paths in `.rodata`:
 | `napi` | 2.16.17 | napi-rs binding layer (function / class / threadsafe-fn / external buffer). |
 | `cpal` | 0.15.3 | Cross-Platform Audio Library — the only audio API the addon talks to from Rust. |
 | `alsa` | 0.9.1 | Rust ALSA FFI bindings, the Linux backend that `cpal` delegates to. |
-| `once_cell` | 1.21.3 | Global singletons (host handle, stream registry). |
+| `once_cell` | 1.21.3 | Lazy/global storage support; the concrete values stored are not recovered here. |
 
-`cpal` is feature-trimmed to the ALSA backend only — the recovered source paths from `cpal-0.15.3` are exactly `src/host/alsa/mod.rs`, `src/lib.rs`, `src/traits.rs`. No `host/coreaudio/`, `host/wasapi/`, `host/jack/`, or `host/oboe/` modules are linked, which matches the absence of those system libraries from `readelf -d`. The recovered `alsa-0.9.1` files are `src/pcm.rs` and `src/poll.rs` — the PCM-only subset.
+The recovered `cpal-0.15.3` source paths include `src/host/alsa/mod.rs`, `src/lib.rs`, and `src/traits.rs`; the recovered `alsa-0.9.1` paths include `src/pcm.rs` and `src/poll.rs`. No CoreAudio, WASAPI, JACK, or Oboe paths or corresponding system libraries were observed in this Linux artifact. That classifies this build, not the implementation of packages for other operating systems.
 
 `addr2line` / `gimli` / `hashbrown` / `rustc-demangle` are present too but only service Rust panic backtraces; they are not part of the audio pipeline.
 
-**Implication**: the addon is a focused cpal-over-ALSA wrapper exposed via napi-rs. macOS and Windows native packages presumably share the same Rust code with cpal's `coreaudio` / `wasapi` features enabled instead.
+**Implication**: the artifact contains a focused napi-rs/cpal/ALSA dependency surface. Dependency presence does not establish the addon's exact stream lifecycle or the composition of uninspected macOS and Windows packages.
 
 ## ALSA surface
 
-The undefined-symbol list has 49 distinct `snd_pcm_*` entries — effectively the full PCM lifecycle:
+The undefined-symbol list has 49 distinct `snd_pcm_*` entries spanning PCM setup, I/O, status, recovery, and polling:
 
 ```text
 open / close / prepare / start / pause / recover / status / avail / bytes_to_frames
@@ -61,10 +61,10 @@ poll_descriptors{,_count,_revents}           ← event-driven wakeup
 status / status_sizeof / status_get_{delay,htstamp,trigger_htstamp}
 ```
 
-Two takeaways:
+Two bounded takeaways:
 
-- Both directions are supported: `snd_pcm_readi` (capture) + `snd_pcm_writei` (playback). This matches the JS export pair `startRecording` / `startPlayback`.
-- The presence of `*_test_*` and the `*_get_*_min/max` calls means cpal probes the device's supported parameter ranges before committing — that is how voice-mode survives strange hardware (e.g. WSL's `arecord` device which advertises a narrow rate window).
+- Both direction-specific imports are present: `snd_pcm_readi` and `snd_pcm_writei`. This is consistent with the recording and playback exports.
+- Parameter-test, min/max, recovery, and poll imports show that linked code can use those ALSA operations. An import table does not prove which functions execute for a given device, in what order, or before which JS callback.
 
 ## JavaScript surface
 
@@ -74,14 +74,14 @@ Recovered exactly from `Failed to register function \`…\`` error strings:
 
 | Rust name | JS name | Purpose |
 |---|---|---|
-| `start_recording` | `startRecording(onChunk, onSilence)` | Open capture PCM, start streaming `Buffer`s back through `napi_call_threadsafe_function`. |
-| `stop_recording` | `stopRecording()` | Drain and close the capture PCM. |
-| `is_recording` | `isRecording()` → `bool` | True if a capture stream is active. |
-| `start_playback` | `startPlayback(onUnderrun, onFinish)` | Open playback PCM. |
-| `write_playback_data` | `writePlaybackData(buffer)` | Push PCM bytes into the playback ring. |
-| `stop_playback` | `stopPlayback()` | Drain and close the playback PCM. |
-| `is_playing` | `isPlaying()` → `bool` | True if a playback stream is active. |
-| `microphone_authorization_status` | `microphoneAuthorizationStatus()` → number | macOS-shaped permission status (`0` NotDetermined / `1` Restricted / `2` Denied / `3` Authorized). On Linux always returns `0` because ALSA has no permission model. |
+| `start_recording` | `startRecording(...)` | Recording entry; readable CLI wrappers pass chunk and completion callbacks. |
+| `stop_recording` | `stopRecording()` | Recording stop entry. |
+| `is_recording` | `isRecording()` → `bool` | Recording-state query; returned `false` while inert in the exact-artifact probe. |
+| `start_playback` | `startPlayback(...)` | Playback entry; exported, but no downstream readable CLI consumer was found. |
+| `write_playback_data` | `writePlaybackData(buffer)` | Playback-data entry; exported, but no downstream readable CLI consumer was found. |
+| `stop_playback` | `stopPlayback()` | Playback stop entry; exported, but no downstream readable CLI consumer was found. |
+| `is_playing` | `isPlaying()` → `bool` | Playback-state query; returned `false` while inert in the exact-artifact probe. |
+| `microphone_authorization_status` | `microphoneAuthorizationStatus()` → number | Numeric authorization query. The inspected Linux-x64 artifact returned `3`; the semantic enum mapping and other-platform behavior are not established by this binary. |
 
 No class is exposed — the eight functions hold the entire surface. The `napi_define_class` import slot exists but stays unused on this build (likely a side-effect of napi-rs's macro template; the strings `Failed to register class \`` / `Failed to register export \`` are emitted but no class name follows them in `.rodata`).
 
@@ -89,13 +89,18 @@ No class is exposed — the eight functions hold the entire surface. The `napi_d
 
 The bundle wrapper at [cli.renamed.js#L95](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L95) loads the addon via `require("/$bunfs/root/audio-capture.node")` (see the shim at [`claude-code-pkg/audio-capture.js`](../../claude-code-pkg/audio-capture.js)). The voice runtime exposes `isNativeAudioAvailable()` around [line 562780](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L562780); the `audio-capture-napi loaded in Xms` log at [line 562844](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L562844) follows the first successful lazy load.
 
-The runtime path (covered fully in [Audio capture and voice mode](audio-capture-and-voice.md)) prefers this addon over `arecord` / SoX `rec` when both the addon loads and `/proc/asound/cards` reports a working sound card.
+The runtime path (covered fully in [Audio capture and voice mode](audio-capture-and-voice.md)) selects this addon before `arecord` / SoX `rec` when the addon loads and `/proc/asound/cards` reports a sound card. The readable call sites consume the recording wrappers. Searches for the playback wrapper names found their definitions/exports but no downstream CLI playback call site.
 
-## Concurrency model
+## Concurrency evidence and limit
 
-- No `tokio` is statically linked (unlike `image-processor.node`). Audio I/O blocks happen on cpal's own internal thread; cpal spawns a dedicated worker thread per stream and calls into ALSA's `poll_descriptors` to wait for capture frames.
-- Streaming back to JS uses `napi_create_threadsafe_function` + `napi_call_threadsafe_function` — the Rust capture thread enqueues each frame onto the JS event loop without blocking it.
-- Errors marshalled via `napi_fatal_error` / `napi_fatal_exception` for unrecoverable cases (e.g. ALSA device disappearing mid-stream); recoverable underrun / overrun is handled with `snd_pcm_recover` before the chunk callback fires.
+The binary imports N-API threadsafe-function calls and ALSA poll functions, while no Tokio crate path was observed. This is consistent with native work communicating asynchronously with JS callbacks, but the stripped binary has not been disassembled. The available evidence does **not** prove:
+
+- one dedicated thread per stream;
+- which component owns or schedules that thread;
+- whether every ALSA wait uses poll descriptors;
+- whether `snd_pcm_recover` runs before a callback;
+- whether fatal N-API imports are reachable for a device-disconnect case;
+- exact stop, drain, release, or callback ordering.
 
 ## Defensive / error surfaces
 
@@ -109,16 +114,13 @@ Recovered Rust-side error categories:
 | Internal invariant | `assertion failed: unsafe { alsa::snd_pcm_status_sizeof() } as usize <= STATUS_SIZE` (cpal asserts that the ABI-fixed `snd_pcm_status_t` fits its inline buffer) |
 | Borrow-check at runtime | `..RefCell already borrowed` (cpal stream-state contention) |
 
-The error path that propagates back to JS lights up `Audio capture error:` / `Audio playback error:` plus the underlying ALSA reason. The voice-mode UI then surfaces it as `voiceError` and falls back to the `arecord` / SoX path.
+These strings and imports identify possible error categories, not a recovered propagation graph. The readable voice code surfaces capture/start or stream failures as `voiceError`; backend fallback is selected before recording, and no automatic post-start native-to-recorder handoff is established.
 
-## Microphone authorization on Linux
+## Microphone authorization observation
 
-`microphoneAuthorizationStatus` is the same N-API export shape on every platform, but the Linux build never returns anything other than `0`:
+The JS wrapper forwards the native return value without translating it. A safe runtime probe of this exact `@anthropic-ai/claude-code@2.1.215` Linux-x64 artifact returned `3` from `microphoneAuthorizationStatus()`.
 
-- The Linux backend has no permission API to query — ALSA simply tries to open the device and fails if denied (e.g. permissions on `/dev/snd/*`).
-- This matches the JS wrapper at [cli.renamed.js#L611715](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L611715) which simply forwards whatever the native fn returns; the voice UI uses a non-zero value only to skip the system permission prompt that would otherwise show on macOS.
-
-macOS and Windows native packages presumably implement a real permission probe via the system APIs (`AVCaptureDevice authorizationStatus` / `IAudioCaptureClient` permission flag).
+That observation corrects the earlier claim that Linux always returns `0`, but it does not prove what `3` means internally. A familiar four-value authorization enum would map `3` to “authorized,” yet no readable native implementation or platform contract was recovered, so that mapping remains a hypothesis. The JS wrapper itself returns `0` only when the addon is unavailable.
 
 ## Recovery script
 
@@ -136,9 +138,9 @@ strings -n 6 claude-code-pkg/audio-capture.node | grep -E "^[a-z][a-z0-9_-]+-[0-
 
 ## Caveats
 
-- This page works off the linux-x64 binary. macOS and Windows builds presumably reuse the same Rust source with different cpal host backends (`coreaudio`, `wasapi`); the JS-visible export list should match but `microphoneAuthorizationStatus` will return real values.
-- The `.text` section is not disassembled. The page treats panic-location source paths and N-API registration error strings as ground truth (they are emitted by the Rust compiler from real source) without reverse-engineering the function bodies themselves. Deeper analysis would feed the binary to Ghidra / IDA and recover the exact PCM parameters (sample rate, format, period size) cpal chooses for capture and playback.
-- Crate versions are exact because Rust embeds them verbatim into panic locations.
+- This page works only from the Linux-x64 artifact. It makes no claim that another platform has the same dependencies, export behavior, or authorization result.
+- The `.text` section is not disassembled. Panic-location paths, imports, exports, and runtime observations are strong artifact evidence, but they do not recover native function bodies or lifecycle order.
+- Crate-version strings identify code linked into the artifact; they do not prove every linked path is reached during Claude Code voice capture.
 
 ## Related docs
 

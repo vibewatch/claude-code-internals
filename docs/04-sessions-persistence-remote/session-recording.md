@@ -1,6 +1,6 @@
 # Session recording (asciicast)
 
-This page documents Claude Code's session recording subsystem: the asciicast v2 recorder that captures every `process.stdout.write` into a `.cast` file under the session's project directory. The feature is the on-disk counterpart to the in-memory transcript and is independent of the JSONL session store.
+This page documents the source-visible asciicast v2 recorder helper. Once installed with a non-null private file path, it tees `process.stdout.write` and resize events into a `.cast` file. The analyzed artifact exposes the implementation, rename/list helpers, and retention cleanup, but **not the path initializer or installer call**, so this page does not claim which user-facing setting activates it in `2.1.215`.
 
 Use this page alongside:
 
@@ -12,63 +12,67 @@ Use this page alongside:
 
 | Semantic alias | String or symbol | Meaning |
 | --- | --- | --- |
-| AsciicastRecorderInstaller | `function installAsciicastRecorder()` | Writes the asciicast v2 header to disk and monkey-patches `process.stdout.write` to tee each chunk into the recording file. |
-| AsciicastRecorderFlush | `async function flushAsciicastRecorder()` | Drains the buffered append queue; called before session-end persistence and during `renameRecordingForSession`. |
-| RecordFilePath | `function getRecordFilePath()` | Returns the in-process recording file path (`fp.filePath`), or `null` when recording is not active. |
+| AsciicastRecorderInstaller | [~860,015](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L860015) `function installAsciicastRecorder()` | Writes the asciicast v2 header and wraps `process.stdout.write` plus resize events. |
+| AsciicastRecorderFlush | [~860,012](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L860012) `async function flushAsciicastRecorder()` | Exported wrapper around the current buffer's `flush()`; no direct caller was found. |
+| RecordFilePath | `function getRecordFilePath()` | Returns private `mfe.filePath`, or `null`. The non-null initializer is not visible in the artifact. |
 | RecordingPathLister | `function getSessionRecordingPaths()` | Lists all `<sessionId>-<timestamp>.cast` files for the current session under `~/.claude/projects/<encoded-cwd>/`. |
-| SessionRecordingRenamer | `async function renameRecordingForSession()` | After session id is finalized, renames the pre-session recording file to `<sessionId>-<timestamp>.cast`. |
-| RecordingStateReset | `function resetRecordingStateForTesting()` (alias `_resetRecordingStateForTesting`) | Clears `fp.filePath` and `fp.timestamp`. Only used in tests. |
-| RecordingTimingOrigin | `let K = performance.now()` (inside `installAsciicastRecorder`) | Time origin used to compute the relative timestamp of every event. |
-| RecordingBufferConfig | `{flushIntervalMs: 500, maxBufferSize: 50, maxBufferBytes: 10485760}` (passed to `WIH(...)`) | Buffer flush schedule and caps. |
+| SessionRecordingRenamer | [~859,987](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L859987) `async function renameRecordingForSession()` | Flushes and renames the current path to `<sessionId>-<private timestamp>.cast`. |
+| RecordingStateReset | `function resetRecordingStateForTesting()` (alias `_resetRecordingStateForTesting`) | Clears `mfe.filePath` and `mfe.timestamp`. |
+| RecordingTimingOrigin | `performance.now()` inside `installAsciicastRecorder` | Time origin used to compute relative event timestamps after installation. |
+| RecordingBufferConfig | `{flushIntervalMs: 500, maxBufferSize: 50, maxBufferBytes: 10485760}` passed to `E5t(...)` | Flush schedule and thresholds; the last threshold counts JavaScript string length despite its name. |
 | AsciicastHeader | `{version: 2, width, height, timestamp, env: {SHELL, TERM}}` | Header line written at install time. |
+| RecorderShutdownDisposer | `_a(async () => Hvn?.dispose())` | Flushes the buffer, waits for chained appends, removes resize handling, and restores stdout during coordinated shutdown. |
+| RecordingRetention | [~746,352](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L746352) `async function kIp()` | Removes stale `.cast` files during the normal retention sweep. |
 
 ## Bundle module in `cli.renamed.js`
 
 | Semantic alias | Loader line | Representative renamed exports | Atlas entry |
 |---|---:|---|---|
-| `AsciicastSessionRecorder` | 680294 | `installAsciicastRecorder`, `flushAsciicastRecorder`, `getRecordFilePath`, `getSessionRecordingPaths`, `renameRecordingForSession`, `_resetRecordingStateForTesting` | [Bundle module map — session, transcript, agent metadata, and teammate IPC](../99-research-atlas/module-map-from-renamed-cli.md#session-transcript-agent-metadata-and-teammate-ipc) |
+| `AsciicastSessionRecorder` | 859952 | `installAsciicastRecorder`, `flushAsciicastRecorder`, `getRecordFilePath`, `getSessionRecordingPaths`, `renameRecordingForSession`, `_resetRecordingStateForTesting` | [Bundle module map — session, transcript, agent metadata, and teammate IPC](../99-research-atlas/module-map-from-renamed-cli.md#session-transcript-agent-metadata-and-teammate-ipc) |
 
 ## Recording lifecycle
 
 ```mermaid
 sequenceDiagram
-    participant Boot as Boot path
+    participant Activation as Activation (not visible)
     participant Recorder as installAsciicastRecorder
     participant Stdout as process.stdout
-    participant Buffer as WIH buffer
-    participant Disk as <sessionId>-<ts>.cast
+    participant Buffer as E5t buffer
+    participant Disk as Private active .cast path
 
-    Boot->>Recorder: install (when fp.filePath set)
+    Activation->>Recorder: initialize private path/timestamp + install
     Recorder->>Disk: append asciicast v2 header line
     Recorder->>Stdout: wrap stdout.write
 
     loop every write
         Stdout->>Recorder: original chunk
         Recorder->>Buffer: enqueue [elapsed, "o", chunk]
-        Buffer->>Disk: flush every 500 ms / 50 lines / 10 MB
+        Buffer->>Disk: flush every 500 ms / 50 entries / 10,485,760 string units
     end
 
-    Note over Recorder,Disk: session id becomes known
-    Boot->>Recorder: renameRecordingForSession
-    Recorder->>Buffer: flushAsciicastRecorder
-    Recorder->>Disk: fs.rename(<pre>-<ts>.cast → <sessionId>-<ts>.cast)
+    Stdout->>Recorder: resize event
+    Recorder->>Buffer: enqueue [elapsed, "r", "COLSxROWS"]
+    Note over Recorder,Disk: restore/session switch calls rename helper
+    Recorder->>Buffer: flush and await append chain
+    Recorder->>Disk: fs.rename(current path → sessionId-timestamp.cast)
+    Note over Recorder,Disk: shutdown disposer drains appends and restores stdout
 ```
 
 ## File location
 
-Recording files live at:
+The rename target and paths returned by `getSessionRecordingPaths()` live at:
 
 ```
-~/.claude/projects/<wO(originalCwd)>/<sessionId>-<timestamp>.cast
+~/.claude/projects/<sanitizePath(originalCwd)>/<sessionId>-<timestamp>.cast
 ```
 
-where `wO(...)` is the same per-cwd encoding used by the JSONL transcript store. `getSessionRecordingPaths()` reads the projects directory and returns the sorted list of `<sessionId>*.cast` files; multiple recordings per session id appear when the session was resumed.
+where the path sanitizer is the same per-cwd encoding used by the JSONL transcript store. `getSessionRecordingPaths()` reads the projects directory and lexicographically sorts names that start with the current session ID and end in `.cast`.
 
-The directory is shared with the JSONL transcripts (`<sessionId>.jsonl`), so the asciicast file is colocated with the structured transcript for the same session.
+The target directory is shared with JSONL transcripts (`<sessionId>.jsonl`). The artifact does not expose the initial/private path initializer, so it does not prove that the file begins in this directory or what the filename timestamp represents.
 
 ## `installAsciicastRecorder()`
 
-The recorder is installed at the start of any session that has `fp.filePath` set (the runtime sets this when recording is enabled by setting or env). The function:
+If some caller has set `mfe.filePath` and invokes the installer, the function:
 
 1. Returns early if no record file path is set (`getRecordFilePath() === null`).
 2. Computes terminal size from `process.stdout.columns/rows`, defaulting to 80×24 when the columns are not reported (non-TTY headless runs).
@@ -84,47 +88,56 @@ The recorder is installed at the start of any session that has `fp.filePath` set
    }
    ```
 5. Creates the directory via `mkdirSync(dirname(recordFilePath))` (swallowing errors so a pre-existing dir is fine).
-6. Writes the header line with mode `0o600` (`384` decimal) so the recording is owner-readable only.
-7. Wraps `process.stdout.write` so every write also produces an asciicast event line `[<elapsed_seconds>, "o", <utf-8 text>]`. `elapsed_seconds` is computed as `(performance.now() - K) / 1000`. Buffered writes are queued through `WIH(...)` with `flushIntervalMs: 500`, `maxBufferSize: 50`, `maxBufferBytes: 10485760` — flush triggers whichever comes first.
-8. Preserves the original write callback `process.stdout.write` so callers' `(err) => ...` callbacks still fire normally.
+6. Appends the header line while requesting creation mode `0o600` (`384` decimal).
+7. Wraps `process.stdout.write` so every later write also produces `[<elapsed_seconds>, "o", <utf-8 text>]`; non-string chunks are decoded as UTF-8.
+8. Registers terminal resize records `[<elapsed_seconds>, "r", "<cols>x<rows>"]`.
+9. Buffers event strings with a 500 ms timer and thresholds of 50 entries or 10,485,760 JavaScript string-length units. The implementation increments by `string.length`; this is not a proven byte limit.
+10. Preserves the original stdout write overload/callback behavior and registers a shutdown disposer that restores it.
 
-The append loop is sequenced through a chained Promise so writes are appended in order even when the underlying file-system call is async. Errors are swallowed (recording is best-effort and must not break stdout).
+The append loop is sequenced through a chained Promise, so recorder appends stay ordered. Asynchronous append failures are swallowed to avoid breaking stdout. The initial synchronous header append is not inside that catch path and can still throw if installation reaches an unusable path.
 
-## Pre-session id vs post-session id
+## Rename after a session change
 
-`fp.filePath` is set early (before the runtime has a session id), so the initial header is written into a "pre-session" file path. Once the runtime resolves the session id, `renameRecordingForSession()` runs:
+The helper supports renaming an already-active recording after a session switch/restore. `renameRecordingForSession()`:
 
 1. Returns early if no recording is active.
-2. Flushes the buffer via `flushAsciicastRecorder()` (`zT$?.flush()`).
+2. Calls the underlying recorder object's `flush()` directly.
 3. Computes the target path `~/.claude/projects/<encoded-cwd>/<sessionId>-<timestamp>.cast`.
-4. Calls `fs.rename(currentPath, targetPath)`. If rename succeeds, `fp.filePath` is updated so subsequent writes go to the renamed file. If rename fails (cross-device, race), the function logs `[asciicast] Failed to rename recording from <old> to <new>` and continues writing to the old file.
+4. Calls `fs.rename(currentPath, targetPath)`. If rename succeeds, `mfe.filePath` is updated so subsequent writes go to the renamed file. If rename fails (for example, cross-device or a race), the function logs `[asciicast] Failed to rename recording from <old> to <new>` and continues writing to the old file.
 
-`fp.timestamp` is the monotonic recording-start timestamp; using it in the file name guards against collisions when the same session id is resumed multiple times in one project.
+`mfe.timestamp` must be nonzero for rename to proceed. No assignment that gives it that value is present in the readable module/call graph, so its clock domain, collision semantics, and relationship to the header's Unix timestamp remain unknown.
 
 ## Flushing
 
-`flushAsciicastRecorder()` awaits `zT$?.flush()` (the `WIH(...)` buffer). The runtime calls it:
+`flushAsciicastRecorder()` awaits the current recorder object's `flush()`. No direct call to this exported wrapper was found in `cli.js`, `cli.formatted.js`, or `cli.renamed.js`. The same underlying operations are nevertheless source-visible in two places:
 
-- Just before `renameRecordingForSession` so the rename target sees a fully drained buffer.
-- During session-end cleanup so the last chunk reaches disk before exit.
+- `renameRecordingForSession()` invokes `Hvn?.flush()` before rename.
+- the registered shutdown disposer calls `Hvn?.dispose()`, which flushes the string buffer, waits for the chained append Promise, removes the resize listener, and restores the original `stdout.write`.
 
-The 500 ms flush interval is the worst-case write latency under normal operation; the 50-line and 10 MB caps short-circuit the timer when output bursts.
+The 500 ms timer is a scheduling threshold, not a durability deadline: asynchronous filesystem completion can occur later, and abrupt termination can bypass JavaScript cleanup. The 50-entry and string-length thresholds can short-circuit the timer during bursts.
 
 ## Permissions
 
-Header writes use `appendFileSync(headerPath, headerLine, {mode: 384})` so the file is created with `0o600` permissions (owner read/write only). Subsequent appends preserve the mode. This matches the JSONL transcript permissions and keeps captured terminal output off other users' shoulders.
+The header call passes `{mode: 384}` (`0o600`) to `appendFileSync`; that mode applies when the file is created and may be narrowed by platform/umask behavior. If an existing path was initialized with broader permissions, this append does not chmod it. Subsequent appends do not change the mode.
+
+## Activation evidence boundary
+
+The environment schema contains `CLAUDE_CODE_TERMINAL_RECORDING`, but across the raw, formatted, and semantic-renamed views of this same artifact there is no source-visible path from that variable to the private state, no assignment that makes `mfe.filePath` non-null or `mfe.timestamp` nonzero, and no call to `installAsciicastRecorder()`. The three files are derivative views, not independent binaries.
+
+Therefore this artifact proves a recorder helper that can be activated, not that the named environment variable activates it in the packaged CLI. The missing setup may have been dead-code-eliminated, generated dynamically, or performed by a native/bootstrap layer not represented here; choosing among those explanations would be speculation.
 
 ## Testing helpers
 
-`resetRecordingStateForTesting()` (exported also as `_resetRecordingStateForTesting`) clears `fp.filePath` and `fp.timestamp`. Tests use it to simulate a fresh boot without leaking state between cases.
+`resetRecordingStateForTesting()` (exported also as `_resetRecordingStateForTesting`) clears `mfe.filePath` and `mfe.timestamp`. Tests use it to simulate a fresh boot without leaking state between cases.
 
 ## Caveats
 
 - The recorder captures only `process.stdout`; `process.stderr` is not teed.
 - Non-text output (binary writes) is converted via `Buffer.from(chunk).toString("utf-8")` before being JSON-stringified, so non-UTF-8 byte sequences will produce U+FFFD replacement chars in the recording.
 - ANSI escape sequences pass through unchanged (that is the point: an asciicast player can re-render the original terminal output).
-- The recording starts before the session id is known, so the file is renamed once. The initial file's directory is the cwd-encoded project directory, so playback paths line up with `getSessionRecordingPaths()` immediately.
-- Recording is silent; the runtime emits no telemetry for installation or per-write activity. Failures are surfaced only through `onDebug` calls visible in the debug log directory (see [Diagnostics and debug logs](../05-hosted-agent-ops/diagnostics-and-debug-logs.md)).
+- Installation logs the selected path, and rename success/failure is debug-logged; per-write activity is not telemetered.
+- Startup housekeeping schedules the normal retention sweep; when that sweep runs, it removes stale `.cast` files by filesystem `mtime` under the same `cleanupPeriodDays` policy as other local session artifacts. That is client-side file cleanup, not evidence about any externally copied recording.
+- Activation, initial path, filename timestamp meaning, and behavior on termination that bypasses shutdown hooks remain artifact-limited unknowns.
 
 ## Related docs
 

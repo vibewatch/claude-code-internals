@@ -91,7 +91,11 @@ This section deepens the visible surfaces above by following the approval/execut
 | Semantic alias | String or symbol | Meaning |
 | --- | --- | --- |
 | PreToolUsePermissionHook | `hookPermissionResult`, `PreToolUse` | `PreToolUse` hook can allow, ask, deny, defer, or update input. |
-| ToolExecutionBoundary | `function U85` | Tool execution boundary containing allow/deny telemetry. |
+| ToolExecutionBoundary | `async function Yny` | Main tool execution boundary containing validation, hook, permission, telemetry, and call stages. |
+| InitialInputValidation | `inputSchema.safeParse`, `validateInput` | Initial schema/coercion and tool-specific validation run before `PreToolUse`. |
+| PreHookInputValidation | `hYr`, `returned updatedInput that failed schema validation` | The pre-hook rewrite has its own schema-failure denial path. |
+| PermissionRewriteGuard | `guardHookUpdatedInput` | A `PermissionRequest` rewrite cannot weaken a stronger rule-based ask/deny result. |
+| FinalPermissionInputValidation | `n8u`, `PERMISSION_UPDATED_INPUT` | A permission-handler replacement is independently validated before the tool body. |
 | ToolDeniedTelemetry | `tengu_tool_use_can_use_tool_rejected` | Denied tool-use telemetry path. |
 | ToolAllowedTelemetry | `tengu_tool_use_can_use_tool_allowed` | Allowed tool-use telemetry path. |
 | PermissionDeniedRetryHint | `The PermissionDenied hook indicated you may retry this tool call.` | Denial hook can request retry feedback. |
@@ -105,17 +109,19 @@ This section deepens the visible surfaces above by following the approval/execut
 ```mermaid
 flowchart TD
     Visible[Visible tool set] --> Call[Model tool call]
-    Call --> PreHook[PreToolUse hooks]
-    PreHook --> Decision[Permission decision]
+    Call --> Initial[Schema parse/coercion and tool validateInput]
+    Initial --> PreHook[PreToolUse hooks]
+    PreHook --> HookCheck[Check PreToolUse updatedInput]
+    HookCheck --> Decision[Merge hook and ordinary permission decisions]
     Decision -->|allow| AllowedTelemetry[tengu_tool_use_can_use_tool_allowed]
     Decision -->|deny| DeniedTelemetry[tengu_tool_use_can_use_tool_rejected]
     Decision -->|ask| SDKAsk[can_use_tool control_request]
     SDKAsk --> HostResponse[permission_response / control_response]
     HostResponse --> Decision
-    DeniedTelemetry --> PermissionDeniedHook[PermissionDenied hook]
+    AllowedTelemetry --> FinalCheck[Check permission-handler updatedInput]
+    DeniedTelemetry -. auto-mode classifier only .-> PermissionDeniedHook[PermissionDenied hook]
     PermissionDeniedHook --> RetryHint[optional retry hint]
-    AllowedTelemetry --> Guards[tool-specific guards]
-    Guards --> Execute[execute tool]
+    FinalCheck --> Execute[execute tool]
 ```
 
 ### `PreToolUse` is part of authorization, not only notification
@@ -131,13 +137,26 @@ The `PreToolUse` hook path yields structured `hookPermissionResult` values whose
 
 Hooks therefore participate before execution and can mutate the candidate tool input — they are not merely after-the-fact logs.
 
+### Input rewrites are checked at two distinct stages
+
+The boundary does not treat every `updatedInput` as one generic mutation path:
+
+1. The original call is schema-parsed/coerced and passed through the tool's `validateInput` before hooks run.
+2. `hYr` handles `PreToolUse.updatedInput`. Recognized-field schema failures are converted into a hook denial with `PreToolUse hook for <tool> returned updatedInput that failed schema validation`; this is the pre-hook check, not the final permission check.
+3. `mYr` merges that hook result with normal rule/tool/host permission handling. Stronger deny or ask rules still win. For an allow returned by `PermissionRequest`, `guardHookUpdatedInput` rechecks rules and prevents the rewrite from weakening such a result.
+4. If the final permission decision supplies its own `updatedInput`, `Yny` validates that replacement independently through `n8u`. Failure emits the `PERMISSION_UPDATED_INPUT` error code and returns before `tool.call`.
+
+These checks are intentionally separate: a valid pre-hook rewrite can still be superseded by permission handling, and a permission-stage replacement never inherits validation merely because an earlier input passed.
+
 ### Execution boundary in `ToolExecutionBoundary`
 
-`ToolExecutionBoundary` is the source-confirmed boundary for a tool-use decision. It contains both telemetry branches (`tengu_tool_use_can_use_tool_rejected` and `_allowed`). On rejection, the function builds tool-result-style denial messages. If a `PermissionDenied` hook returns retry information, the runtime can add a model-visible meta message:
+`ToolExecutionBoundary` is the source-confirmed boundary for a tool-use decision. It contains both telemetry branches (`tengu_tool_use_can_use_tool_rejected` and `_allowed`). On rejection, the function builds tool-result-style denial messages. An additional hook branch is narrower than the event name suggests: `Yny` dispatches `PermissionDenied` only when the final `decisionReason` is the `auto-mode` classifier. Other rule, mode, hook, user, and host denials still return denial output but do not reach that dispatch in the observed path.
+
+If the auto-mode `PermissionDenied` hook returns `retry: true`, the runtime adds this model-visible meta message:
 
 > `The PermissionDenied hook indicated you may retry this tool call.`
 
-On allow, it can use `updatedInput` from the permission decision before continuing toward execution.
+This is guidance for a later model decision, not an automatic scheduler retry. On allow, a permission decision's `updatedInput` reaches execution only after the separate `n8u` validation described above.
 
 ### SDK and Remote Control ask path
 
@@ -167,7 +186,7 @@ This is why the headless schema has both `permission_denied` system events and `
 ### Implementation takeaways
 
 1. The model-visible tool set is only the first gate; execution still goes through hooks, permission decisions, SDK/host prompts, and tool-specific guards.
-2. `PreToolUse` can affect authorization and input, while `PermissionDenied` can feed a retry hint back to the model.
+2. `PreToolUse` can affect authorization and input. Only the observed auto-mode classifier-denial branch dispatches `PermissionDenied`, and its retry flag feeds guidance back to the model rather than re-running the call.
 3. SDK/Remote Control hosts see a structured `can_use_tool` control request only for ask-style decisions; denial shortcuts become `permission_denied` frames.
 4. File-edit tools enforce a read-before-write invariant, which explains why the model often must call `Read` before `Edit`/`Write`/`NotebookEdit`.
 

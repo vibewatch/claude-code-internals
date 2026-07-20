@@ -2,7 +2,7 @@
 
 This page uses the reverse-engineered `cli.renamed.js` bundle to answer the cross-cutting protocol question: **how do runtime modules communicate, how do agents/subagents coordinate, and how does Claude Code talk to remote servers or hosts?**
 
-The short answer is that there is no single universal protocol. Inside the bundled runtime, most module boundaries are ordinary JavaScript calls, async queues, stores, and event emitters. Protocols appear at integration boundaries: MCP uses JSON-RPC-shaped messages, IDE/Chrome/Remote Control paths use JSON envelopes over WebSocket/SSE-like transports, task/subagent coordination uses built-in tools plus task-store events, and model/provider calls use HTTP(S) request/streaming responses.
+The short answer is that there is no single universal protocol. Inside the bundled runtime, most module boundaries are ordinary JavaScript calls, async queues, stores, and event emitters. Protocols appear at integration boundaries: MCP uses JSON-RPC-shaped messages, the local background daemon uses newline-delimited JSON over a local socket, IDE/Chrome/Remote Control paths use typed envelopes over persistent transports, task/subagent coordination uses built-in tools plus task-store/inbox events, and model/provider calls use HTTP(S) request/streaming responses.
 
 ## Source anchors
 
@@ -15,6 +15,7 @@ The short answer is that there is no single universal protocol. Inside the bundl
 | McpResourcesListMethod | `resources/list` | MCP resources are represented as JSON-RPC method schemas. |
 | McpPromptsGetMethod | `prompts/get` | MCP prompts use the same method-schema layer. |
 | McpToolsListMethod | `tools/list` | MCP tools are listed through a JSON-RPC method. |
+| McpListChangeRetention | `keeping previous tools`, failed fields passed as `undefined` | A failed list-change refresh preserves the prior discovered field instead of replacing it with an empty value. |
 | TaskGetMethod | `method:"tasks/get"` | Task result/status protocol is method-based and JSON-RPC-shaped. |
 | TaskCancelMethod | `method:"tasks/cancel"` | Task cancellation uses the same task method family. |
 | ProviderRequestLog | `[API REQUEST]` | Provider/API request logging surface for outbound HTTP calls. |
@@ -26,12 +27,15 @@ The short answer is that there is no single universal protocol. Inside the bundl
 | IdeBridgeTransports | `ws://`, `http://.../sse` | IDE integration accepts WebSocket or HTTP SSE endpoints. |
 | ControlRequestFrame | `control_request` | Headless/SDK/Remote Control ask path is a typed control frame. |
 | SandboxPermissionFrame | `sandbox_permission_request` | Sandbox network/file approvals are typed remote/control envelopes. |
-| TeamPermissionUpdateFrame | `team_permission_update` | Team/agent coordination emits typed update envelopes. |
+| InboxPermissionBoundary | `[InboxPoller] Dropping team_permission_update message: permission rules are never accepted from the inbox` | Inbox transport is not trusted to mutate permission rules. |
 | PlanApprovalRequestFrame | `plan_approval_request` | Plan approval is another explicit control-envelope subtype. |
 | WebSocketAuthFd | `CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR` | Remote/bridge ingress can read WebSocket auth from an inherited file descriptor. |
 | ExternalProtocolTransportLabels | `stdio, sse, http` | Transport labels for external protocol adapters. |
 | RemoteSessionConfigInjection | `remoteSessionConfig` | Remote-session configuration is injected into the interactive app. |
 | BridgeStateStreamFrame | `bridge_state` | Headless stream projects bridge state as a first-class frame. |
+| DaemonControlRequest | `controlRequest(e, t)`, `De(e) + "\n"` | Sends one newline-delimited JSON request and resolves the first response line; default timeout is 5 seconds. |
+| DaemonProtocolVersion | `BG_PROTO = 1`, `BG_PROTO_MIN = 1`, `EPROTO` | Local daemon client/server compatibility is explicitly versioned and fail-fast. |
+| DaemonControlAuth | daemon control key checks for `dispatch`, `reply`, `attach`, and `permission-response` | Sensitive local operations require more than a valid request shape. |
 
 ## Protocol matrix
 
@@ -40,7 +44,9 @@ The short answer is that there is no single universal protocol. Inside the bundl
 | In-bundle modules | JavaScript calls, async functions, stores, event emitters, queues | Runtime objects | The bundled `cli.renamed.js` is one process and one large module graph; logical modules are semantic boundaries, not wire protocols. |
 | Built-in tools | Tool definitions plus permission boundary | Tool-use input/output objects | Model tool calls become validated tool inputs, then cross the permission/execution boundary. |
 | MCP servers | JSON-RPC 2.0-style requests, responses, notifications | `method`, `params`, `id`, `jsonrpc`, `result`/`error` | Confirmed by `tools/list`, `tools/call`, `prompts/list`, `prompts/get`, `resources/list`, task methods, and JSON-RPC error codes. |
+| Local background daemon | Newline-delimited JSON over a local Unix/domain socket | `{ proto, op, ... }` request and `{ ok, op, ... }` response/event objects | One-shot clients consume the first response line; leases/subscriptions keep the connection open. Protocol version, request size, peer identity where available, and control-key checks constrain the boundary. |
 | Agents/tasks/subagents | Built-in task/message tools, task store, hooks, typed notifications | Tool inputs plus task records/events | `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate` and `SendMessage` are the model-facing protocol surface; hooks expose lifecycle events. |
+| Team inbox | Structured message queue with type routing and sender/role checks | Team messages, permission responses, mode changes, unrouted frames | The inbox is not a general authority channel: `team_permission_update` is always dropped, and accepted control-like messages undergo sender/role validation. |
 | IDE bridge | WebSocket or HTTP SSE endpoint | JSON frames | Endpoint detection accepts `ws://...` and `http://.../sse`; bridge frames use explicit `type` fields. |
 | Chrome/browser bridge | WebSocket-style bridge | JSON frames (`connect`, `tool_call`, `tool_result`, `permission_request`, `permission_response`, pairing messages) | The bridge has pairing, routing, tool call, result, permission, ping/pong, and device-selection messages. |
 | SDK/headless output | Stream-JSON/event projection | Typed frames | `control_request`, `permission_denied`, `session_state_changed`, `transcript_mirror`, `bridge_state`, `task_notification`, and final `result` frames share a projection channel. |
@@ -77,6 +83,36 @@ MCP is the clearest protocol layer in the bundle. The source schemas include JSO
 
 The runtime therefore treats MCP as a method-oriented request/response/notification protocol. Transports can vary — the bundle contains references to `stdio`, `sse`, and `http` — but the semantic layer remains JSON-RPC-shaped.
 
+List-change notifications use a last-good-state rule rather than “clear on error”:
+
+- A failed tools refresh logs that it is keeping previous tools and submits `tools: undefined`; the state update layer treats `undefined` as “leave this field unchanged.”
+- A failed prompts refresh likewise retains the previous command projection.
+- Resource refresh treats resources, resource templates, and commands independently, so successful fields can update while only the failed fields retain their prior values.
+- If the outer refresh itself throws, the error is logged and the previous connection state remains in place.
+
+This distinction matters operationally: a transient discovery failure does not make an already-known server appear to have deliberately removed all capabilities.
+
+## Local daemon control protocol
+
+Background clients and the supervisor communicate over the local control socket using one JSON object per line:
+
+```mermaid
+sequenceDiagram
+    participant Client as CLI/background client
+    participant Socket as local control socket
+    participant Daemon as V1p / FX_ handler
+
+    Client->>Socket: JSON({proto: 1, op, ...}) + newline
+    Socket->>Daemon: one framed request
+    Daemon->>Daemon: peer, size, proto, schema, auth checks
+    Daemon-->>Socket: JSON({ok, op, ...}) + newline
+    Socket-->>Client: first response line (one-shot)
+```
+
+`controlRequest()` defaults to a 5,000 ms timeout and classifies timeout/connection failures separately from an operation response. The server caps a request at 1 MiB and checks the peer UID where the platform exposes it. Only protocol version 1 is accepted in this build; unsupported versions receive `EPROTO` and restart guidance so an old daemon is not silently driven with a new schema.
+
+Health/lifecycle operations include `ping`, `nudge`, `yield`, `lease`, `leases`, and `shutdown`; manager operations include `list`, `has`, `await-ack`, `dispatch`, `reply`, `kill`, `respawn-stale`, `resize`, `attach`, `ensure-spare`, `permission-response`, and `subscribe`. Sensitive operations validate the daemon control key. `openDaemonLease()` and `subscribeControl()` deliberately keep their sockets open: a lease pins transient-daemon liveness and reconnects after closure, while a subscription consumes a stream of newline-delimited events.
+
 ## Agent and subagent communication
 
 Agents do not appear to use a separate free-form chat protocol between each other. The visible coordination surface is composed from:
@@ -84,7 +120,7 @@ Agents do not appear to use a separate free-form chat protocol between each othe
 1. **Tools/actions**: `SendMessage`, `TaskCreate`, `TaskGet`, `TaskList`, `TaskUpdate`.
 2. **Task store methods**: `tasks/get`, `tasks/result`, `tasks/list`, `tasks/cancel`.
 3. **Hooks and events**: `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle`.
-4. **Team/permission envelopes**: `team_permission_update`, plan-approval frames, and mailbox/team-context system reminders.
+4. **Team/inbox envelopes**: routed team messages, validated permission responses/mode changes, plan-approval frames, and mailbox/team-context system reminders.
 
 ```mermaid
 sequenceDiagram
@@ -105,6 +141,8 @@ sequenceDiagram
 ```
 
 The implication is that “agent-to-agent communication” is tool/state/event mediated. A subagent is not just a peer socket; it is a runtime context with transcript-backed state, task metadata, and hook-visible lifecycle.
+
+The inbox is also a trust boundary. Its poller unconditionally drops `team_permission_update` with the explicit reason that permission rules are never accepted from the inbox. Other control-like messages, including permission responses and mode changes, are routed only after sender/role checks; unknown or unrouted protocol frames are dropped. Therefore the existence of a serialized team message type does not prove that the receiver treats it as an authorized state mutation.
 
 ## Remote, bridge, and provider communication
 
@@ -133,6 +171,7 @@ Remote Control is bidirectional: it can observe output frames, send permission r
 - Bundled vendor libraries include gRPC/WebSocket/AWS Smithy/EventStream code. This page treats those as dependency support unless a string is connected to a Claude Code runtime path.
 - Approximate line numbers shift easily because `cli.renamed.js` is bundled and has very long lines. Use exact strings plus byte offsets for lookup.
 - Some schemas prove protocol shape; they do not prove which transport is selected for a particular user configuration.
+- Local socket access alone should not be described as the complete daemon authorization model: peer-UID checks are platform-dependent and sensitive operations also validate a control key.
 
 ## Related docs
 

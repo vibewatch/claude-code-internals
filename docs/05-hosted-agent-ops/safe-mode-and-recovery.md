@@ -41,20 +41,20 @@ The `Yu()` helper is the central “skip customization?” decision. In safe mod
 | `claudeMd` and auto-memory | User/project/local CLAUDE.md, rules, and memory files are not loaded into context. Managed policy text remains a separate policy surface. |
 | `skills`, custom commands, and `workflows` | User/project/plugin skill and workflow loading is disabled; built-in runtime commands remain. |
 | `plugins` and plugin monitors | Plugin registration, plugin hooks, plugin MCP, and related customizations are skipped. |
-| MCP discovery/integrations | Auto-discovered, claude.ai, agent-frontmatter, plugin, Chrome, and ordinary dynamic MCP configuration is dropped. Host-injected configs explicitly typed `sdk` are the narrow startup exception. |
+| MCP discovery/integrations | Auto-discovered, claude.ai, agent-frontmatter, plugin, and ordinary dynamic MCP configuration is dropped. Dynamic startup input is filtered to entries explicitly typed `sdk`; this preserves host wiring, not ordinary user MCP customization. |
 | custom `agents` | Settings/frontmatter agents and `--agents` JSON are ignored. Built-in agent/runtime machinery remains available where otherwise supported. |
 | output styles, themes, syntax languages, keybindings, LSP | Custom presentation/editor integration layers do not load. Edits can still be saved for the next normal restart. |
 
 ## Managed-policy boundary
 
-Safe mode is **not** “ignore all configuration.” The runtime continues to apply admin-managed settings and security policy. In particular:
+Safe mode is **not** “ignore all configuration.” The runtime continues to apply admin-managed settings and security policy. In the central `hvg` matrix, only `hooks`, `statusLine`, and `fileSuggestion` are exception categories; their resolvers then constrain surviving values to managed policy. In particular:
 
 - `Bzi()` returns only managed settings-file hooks;
-- managed `statusLine` and managed file-suggestion policy can remain active;
+- `Bxt()` resolves the status line to the managed value, and `cQn()` resolves file suggestions to managed policy after its trust/disable checks;
 - permission modes, allow/deny policy, sandbox rules, model restrictions, and authentication continue normally;
 - the banner explicitly notes that managed policy applies even though managed plugins, skills, CLAUDE.md, and MCP servers are not loaded as customizations.
 
-Runtime/session-owned hooks can still exist—for example hooks created by active built-in session features—but user/project/plugin hook registration is not restored. This distinction is why safe mode is a diagnostic isolation boundary rather than a hook-free alternate engine.
+Other runtime-owned hook machinery can still exist outside the settings-file collection, but safe mode does not restore user/project/plugin settings hooks. This distinction is why safe mode is a diagnostic isolation boundary rather than a hook-free alternate engine.
 
 ## What remains active
 

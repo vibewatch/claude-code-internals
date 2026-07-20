@@ -25,6 +25,8 @@ Use [Settings schema reference](settings-schema-reference.md) for the canonical 
 | DisableSideloadFlagsPolicy | `disableSideloadFlags` | Managed policy rejects inline plugin URL/dir, custom agent, and non-SDK MCP sideload flags. |
 | DisableClaudeAiConnectorsSetting | `disableClaudeAiConnectors` | Disables claude.ai connector loading and classifies pending connectors as disabled. |
 | TeamOnboardingPolicy | `allow_team_onboarding` | Organization policy controls the user-only onboarding workflow and its optional share layer. |
+| MarketplaceDeclarationSetting | `extraKnownMarketplaces`, `sQ`, `Uhy`, `bJr` | Scoped marketplace declaration state merged from settings. |
+| MarketplaceMaterializedState | `known_marketplaces.json`, `Ng`, `lxe` | Separate validated local state for acquired marketplace sources and cache locations. |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -88,6 +90,20 @@ Managed `disableSideloadFlags` closes CLI-only extension paths by rejecting `--p
 Claude in Chrome is a first-class integration in this build (`--chrome` / `--no-chrome`) and is generally available subject to auth, host, extension, policy, and safe-mode gates. Browser calls remain tool calls and therefore still cross normal plan-mode and permission checks.
 
 `disableClaudeAiConnectors` is narrower than a global MCP kill switch: the runtime checks it for `claudeai`-scoped configs and connector startup, while normal settings/plugin/flag MCP configs retain their own policies. `allow_team_onboarding` is an organization capability policy rather than a model permission; it gates the user-invoked local-history workflow, and [hosted guide sharing](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md) applies additional account/traffic/feature checks.
+
+## Marketplace declarations versus local state
+
+`extraKnownMarketplaces` is a settings declaration, not the marketplace cache itself. `Uhy` merges declarations across eligible settings sources, while `sQ` adds fallback/seed-related declarations and, after workspace trust, the project/local and added-directory view. Before trust, project/local declarations are excluded from that effective declaration set. `bJr(name, declaration, source)` persists one declaration to a selected settings source.
+
+Materialization is tracked separately in `known_marketplaces.json`. `Ng` loads and schema-validates that file; `lxe` validates and writes records containing the source, install location, and update metadata. `cct` policy-checks a source, reuses an equivalent existing materialization when possible, invokes the source-specific `bSs` acquisition path, and records the result. Consequently:
+
+- deleting or overriding one settings declaration does not by itself prove the cache should disappear;
+- `DDt(name, scope)` keeps state and installed plugins when another settings scope, managed declaration, or seed still owns the name;
+- final removal deletes the state/cache and cleans marketplace-specific enabled/installed plugin records;
+- `strictKnownMarketplaces` and `blockedMarketplaces` constrain acquisition/use, but are not substitutes for `known_marketplaces.json`;
+- a settings schema entry for an NPM marketplace source is not executable support—`bSs` explicitly throws `NPM marketplace sources not yet implemented` in this build.
+
+See [Plugin marketplace lifecycle](mcp-plugins-hooks.md#plugin-marketplace-lifecycle) for the CLI add/list/update/remove paths and acquisition branches.
 
 ## Related docs
 

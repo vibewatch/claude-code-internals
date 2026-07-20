@@ -42,12 +42,14 @@ For eligible local JSONL files, the scanner extracts:
 
 - slash-command counts;
 - MCP server/tool-use counts;
-- up to 60 session descriptors containing a title, linked PR numbers, and/or the first meaningful user message;
+- up to 60 session descriptors containing a custom title, linked PR numbers, and/or the first simple string-form user-content match accepted by the scanner;
 - current Git user name;
 - normalized `origin` repository (or workspace basename);
 - `.mcp.json` server URL origins when available.
 
-Files older than the window, non-regular files, and transcript files over 50 MiB are skipped. The scanner does not send full transcripts as its usage summary; it emits a bounded JSON aggregate and selected session descriptors for task-type classification. Nevertheless, first user messages and session titles can be included, so this is a deliberate local-history analysis initiated by the user.
+Files older than the window by filesystem `mtime`, non-regular files, and transcript files over 50 MiB are skipped. The scanner reads each remaining file and processes newline-delimited records with regexes. Its `firstMessage` extraction is narrower than normal resume parsing: it only accepts a line containing `"role":"user"` whose `content` is a JSON string, excludes command records and array content, rejects short or `<...`-prefixed text, unescapes only `\n` and `\"`, and truncates to 200 characters. It is therefore a bounded descriptor heuristic, not the canonical “first meaningful message” helper.
+
+If more than 60 descriptors qualify, the scanner scores title as 2 and any PR link as 1, sorts by that score, and keeps 60; equal-score ordering is inherited from the scan/sort implementation rather than a documented chronology guarantee. The usage summary does not include full transcripts, but selected user text and custom titles can be included, so this is deliberate local-history analysis initiated by the user.
 
 ## `ONBOARDING.md` contract
 
@@ -70,12 +72,12 @@ Hosted sharing is a separate optional layer. `ShareOnboardingGuide` is enabled o
 - a stored OAuth login exists;
 - `tengu_flint_harbor_share` is enabled.
 
-Requests use `teleport-org` authentication, the normal OAuth beta header, and a ten-second timeout.
+Requests use `teleport-org` authentication, the normal OAuth beta header, and a ten-second timeout. The wrapper performs one API request per list/create/update/delete operation; no onboarding-specific retry loop is visible.
 
 | Mode | Behavior |
 |---|---|
-| `check` (default) | Find a specified/latest guide. If local `ONBOARDING.md` exists, update that guide; if no local file exists, return its existing link; if no guide exists, fall through to creation. |
-| `update` | Update a specified `short_code`, or the most recently updated guide when omitted; if none exists, create one. |
+| `check` (default) | With `short_code`, list and select the exact matching guide; otherwise select the guide whose `updated_at` string is greatest. If local `ONBOARDING.md` exists, update that guide; if the file is absent, return the existing link; if no guide matches, fall through to creation. |
+| `update` | Update the supplied `short_code`, or the latest guide when omitted; if no target exists, create a new guide. |
 | `create` | Always create a new organization guide from local `ONBOARDING.md`. |
 | `delete` | Delete a specified/latest guide and return `deleted`. |
 
@@ -83,13 +85,16 @@ The local file must be at the original working directory and no larger than 65,5
 
 When sharing is available, the bundled workflow calls `check` after the draft and preserves the returned short code. After review, it calls `update` with that code so the same link reflects the final guide.
 
+The update-or-create fallback is ordered rather than atomic: lookup and file read happen before update/create, and there is no compare-and-swap version in the client request. The tool declares `isConcurrencySafe(): false`; concurrent callers can race latest-guide selection or overwrite one another. A failed update does not automatically create a replacement unless no target was found before the request.
+
 ## Failure and fallback behavior
 
 - Missing `ONBOARDING.md` returns `unavailable` with a write-the-guide-first message.
 - A file over 64 KiB returns `unavailable` and asks the caller to trim it.
 - API/auth/policy failures are converted to an `unavailable` result instead of aborting the whole onboarding workflow.
 - If sharing is unavailable at either stage, the skill retains the local file and falls back to instructions for manual distribution.
-- The source does not expose a short-code expiry contract; this page therefore treats the code only as the server-issued update/delete handle returned by the API.
+- Exact-code lookup that finds no matching guide behaves like “no guide” and can create one in `check`/`update`; it does not send an update to the absent code.
+- The source does not expose short-code expiry, access scope beyond the organization endpoint, revocation propagation, retention after delete, server conflict detection, or link-visibility guarantees. The code is only a server-issued lookup/update/delete handle in this client artifact.
 
 ## Related docs
 

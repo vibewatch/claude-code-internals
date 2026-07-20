@@ -6,7 +6,7 @@ The file is bundled/minified production JavaScript. The document therefore uses 
 
 ## Executive summary
 
-`cli.renamed.js` is not a thin prompt wrapper. It is the main Claude Code agent runtime. It parses the command line, establishes process identity, loads settings and managed policy, initializes authentication and model/provider state, manages sessions, assembles tools, applies permissions, loads MCP servers and plugins, orchestrates custom agents, background agents, and dynamic workflows, routes execution into interactive/headless/remote modes, and handles accessibility, observability, updates, and shutdown.
+`cli.renamed.js` is not a thin prompt wrapper. It is the main Claude Code agent runtime. Its outer `ZIS()` router selects version output, internal hosts/helpers, bridge, daemon/background, fleet, or normal CLI startup; the normal `UkS()` → `jkS()` path then parses the command surface and composes interactive/headless/remote sessions. The bundle also loads settings and managed policy, initializes authentication and model/provider state, manages sessions, assembles tools, applies permissions, loads MCP servers and plugins, orchestrates custom and background agents, and handles accessibility, observability, updates, and coordinated shutdown.
 
 The `2.1.215` snapshot adds several source-confirmed surfaces that were absent from the previous `2.1.143` documentation baseline: Sonnet 5, Opus 4.8, and Fable 5 model records; the `Workflow` tool and `/workflows` UI; background-by-default and nested subagents; experimental observer agents; the gated `EndConversation` lifecycle; an implicit team model; `/fork` background copies plus `/subtask`; session-bound `Projects` knowledge, `Artifact` publishing, and Claude Design/design-system sync; screen-reader and safe modes; MCP tool refresh/auto-backgrounding; richer hooks and telemetry; and hard per-session WebSearch/subagent budgets. The second-round audit also promotes two substantial older-but-underdocumented subsystems—macOS computer-use MCP and `/team-onboarding` guide sharing—without misclassifying them as new package deltas.
 
@@ -20,11 +20,12 @@ Two useful lenses for the runtime are **context engineering** and **harness engi
 | Area | Semantic alias | Minified anchor / exact string | Role |
 | --- | --- | --- | --- |
 | Build identity | `AnalyzedBuild` | `VERSION: "2.1.215"`, `BUILD_TIME: "2026-07-19T00:01:04Z"` | Pins every generated/minified anchor to one package build. |
-| Bootstrap/Commander | `CommanderRoot` | `Claude Code - starts an interactive session by default`, `--print` | Builds root options, mode routing, setup, and subcommands. |
+| Bootstrap/Commander | `OuterBootstrap` / `CommanderRoot` | `ZIS()`, `UkS()`, `jkS()`, `Claude Code - starts an interactive session by default`, `--print` | Routes specialized processes before the normal main, then builds/parses the ordinary command surface. |
 | Headless | `HeadlessRunner` | `--output-format=stream-json`, `control_request`, `prompt_suggestion` | Runs print/SDK stream-JSON mode and drains control/message loops. |
 | Interactive/accessibility | `InteractiveSessionLoop` | `--ax-screen-reader`, `CLAUDE_AX_SCREEN_READER`, `/resume` | Runs the TUI/session loop, picker, and flat accessibility renderer. |
 | Conversation termination | `EndConversationTool` | `EndConversation`, `ended-by-model`, `tengu_umber_kestrel` | Reflects twice, persists terminal state, aborts the turn, and blocks resumed work. |
-| MCP | `McpCoordinator` | `tools/list`, `roots/list`, `notifications/roots/list_changed`, `RefreshMcpTools` | Connects MCP servers, publishes roots, and refreshes tool sets. |
+| MCP | `McpCoordinator` | `tools/list`, `roots/list`, `notifications/roots/list_changed`, `keeping previous tools`, `RefreshMcpTools` | Connects MCP servers, publishes roots, and preserves last-good capability fields when a list-change refresh fails. |
+| Background daemon | `DaemonSupervisor` | `krm()`, `BG_PROTO = 1`, `controlRequest`, `lease` | Supervises background handles through a versioned/authenticated newline-delimited local control protocol and transient keep-alive leases. |
 | Native computer control | `ComputerUseMcpServer` | `computer-use`, `request_access`, `computer-use.lock` | Controls approved macOS applications through a session-wired MCP and layered native policy. |
 | Sessions | `SessionRestorer` | `transcriptSource:"local-jsonl"`, `--resume`, `--fork-session` | Finds recent sessions and restores or forks transcript state. |
 | Tools/workflows | `BuiltInToolNames` | `Bash`, `Read`, `Edit`, `WebFetch`, `WebSearch`, `Agent`, `Workflow`, `RefreshMcpTools` | Core coding, delegation, orchestration, and integration capabilities. |
@@ -40,6 +41,7 @@ Two useful lenses for the runtime are **context engineering** and **harness engi
 ```mermaid
 flowchart TB
     Cli[cli.js bundled runtime] --> Bootstrap[Bootstrap and command surface]
+    Bootstrap --> Specialized[Internal hosts / bridge / daemon / background]
     Cli --> Modes[Runtime modes]
     Cli --> Context[Context and model loop]
     Cli --> Tools[Tools and permissions]
@@ -71,14 +73,16 @@ flowchart TB
     Agents --> Task[Task and background agent commands]
     Agents --> Review[ultrareview / auto-mode]
     Agents --> Workflows[Workflow tool / ultracode / workflows view]
+    Specialized --> Daemon[Local background supervisor]
 ```
 
 ## Major feature matrix
 
 | Feature area | Entry point or trigger | Main capabilities | Primary docs |
 |---|---|---|---|
-| Package/Bun startup | Native Bun standalone executable, `.bun` graph entrypoint | Loads `cli.renamed.js`, pairs it with `.jsc`, embeds image/audio N-API modules. | [Package and Bun bootstrap](../01-runtime-lifecycle/package-and-bun-bootstrap.md) |
+| Package/Bun startup | Native Bun standalone artifact, `.bun` graph entrypoint | Extracted graph identifies the CLI entrypoint and embedded image/audio N-API modules; exact wrapper-to-native handoff is not retained in this checkout. | [Package and Bun bootstrap](../01-runtime-lifecycle/package-and-bun-bootstrap.md) |
 | CLI command shell | `claude`, root flags, subcommands | Version, root mode dispatch, `auth`, `mcp`, `plugin`, `project`, `agents`, `doctor`, `update`, `install`. | [Commands and flags](../01-runtime-lifecycle/commands-and-flags.md) |
+| Background supervisor | daemon/background routes, `claude agents`, leases/control socket | On-demand or gated service-origin supervisor, worker adoption, dispatch/attach/reply/kill, idle/takeover, and local protocol checks. | [Daemon and background service](../01-runtime-lifecycle/daemon-and-background-service.md) |
 | Interactive mode | Default TTY run | Setup/login/trust screens, TUI root, resume picker, tools/agents/MCP load, and the interactive session loop. | [CLI main paths](../01-runtime-lifecycle/cli-main-paths.md) |
 | Conversation termination | Gated `EndConversation` tool | Two-call reflection, durable `ended-by-model` marker, interactive blocking, headless shutdown, and `/clear` recovery. | [Conversation termination](../01-runtime-lifecycle/conversation-termination.md) |
 | Headless/SDK mode | `-p`, `--print`, `--sdk-url`, non-TTY stdout, `--init-only` | Prompt/stdin ingestion, stream-JSON input/output, permission/control frames, JSON/text result output. | [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md) |
@@ -99,12 +103,13 @@ The main capabilities in `cli.renamed.js` can be summarized as: **bootstrap, mod
 
 More concretely:
 
-1. `OuterBootstrap`, `TopLevelMain`, and `CommanderRoot` form the startup and command-routing spine.
+1. `ZIS()`, `UkS()`, and `jkS()` form the startup spine: specialized process roles are selected before ordinary Commander parsing.
 2. `HeadlessRunner`/`HeadlessControlLoop` and `InteractiveSessionLoop`/`InteractiveResumePicker` are the two main execution spines: headless/SDK and interactive TUI.
 3. `McpCoordinator`, `McpCommandRegistrar`, and `PluginCommandRegistrar` show that MCP and plugins are first-class integration systems, not afterthoughts.
 4. Tool-name constants and permission flags show a guarded action runtime around file, shell, notebook, web, todo, skill, and task capabilities.
-5. `SessionDiscovery`, `SessionRestore`, JSONL transcript roots, `ended-by-model`, `observer-ref`, remote tokens, bridge code, and teleport helpers show that durable metadata and remote handoff are core runtime modules.
+5. `SessionDiscovery`, `SessionRestore`, JSONL transcript roots, `ended-by-model`, `observer-ref`, remote tokens, bridge code, and teleport helpers show that durable metadata and remote handoff are core runtime modules. `ended-by-model` is restored in both direct and picker resume paths; its marker write remains best-effort.
 6. `ComputerUseMcpServer`, `TeamOnboardingSkill`, and hosted connector/plugin/skill discovery show that integrations can combine local runtime state with separately gated host/account services.
-7. Debug/telemetry/update constants and embedded image/audio N-API modules round out the operational and media-support layer.
+7. The daemon control socket, MCP refresh reducer, and team inbox show explicit trust/failure boundaries: sensitive daemon operations authenticate, failed MCP discovery retains last-good fields, and inbox-delivered permission-rule updates are dropped.
+8. Debug/telemetry/update constants and embedded image/audio N-API modules round out the operational and media-support layer.
 
 Use this document as the map; use the linked implementation pages for source anchors and edge cases.

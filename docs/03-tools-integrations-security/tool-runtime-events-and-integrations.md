@@ -18,7 +18,11 @@ For canonical tables, use [Tool inventory and schemas](tool-inventory-and-schema
 | WebSearchToolConstant | `var RI="WebSearch"` | WebSearch tool constant. |
 | KillShellCompatibilityAlias | `KillShell:"TaskStop"` | Compatibility alias from `KillShell` to `TaskStop`. |
 | BashOutputCompatibilityAlias | `BashOutputTool:"TaskOutput"` | Compatibility alias from Bash output to task output. |
-| ToolExecutionBoundary | `function U85` | Main tool execution/permission boundary. |
+| ToolExecutionBoundary | `async function Yny` | Main tool execution/permission boundary. |
+| ToolBlockPlanner | `Y3g`, `J3g`, `X3g` | Builds contiguous concurrency-safe blocks and serial singleton barriers. |
+| ToolConcurrencyCap | `K3g`, `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY` | Positive override or default cap `10` for parallel safe blocks. |
+| PerCallPostHooks | `pYr`, `fYr` | Success and failure hooks dispatched per completed call. |
+| AggregatePostHook | `executePostToolBatchHooks`, `Fmy` | Batch hook after settled results, with different normal-loop and end-turn continuation semantics. |
 | PreToolUseAuthorization | `hookPermissionResult`, `PreToolUse` | Hook output participates in authorization. |
 | CanUseToolBridge | `createCanUseTool` | SDK/Remote Control permission bridge wrapper. |
 | SdkControlRequestHandler | `processControlRequest` / `can_use_tool` | SDK stdio control request handler for permission asks. |
@@ -69,8 +73,8 @@ For canonical tables, use [Tool inventory and schemas](tool-inventory-and-schema
 | How is SDK supported? | `AgentSdkChildProcessWrapper` spawns the CLI in `stream-json` mode, translates SDK options to CLI flags/env, writes/reads JSON frames, and handles `can_use_tool` control requests through stdio. |
 | Is there LSP syntax support? | Yes, but the source-confirmed path is LSP server configuration plus passive diagnostics (`publishDiagnostics`) and file sync; this is diagnostics/syntax-error support, not proof of full editor refactoring features. |
 | Is there WebSearch/WebFetch? | Yes. WebFetch is local HTTP fetch + conversion + optional model prompt; WebSearch is provider/server-side `web_search_20250305` invoked through a model call. |
-| How is permission control done? | Tool visibility flags/settings feed `ToolExecutionBoundary`, which applies schema validation, `PreToolUse`, permission mode/rules, SDK/host `can_use_tool`, denial frames, and tool-specific guards. |
-| How do hooks work? | Hook schemas define lifecycle events. `PreToolUse` can affect authorization and input; `PostToolUse`/`PostToolUseFailure`/`PostToolBatch` observe outcomes; compaction/session/task hooks cover broader lifecycle. |
+| How is permission control done? | Tool visibility flags/settings feed `ToolExecutionBoundary`, which applies initial validation, `PreToolUse` rewrite validation, permission mode/rules, SDK/host `can_use_tool`, a separate final permission-rewrite check, denial frames, and tool-specific guards. |
+| How do hooks work? | `PreToolUse` can affect authorization and input. Success/failure hooks are per call; `PostToolBatch` is aggregate. Only auto-mode classifier denial reaches the observed `PermissionDenied` branch, whose retry flag is model guidance rather than an automatic retry. |
 | How is context exclusion done? | Multiple mechanisms: dynamic prompt-section exclusion, `claudeMdExcludes`, gitignore/ignore-file filtering for file context, sandbox/file `denyRead`, and explicit add-dir root expansion. |
 | How are settings implemented? | Settings are layered user/project/local/flag/policy config with managed policy controls and CLI injection via `--settings`, `--managed-settings`, and `--setting-sources`. |
 | What is persistence? | Local sessions are JSONL transcript files keyed by session ID; resume uses `SessionDiscovery`/`SessionRestore`; headless/SDK mirrors transcript frames; SDK `sessionStore` can mirror local writes externally. |
@@ -124,7 +128,7 @@ The important architectural point is that “available tool” is not the same a
 flowchart TD
     Model[Model output] --> ToolUse[tool_use]
     ToolUse --> Boundary[Tool execution boundary]
-    Boundary --> Hooks[PreToolUse / PermissionDenied / PostToolUse]
+    Boundary --> Hooks[PreToolUse / per-call post hooks / aggregate PostToolBatch]
     Boundary --> Control[can_use_tool control_request]
     Boundary --> Result[tool_result or denial]
     Result --> Stream[headless/SDK stream frames]
@@ -281,25 +285,41 @@ The permission pipeline is a layered trust path:
 
 ```mermaid
 flowchart TD
-    Visible[Tool visible to model] --> Schema[Input schema validation]
-    Schema --> PreHook[PreToolUse hook]
+    Visible[Tool visible to model] --> Schema[Schema parse and tool validateInput]
+    Schema --> PreHook[PreToolUse hook and rewrite check]
     PreHook --> Decision[Permission mode/rules/classifier]
-    Decision -->|allow| Guards[Tool-specific guards]
+    Decision -->|allow with replacement| FinalInput[Independent permission-input check]
+    Decision -->|allow unchanged| Guards[Tool body and live guards]
+    FinalInput --> Guards
     Decision -->|ask| Host[SDK/Remote/MCP permission prompt]
     Host --> Decision
-    Decision -->|deny| Deny[permission_denied + PermissionDenied hook]
+    Decision -->|deny| Deny[denial result / permission_denied frame]
+    Deny -. auto-mode classifier only .-> PermissionDenied[PermissionDenied hook]
     Guards --> Execute[Tool implementation]
-    Execute --> Post[PostToolUse / PostToolUseFailure / PostToolBatch]
+    Execute --> PerCall[PostToolUse or PostToolUseFailure]
+    PerCall --> Batch[PostToolBatch after settled results]
 ```
 
 Key behaviors:
 
-- `PreToolUse` is pre-execution and can allow, ask, deny, defer, add context, or supply `updatedInput`.
+- Initial schema/tool validation precedes `PreToolUse`. A pre-hook `updatedInput` has its own check; a later permission-handler `updatedInput` is independently validated through `n8u` and fails with `PERMISSION_UPDATED_INPUT` before `tool.call` when invalid.
+- `PreToolUse` is pre-execution and can allow, ask, deny, defer, add context, or supply `updatedInput`; rule checks can still override a hook rewrite that would weaken ask/deny policy.
 - The deny shortcut emits `permission_denied` frames so SDK/remote hosts can render a denial even when no prompt is shown.
 - Ask-style decisions emit `can_use_tool` control requests and wait for a host response.
-- `PermissionDenied` hooks can produce retry guidance that is fed back to the model.
-- `PostToolUse`, `PostToolUseFailure`, and `PostToolBatch` run after execution/result aggregation.
+- `PermissionDenied` dispatch is source-confirmed only for an auto-mode classifier denial. `retry: true` appends guidance for the model; it does not automatically execute the tool again.
+- `PostToolUse` and `PostToolUseFailure` are per-call hooks. `PostToolBatch` is a separate aggregate hook after the batch settles.
 - Tool-specific guards still apply after permission approval, e.g. read-before-edit and WebFetch/WebSearch permission syntax.
+
+### Scheduling and post-hook timing
+
+Tool calls from one model response are not one undifferentiated `Promise.all`. `Y3g` classifies calls by schema shape and `isConcurrencySafe`, grouping only adjacent safe calls. An unsafe or schema-invalid call is a singleton ordering barrier. `J3g` executes a safe block through the bounded parallel executor; `X3g` executes singleton blocks serially. `K3g` accepts a positive `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY` override and otherwise caps a parallel block at `10` (`cli.renamed.js:343251-343333`).
+
+This block structure also explains hook timing:
+
+- Each successful call dispatches `pYr` / `PostToolUse`; each thrown call dispatches `fYr` / `PostToolUseFailure`. Calls in one parallel block can therefore have overlapping per-call hook execution.
+- In the normal model loop, `executePostToolBatchHooks` runs after all tool results settle and before attachments/tool refresh and the next recursive model request. Its additional context is appended, while a blocking result or `preventContinuation` ends the loop with `hook_stopped` (around `cli.renamed.js:462430-462490`).
+- `Fmy` also runs `PostToolBatch` when a tool result or MCP metadata has already ended the turn. Hook messages can still be emitted, but blocking/prevent-continuation output is logged as discarded because there is no next model request to stop (around `cli.renamed.js:459780-459830`; exact log prefix `[end-turn] PostToolBatch block discarded`).
+- Abort and other exceptional termination branches are handled separately; the two paths above are not evidence that every exit runs normal batch-hook semantics.
 
 ## Context exclusion
 
@@ -401,7 +421,7 @@ Because renderers are co-located with `call`, adding a new tool requires no UI r
 - The bundle is minified; semantic names in this page are explanatory aliases, not stable public APIs.
 - LSP support is documented only as far as diagnostics/file-sync anchors confirm. Treat hover/rename/code-actions as unconfirmed until separately anchored.
 - WebSearch behavior depends on provider/model availability gates.
-- Plugin marketplace install/update internals are only summarized here; full marketplace flow remains a separate future deep dive.
+- Marketplace declaration, materialization, update, and scoped-removal mechanics are documented in [MCP, plugins, and hooks](mcp-plugins-hooks.md#plugin-marketplace-lifecycle). The current materializer implements URL/GitHub/Git/file/directory/settings sources but explicitly throws for an NPM marketplace source.
 
 ## Related docs
 

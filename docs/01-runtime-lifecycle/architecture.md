@@ -11,54 +11,64 @@ The runtime-lifecycle module owns the **composition root** of the agent runtime.
 1. Identifying the process (entrypoint kind, version, deep-link intent).
 2. Building the `claude` command surface.
 3. Resolving CLI/env/settings into a coherent runtime context.
-4. Dispatching to exactly one runtime mode (headless, interactive, server, remote/control, or utility subcommand).
+4. Dispatching to a process-specialized fast path, a utility command, or the headless/interactive session runtime.
 5. Coordinating shutdown.
 
 No business logic lives here directly. The module's job is to wire the rest of the system together and hand control off.
 
 ## Architecture thesis
 
-Runtime lifecycle is structured as a **three-stage funnel** with a single composition root:
+Runtime lifecycle is structured as a **three-stage funnel**, preceded by a process-specialization router:
 
 `OuterBootstrap → TopLevelMain → CommanderRoot → runtime mode`
 
-Each stage narrows responsibility: the outer bootstrap exists to make cheap paths cheap; the top-level main exists to fix process identity before any rich logic runs; the Commander root exists to be the single place where flags, settings, services, and modes meet.
+Each stage narrows responsibility. `ZIS()` handles cheap and process-specialized invocations before the normal main import. `UkS()` installs early process handling, handles the URI trampoline and the gated `import` rewrite, then calls `jkS()`. `jkS()` obtains the Commander program, preserves the print fast-parse path, registers the heavier utility commands, and parses argv. The root action built by the program factory is where standard-session flags, settings, services, and headless/interactive dispatch meet.
 
 ## Source anchors
 
 | Semantic alias | Anchor | Architectural meaning |
 | --- | --- | --- |
-| OuterBootstrap | `async function J9A` | Outer bootstrap stage; fast paths and lazy main import. |
-| BootstrapToMainLazyEdge | `let{main:f}=await Promise.resolve().then(() => (p08(),zo6))` | The lazy boundary between bootstrap and main bundle. |
-| MainBundleExportSurface | `var zo6={};j$(zo6,{startDeferredPrefetches:()=>startDeferredPrefetches,main:()=>O4A})` | Export surface of the main bundle (`main` and deferred prefetches). |
-| TopLevelMainStartEvent | `L7("main_function_start")` | First instrumentation point inside `O4A`; marks the transition from bootstrap to main. |
+| OuterBootstrap | `async function ZIS()` at ~983,909 | Outer router; version, helper, bridge, daemon/background, agent-view, and normal-main paths. |
+| BootstrapToMainLazyEdge | `let { main: f } = await Promise.resolve().then(() => (dri(), uri))` | Lazy boundary used only after the pre-main routes decline the invocation. |
+| MainBundleExportSurface | `var uri = {}; nt(uri, { main: () => UkS })` | Export surface of the retained main bundle. |
+| TopLevelMain | `async function UkS()` at ~978,259 | Early exit handling, URI trampoline, import rewrite, and handoff to `jkS()`. |
+| TopLevelMainStartEvent | `profileCheckpoint("main_function_start")` | First instrumentation point inside `UkS()`. |
 | DeepLinkTrampolineCheck | `process.argv.indexOf("--handle-uri")` | Deep-link trampoline check before Commander setup. |
-| CommanderRootStartEvent | `L7("run_function_start")` | First instrumentation point inside `w4A`; the Commander hub. |
-| CommanderPreActionHook | `H.hook("preAction", async (A,z) => { ... })` | The pre-action hook that runs shared setup before any command action. |
-| ClaudeCommandIdentity | `H.name("claude")` | The user-facing command identity. |
+| CommanderRoot | `async function jkS()` at ~978,305 | Gets the root program, applies print fast parsing, registers utility commands, and parses argv. |
+| CommanderRootStartEvent | `profileCheckpoint("run_function_start")` | First instrumentation point inside `jkS()`. |
+| RootProgramFactory | `rYf({ ... runInteractiveSession: (i, s) => qkS(i, s) ... })` | Builds the root options/action and injects the interactive-session callback. |
+| ClaudeCommandIdentity | `Claude Code - starts an interactive session by default` | User-facing root-command identity in the program factory. |
 | HeadlessModePredicate | `-p, --print` | Mode predicate that drives the headless path. |
-| ResumePickerInvocation | `await aa4(Y7, ...)` | Picker/search restore path invocation from the root action. |
-| EarlyProcessExitHook | `process.on("exit", () => { j4A() })` | Process-exit hook installed early in main. |
+| InteractiveLaunch | `qkS()` / `launchRepl` | Interactive fresh, resume, teleport, and remote-session projection. |
+| HeadlessLaunch | `runHeadless` | Print/SDK/non-TTY execution projection. |
+| DaemonSupervisor | `krm()` / `daemonMain` | Local background supervisor reached through the bootstrap daemon route. |
+| EarlyProcessExitHook | `process.on("exit", () => { GkS() })` | Process-exit hook installed early in `UkS()`. |
 | GracefulShutdownService | `gracefulShutdown` | Graceful-shutdown helper exported alongside `isShuttingDown` and analytics flush. |
-| SigintModeSplitter | `process.on("SIGINT", () => { if (process.argv.includes("-p") ...)` | SIGINT handler that distinguishes headless from interactive shutdown behavior. |
+| ShutdownClaimGuard | `Uut` | Allows only one process-level graceful-shutdown caller to own the sequence. |
+| DisposerQueues | `_a` / `A5t`, `qnl` / `$Hn`, class `bsi` | Two snapshot-and-clear callback registries drained in parallel per registry. |
 | StartupProfilingEvents | `import_time`, `cli_entry`, `main_tsx_imports_loaded`, `cli_before_main_import` | Startup profiling event groups used across the three stages. |
-| EventLoopStallDetector | `startEventLoopStallDetector` | Optional event-loop stall detection started before `O4A`. |
+| EventLoopStallDetector | `startEventLoopStallDetector` | Optional event-loop diagnostic used by the standard runtime setup. |
 
 ## Internal decomposition
 
 ```mermaid
 flowchart TD
     Argv[process argv, env, TTY state, stdin] --> Boot[OuterBootstrap]
-    Boot --> FastPath{cheap fast path?}
+    Boot --> FastPath{pre-main route?}
     FastPath -->|--version / -v / -V| Version[print VERSION and exit]
-    FastPath -->|daemon / background helpers| Daemon[helper entry]
+    FastPath -->|internal MCP / native host| Host[dedicated host entry]
+    FastPath -->|daemon worker / PTY / spare / preload| Helper[dedicated helper entry]
+    FastPath -->|remote-control aliases| Bridge[bridgeMain]
+    FastPath -->|daemon or bg operation| Daemon[daemon/background entry]
+    FastPath -->|agents-view fast path| Fleet[agent fleet UI]
+    FastPath -->|tmux + worktree| Tmux[exec handoff when enabled]
     FastPath -->|normal CLI| Profile[startup profiling + lazy import]
     Profile --> Main[TopLevelMain]
 
-    Main --> Identity[entrypoint and client-type classification]
-    Identity --> DeepLink{--handle-uri?}
+    Main --> DeepLink{--handle-uri?}
     DeepLink -->|yes| Trampoline[deep-link trampoline]
-    DeepLink -->|no| Commander[CommanderRoot]
+    DeepLink -->|no| ImportRewrite[gated import argv rewrite]
+    ImportRewrite --> Commander[CommanderRoot]
 
     Commander --> Options[register root options]
     Options --> Help[register help topics]
@@ -73,8 +83,6 @@ flowchart TD
 
     RootBody --> ModeRouter{which mode?}
     ModeRouter --> Headless[HeadlessRunner / HeadlessControlLoop]
-    ModeRouter --> ACP[startACPMode]
-    ModeRouter --> Server[startServerMode]
     ModeRouter --> Interactive[InteractiveSessionLoop / InteractiveResumePicker]
     ModeRouter --> Remote[remote / teleport / Remote Control]
 
@@ -88,9 +96,9 @@ The funnel uses three distinct technical patterns:
 
 | Stage | Pattern | Reason |
 |---|---|---|
-| Bootstrap | Hand-written fast paths plus a Promise-wrapped lazy import of the main bundle. | Avoid paying the cost of importing the main bundle for `--version`, daemon helpers, and similar non-runtime entrypoints. |
-| Top-level main | Imperative process setup followed by branching on `--handle-uri`. | Process identity (entrypoint, AI agent, exit handler) must be fixed before any module reads it; the deep-link trampoline runs outside Commander to avoid loading subcommands for URI handoff. |
-| Commander root | Commander-style declarative options/subcommands plus a single async `.action(...)` body. | A declarative surface gives `--help`, completion, and migration helpers a stable shape; the imperative root action body is the only place that combines all flags into a runtime context. |
+| Bootstrap | Hand-written pre-main routes plus a Promise-wrapped lazy import of the main bundle. | Avoid paying the standard CLI cost for version output, internal hosts, bridge/daemon operations, background helpers, and the agent-view shortcut. |
+| Top-level main | Early process handling followed by `--handle-uri`, a narrow `import` rewrite, and Commander handoff. | Keeps URI handoff outside normal parsing and performs only the small amount of setup needed before the command hub. |
+| Commander root | Program factory plus Commander-style options/subcommands and an async root action. | A declarative surface gives help and utility commands a stable shape; the root action composes standard interactive/headless sessions. |
 
 ## Public interface
 
@@ -104,6 +112,8 @@ The module exposes its surface in three flavors: command-line, environment, and 
 | Subcommands (`mcp`, `plugin`, `auth`, `agents`, `ultrareview`, `auto-mode`, `doctor`, `update`, `install`, `project purge`, `setup-token`, hidden `remote-control`/`rc`) | Lazy-loaded utility entrypoints registered after root option parsing. |
 | `--print` / `-p` fast parse | Performance optimization that avoids registering heavy subcommands for scripted runs. |
 | `--handle-uri` | Deep-link trampoline branch that bypasses Commander entirely. |
+| Internal `--claude-in-chrome-mcp`, `--chrome-native-host`, `--computer-use-mcp`, `--daemon-worker`, `--bg-pty-host`, `--bg-spare`, and `--preload` invocations | Dedicated process roles selected by `ZIS()` before `UkS()` is imported. |
+| Daemon/background and bridge aliases | Operational command families selected by `ZIS()` before the standard root parser. |
 
 ### Environment surface
 
@@ -120,13 +130,13 @@ The module exposes its surface in three flavors: command-line, environment, and 
 | Signal/hook | Behavior |
 |---|---|
 | Early process-exit hook | Final cleanup hook installed at the top of `TopLevelMain`. |
-| `SIGINT` handler | Headless (`-p`/`--print`) runs skip the interactive shutdown branch and exit promptly; interactive runs go through graceful shutdown. |
-| `gracefulShutdown` / `gracefulShutdownSync` | Coordinated stop with analytics flush, orphan disarmament, and pending-shutdown tracking. |
+| `SIGINT`/termination handling | Feeds the process-level shutdown coordinator; mode-specific code can still choose its exit code and final message. |
+| `gracefulShutdown` / `gracefulShutdownSync` | Single-claim coordinated stop over primary cleanup, session-end hooks, write/analytics/debug drains, secondary cleanup, and stdout completion. |
 | `startEventLoopStallDetector` | Optional diagnostic started before `TopLevelMain` if enabled; lives in the event-loop stall detector surface. |
 
 ## Composition contract
 
-The Commander root action is the **composition contract** of the runtime. Its responsibilities, in order:
+The standard root action is the **composition contract** for ordinary interactive and headless sessions. Specialized processes already selected by `ZIS()` do not enter this contract. Its broad responsibilities are:
 
 1. Normalize flag aliases and incompatible combinations (debug, color, diff, config flags).
 2. Resolve persistent state and settings (user, project, local, managed).
@@ -141,19 +151,28 @@ The Commander root action is the **composition contract** of the runtime. Its re
 11. Resolve the session target (new, continue, resume, connect, cloud, teleport, remote-control).
 12. Dispatch to exactly one runtime mode.
 
-This contract is single-threaded and async; downstream modules assume that by the time their entry points run, all of these steps have completed.
+The action is async, but setup work is intentionally overlapped in places. Downstream modes receive the resolved state they require rather than relying on every possible startup promise having completed globally.
 
 ## Mode dispatch rules
 
 | Predicate | Mode | Rationale |
 |---|---|---|
-| `--server` or `--headless` | JSON-RPC/headless server | Long-lived protocol surface for external hosts. |
-| `--acp` | Agent Client Protocol mode | Dedicated protocol entrypoint loaded by dynamic import. |
+| Exact version-only argv | Version fast path | `ZIS()` prints version/commit without importing `UkS()`. |
+| Internal host/helper flags, daemon/background operations, bridge aliases, eligible agent-view or tmux/worktree invocations | Dedicated pre-main process path | These are process roles or operational surfaces, not root-action modes. |
 | `--print` / `-p`, `--init-only`, `--sdk-url`, or non-TTY stdout | `HeadlessRunner` / `HeadlessControlLoop` | Scriptable single-run mode with stream-JSON capability. |
 | `--remote`, `--teleport`, `--remote-control`/`--rc` | Remote/teleport/Remote Control | Local or hosted bridge variants; reuse interactive loop projection. |
 | Otherwise (TTY) | `InteractiveSessionLoop` or `InteractiveResumePicker` fallback | Default human-in-the-loop path. |
 
-The order matters: server/ACP wins over print mode, print mode wins over interactive, and remote variants share the same interactive scaffolding through `remoteSessionConfig`.
+The order matters: `ZIS()` routes process-specialized invocations before importing `UkS()`; `jkS()` then preserves a print-only parse shortcut before registering heavier utility commands; finally the root action distinguishes headless from interactive/session-restore variants. This artifact has no root `--server`, `--headless`, or `--acp` mode and no `startServerMode`/`startACPMode` handler.
+
+## Shutdown contract
+
+Shutdown has two related but distinct layers:
+
+1. The global registries (`_a`/`A5t` and `qnl`/`$Hn`) adapt functions or disposable objects, snapshot and clear their sets, then execute that snapshot with `Promise.all`. Ordering inside a registry is therefore not guaranteed.
+2. The process-level `gracefulShutdown` sequence is guarded by `Uut`, so only one caller owns shutdown. It gives the primary registered cleanup a two-second race, runs session-end hooks under their own abort timeout, then drains writes, analytics, debug output, secondary cleanup, and stdout before final exit. A failsafe can force exit if the whole sequence stalls.
+
+These primitives do **not** prove that every child process receives a universal SIGTERM-then-SIGKILL sequence. Escalation exists in specific owners—such as daemon registry workers—but must be documented at that subsystem boundary.
 
 ## Internal collaborators
 
@@ -168,13 +187,13 @@ The order matters: server/ACP wins over print mode, print mode wins over interac
 
 ## Design decisions
 
-1. **Single-bundle composition root.** All wiring lives under `CommanderRoot`. This avoids cross-bundle coupling and lets feature gates and settings be checked in one place before any mode runs.
-2. **Lazy-imported modes.** Server, ACP, and headless runner are imported via `Promise.resolve().then(() => (M89(), O89))`-style indirection so their cost is not paid by interactive sessions.
-3. **PreAction as the place for cross-cutting setup.** `H.hook("preAction", ...)` carries device/MDM init, terminal title setup, sink/log init, inline plugin URL collection, settings migrations, and managed-settings refresh, which must run for *both* the root action and subcommands.
+1. **Single bundle, layered composition roots.** `ZIS()` composes specialized process roles, while the program factory/root action composes ordinary sessions. This avoids forcing helper and daemon processes through interactive-session setup.
+2. **Lazy-imported process roles and modes.** `ZIS()` imports only the selected internal host/helper/daemon/bridge handler, while normal startup lazily imports `UkS()`; the standard action later imports mode-specific runtime pieces as needed.
+3. **Shared command setup before actions.** The root program factory carries cross-cutting setup needed by root and subcommand actions, while `ZIS()` fast paths perform only their narrower policy/settings bootstrap.
 4. **`--print` fast parse.** Skipping subcommand registration for the common scripted path keeps headless latency low; only `cc://`/`cc+unix://` argv pulls in the heavier path.
 5. **Deep-link trampoline outside Commander.** `--handle-uri` short-circuits before option parsing so OS deep-link launches can re-enter the right session without paying for full setup twice.
-6. **Distinguishing headless and interactive shutdown.** SIGINT handling explicitly checks `-p`/`--print` so scripted runs are not subject to the interactive cleanup screen.
-7. **Process-identity decisions are made once.** `CLAUDE_CODE_ENTRYPOINT` and related env vars are set in `TopLevelMain` before any downstream module reads them; this lets MCP, telemetry, sessions, and remote bridges trust the classifier.
+6. **Mode-specific exit policy over shared cleanup.** Headless, interactive, and utility callers can choose exit code/final messaging while the shared coordinator owns the common drain phases.
+7. **Dedicated roles bypass standard composition.** Internal hosts, daemon workers, background helpers, and direct bridge operations do not masquerade as interactive modes; each receives the narrow initialization its handler requires.
 
 ## Failure modes
 
@@ -184,24 +203,24 @@ The order matters: server/ACP wins over print mode, print mode wins over interac
 | Missing or invalid `--handle-uri` payload | Deep-link trampoline reports the error and exits without starting Commander. |
 | preAction failure | Fails fast before any command action; surfaced as a setup error, not a model error. |
 | Settings migration failure | Logged via preAction instrumentation; the rest of the runtime continues with the unmigrated view. |
-| Mode dispatch contention (e.g. both `--server` and `--remote-control`) | Resolved by the strict predicate ordering above; the higher-priority mode wins. |
-| Shutdown raised during MCP/plugin work | `gracefulShutdown` flushes analytics, dispose hooks, and avoids killing in-flight tool calls when possible. |
+| A process-specialized flag is malformed | Its dedicated `ZIS()` handler reports or exits without constructing the ordinary Commander session runtime. |
+| Shutdown raised during MCP/plugin work | The single-claim coordinator drains registered cleanup and output phases; individual subsystems remain responsible for their own cancellation semantics. |
 
 ## Extension points
 
 | Extension | How it plugs in |
 |---|---|
 | New subcommand | Register under `CommanderRoot` after the print fast-path check; use lazy `Promise.resolve().then(...)` import for cost. |
-| New mode predicate | Add to the mode dispatch chain; the ordering rule above must be preserved. |
-| Additional preAction step | Insert into the `H.hook("preAction", ...)` body before settings cache invalidation. |
-| New process-identity classifier | Update the entrypoint classifier in `TopLevelMain`; downstream modules should not detect identity independently. |
+| New process role | Add an explicit `ZIS()` branch when it must avoid normal-main initialization; document its policy/settings bootstrap and termination contract. |
+| New standard-session mode predicate | Add it to the root-action dispatch and preserve the headless/interactive validation order. |
+| Additional shared action setup | Add it to the root program factory/pre-action layer rather than duplicating it across command handlers. |
 | Additional shutdown hook | Register with the shutdown service inside the root action; do not attach raw `process.on` listeners. |
 
 ## Caveats
 
-- The Commander instance class (`DR4`) is a Commander-like helper in this bundle; specific method names match the upstream Commander API but are minified.
+- The Commander-like program is created inside the bundled `rYf(...)` factory; semantic aliases describe its role rather than claiming an original source-module name.
 - Subcommand handlers are documented in their own pages; this page describes only how they enter the lifecycle.
-- Shutdown ordering across MCP, plugins, sessions, and UI is partially implementation-defined; this page reports observed primitives, not a guaranteed sequence.
+- The process-level phases above are observed, but callback ordering inside each disposer registry and subsystem-internal teardown ordering are implementation-defined.
 
 ## Related docs
 

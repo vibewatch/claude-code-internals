@@ -12,8 +12,9 @@ This module owns the **request side** of the agent loop: what the model sees, wh
 
 The context/model loop is a **layered assembler plus a streaming multiplexer**:
 
-- The assembler converts heterogeneous inputs (CLI flags, memory files, settings, plugins, MCP prompts/resources, tools, agents, session history) into a single model-visible request.
-- The multiplexer hides provider differences behind a shared streaming contract and exposes a uniform frame protocol for headless/SDK consumers.
+- The request side resolves base system text, `userContext`, `systemContext`, transcript messages, and structured tools as related but separate inputs.
+- Provider routing chooses one ordered primary provider and, for eligible Bedrock/model combinations, an optional Mantle secondary route. Authentication then follows provider- and host-specific lanes rather than one global secret precedence list.
+- The response side hides provider-stream differences behind a shared event contract. Headless/SDK mode projects those events plus control, task, bridge, transcript, and result state onto a correlated bidirectional protocol.
 
 This separation lets the runtime support interactive TUI and scripted/SDK transports with one context pipeline.
 
@@ -26,73 +27,93 @@ This separation lets the runtime support interactive TUI and scripted/SDK transp
 | DynamicPromptBoundaryFlag | `--exclude-dynamic-system-prompt-sections` | Separates stable prompt content from per-machine sections. |
 | SystemPromptOverrideFlag | `--system-prompt <prompt>` | Replaces the system prompt. |
 | SystemPromptAppendFlag | `--append-system-prompt <prompt>` | Adds to the default system prompt. |
+| SystemPromptResolver | `vne()` | Resolves total override, coordinator, agent replace/append, custom/default base, and ordinary append. |
+| PromptPartResolver | `fetchSystemPromptParts()` | Separates default system prompt, `userContext`, and `systemContext`. |
+| DefaultPromptBuilder | `M2()`, `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` | Builds default fragments and identifies relocatable dynamic sections. |
 | OutputStyleContextSchema | `outputStyles` | Plugin/settings-contributed output style schema. |
 | SlashCommandContextSurface | `slashCommands` | Slash commands counted as context. |
-| TranscriptContextAssembler | `async function _O5({transcriptPath:H,scope:$="session",maxRawTranscriptBytes:q})` | Transcript-derived context assembler. |
-| ProviderClassifier | `CLAUDE_CODE_USE_BEDROCK`, `..._VERTEX`, `..._FOUNDRY`, `..._MANTLE`, `..._ANTHROPIC_AWS` | Provider classifier branches. |
-| CredentialResolver | `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN` | Credential resolution; key vs bearer differs in downstream headers. |
+| ProviderClassifier | `getAPIProvider()` | Ordered gateway, cloud-provider, and first-party selection. |
+| SecondaryProvider | `getSecondaryProvider()` | Optional Bedrock-to-Mantle secondary route for applicable models. |
+| BearerResolver | `getAuthTokenSource()` | Bearer/OAuth provenance lane. |
+| ApiKeyResolver | `getAnthropicApiKeyWithSource()` | Separate API-key provenance lane. |
+| WorkloadIdentityGate | `shouldUseWIFAuth()` | WIF eligibility after provider, host, and explicit-source exclusions. |
+| AuthHeaderAssembler | `getAuthHeadersAsync()` | Converts selected provider/auth state into request headers. |
 | ModelSelectionFlag | `--model <model>` | Per-session model selection. |
 | FallbackModelFlag | `--fallback-model <model>` | Fallback model for print/headless mode. |
-| PerTurnModelResolver | `nG({permissionMode,mainLoopModel,exceeds200kTokens})` | Per-turn model resolver can alter model by mode/context. |
+| PerTurnModelResolver | `getRuntimeMainLoopModel()` | Per-turn model resolver can alter the effective model by permission/runtime state. |
 | ApiUsageAccounting | `api_request`, `cost_usd`, `input_tokens`, `output_tokens` | Provider-call accounting and telemetry. |
 | UnifiedRateLimitHeaders | `anthropic-ratelimit-unified-*` | Unified rate-limit/quota headers parsed into runtime state. |
 | HeadlessBudgetGuard | `error_max_budget_usd` | Headless budget guard result subtype. |
-| HeadlessMcpCoordinator | `let o4=fH9({regularMcpConfigs:Ww` | Headless branch creates the MCP coordinator before the model loop. |
 | HeadlessRunner | `async function runHeadless` | Headless runner; validates print/SDK constraints. |
 | HeadlessFrameMultiplexer | `function runHeadlessStreamingForTesting` | Headless streaming/control multiplexer. |
-| HeadlessOutboundChannel | `let h=H.outbound` | Outbound stream/channel abstraction inside `runHeadlessStreamingForTesting`. |
+| ControlCorrelation | `control_request`, `control_response`, `control_cancel_request`, `request_id` | Correlated host/runtime request, response, and cancellation envelopes. |
+| ResultDrain | final `result` holdback | Terminal result is emitted after queued outbound producers drain. |
+| SdkCleanup | `performCleanup()` | Rejects pending controls and closes SDK resources/transports. |
 | RateLimitStreamFrame | `rate_limit_event` | Rate-limit changes projected to SDK consumers. |
 | PromptSuggestionFrame | `prompt_suggestion` | Predicted next-prompt frame emitted after a turn. |
 | SessionStateChangedFrame | `session_state_changed` | Idle/running/requires_action state pushed alongside model frames. |
 | TranscriptMirrorFrame | `transcript_mirror` | Local transcript mirror frame in stream-JSON mode. |
 | SdkFrameAdapterFilter | `case "rate_limit_event": return N("[sdkMessageAdapter] Ignoring rate_limit_event message")` | SDK adapter explicitly handles a subset of frame types. |
 | CompactionHookLifecycle | `PreCompact`, `PostCompact` | Compaction lifecycle hooks around context shrinking. |
-| AutoCompactionThreshold | `autoCompactEnabled`, `DISABLE_AUTO_COMPACT`, `autocompact: tokens=` | Auto-compaction gate and threshold path. |
+| FullCompaction | `rlo()` | Full manual/automatic compaction. |
+| PartialCompaction | `YMu()` | Message-selector compaction preserving the opposite segment. |
+| ReactiveCompaction | `flo()` → `Bas()` → `ilo()` → `hlo()` | Grouped immediate recovery and materialization. |
+| PrecomputedCompaction | `Ras()` → `Das()` | Background arm and later validated swap/consumption. |
 
 ## Internal decomposition
 
 ```mermaid
 flowchart TD
     Inputs[CLI flags + settings + memory + plugins + MCP + agents + session history] --> Sources[Context sources]
-    Sources --> Stable[Stable system-prompt sections]
-    Sources --> Dynamic[Dynamic per-machine sections]
-    Sources --> Tools[Tool/agent/MCP metadata]
-    Sources --> Transcript[Recent + subagent transcripts]
+    Sources --> Base[Resolved base system prompt]
+    Sources --> User[userContext]
+    Sources --> System[systemContext]
+    Sources --> Tools[Structured tool schemas]
+    Sources --> Transcript[Conversation messages + reminders]
 
-    Stable --> Assembler[Prompt assembler]
-    Dynamic --> Assembler
-    Tools --> Assembler
-    Transcript --> Assembler
+    Transcript --> CompactRouter{Context pressure?}
+    CompactRouter -->|no| Request[Provider request]
+    CompactRouter -->|full| Full[rlo]
+    CompactRouter -->|reactive/precomputed| Reactive[flo / Das]
+    Full --> Request
+    Reactive --> Request
+    Base --> Request
+    User --> Request
+    System --> Request
+    Tools --> Request
 
-    Assembler --> Compaction[Compaction policy and budget guard]
-    Compaction --> Request[Provider request]
-
-    Auth[Credential resolver] --> ProviderRouter[Provider classifier]
-    Models[Model flags / aliases / fallback] --> ProviderRouter
-    ProviderRouter --> Request
+    Models[Model flags / aliases / policy / fallback] --> ProviderRouter[getAPIProvider]
+    Gateway[Gateway auth state] --> ProviderRouter
+    ProviderRouter --> AuthMatrix[Bearer / API key / WIF / host cloud credentials]
+    AuthMatrix --> Headers[getAuthHeadersAsync + provider adapter]
+    Headers --> Request
 
     Request --> ModelStream[Streaming response]
     ModelStream --> ToolUse[Tool-use deltas to permission boundary]
     ModelStream --> TextUI[Assistant text to TUI / stream-json]
 
-    ModelStream --> Mux[Headless frame multiplexer]
-    Mux --> Result[final result frame]
+    ModelStream --> Mux[Headless stream/control loop]
+    Control[Correlated control request/response/cancel] <--> Mux
     Mux --> RateLimit[rate_limit_event]
     Mux --> Suggestions[prompt_suggestion]
     Mux --> State[session_state_changed]
     Mux --> Mirror[transcript_mirror]
     Mux --> Bridge[bridge_state]
+    Mux --> Drain[Drain queued producers]
+    Drain --> Result[terminal result frame]
 ```
 
-The module composes three sub-components:
+The module composes five cooperating sub-components:
 
 | Sub-component | Responsibility |
 |---|---|
-| Context sources | Heterogeneous inputs (memory, settings, plugins, MCP, agents, tools, session history, output styles, slash commands). |
-| Prompt assembler + compaction | Produces the model-visible request, applies `--exclude-dynamic-system-prompt-sections`, runs `PreCompact`/`PostCompact` hooks, and enforces budget/turn limits. |
-| Provider/auth router | Picks credentials, classifies provider, sets model/fallback, prepares headers, and abstracts over Anthropic/Bedrock/Vertex/Foundry/Mantle/Anthropic AWS. |
+| Context sources and partition | Resolve base system text, `userContext`, `systemContext`, structured tools, messages, and runtime attachments. Dynamic-section exclusion relocates selected default-prompt/system context into `userContext`; it does not flatten every contributor into one string. |
+| Compaction router | Monitors the effective model window and selects full, reactive, or precomputed-result application. Partial compaction is exposed through message selection. Successful materialization refreshes bounded current attachments. |
+| Provider/model router | Applies model aliases/policy and selects the first matching primary route: gateway, Bedrock, Foundry, Anthropic AWS, Anthropic Google Cloud, Mantle, Vertex, then first party. Bedrock can additionally receive a Mantle secondary route. |
+| Authentication/header matrix | Separates bearer/OAuth, API-key, WIF, host-managed cloud credentials, provider-specific headers, and refresh/recovery. |
+| Headless stream/control loop | Multiplexes model and non-model frames, correlates host requests by `request_id`, holds back the terminal result while queued producers drain, and hands off to SDK/transport cleanup. |
 
-The `HeadlessFrameMultiplexer` wraps the model stream and adds non-model frames (rate limit, suggestions, state, transcript mirror, bridge state) without coupling them to provider details.
+The headless stream/control loop wraps the same model loop used by interactive execution, but its completion contract is stronger than “model iteration ended”: outbound task, notification, mirror, suggestion, and control state must be resolved or drained before the terminal result closes the stream.
 
 ## Public interface
 
@@ -100,20 +121,21 @@ The `HeadlessFrameMultiplexer` wraps the model stream and adds non-model frames 
 
 | Effect |
 | --- |
-| Replace or extend the system prompt. |
-| Move per-machine content (cwd, env, memory paths, git status) out of cache-sensitive sections. |
+| Resolve a total override, coordinator/agent/custom/default base, and ordinary append according to prompt precedence. |
+| Relocate selected dynamic default-prompt/system-context material into `userContext`. |
 | Add tool-access directories and inject file resources into early context. |
 | Shape provider routing, thinking mode, budget guards, and beta headers. |
 | Memory and presentation layers fed into the assembler. |
-| Credential and provider classification. |
-| Add capability metadata and prompt fragments. |
+| Provider selection plus bearer, API-key, WIF, or host-managed credential state. |
+| Add structured tool schemas, capability metadata, context attachments, and prompt fragments. |
 
 ### Outputs
 
 | Output | Consumer |
 |---|---|
-| Provider request | Streaming model API (Anthropic, Bedrock, Vertex, Foundry, Mantle, Anthropic AWS). |
+| Provider request | Gateway, first-party Anthropic, Bedrock, Vertex, Foundry, Mantle, Anthropic AWS, or Anthropic Google Cloud adapter. |
 | `assistant` and `tool_use` deltas | Forwarded to TUI renderer or stream-JSON adapter. |
+| Correlated controls (`control_request`, `control_response`, `control_cancel_request`) | SDK/host permission, dialog, and control operations. |
 | Headless frames (`result`, `rate_limit_event`, `prompt_suggestion`, `session_state_changed`, `transcript_mirror`, `bridge_state`, `task_notification`, `plugin_install`) | Headless/SDK consumers, transcript writers, remote bridge. |
 | Compaction events (`PreCompact`/`PostCompact` hook calls) | Hook subscribers, telemetry. |
 | Context-budget warnings (e.g. large agent descriptions) | UI and telemetry. |
@@ -131,35 +153,39 @@ The `HeadlessFrameMultiplexer` wraps the model stream and adds non-model frames 
 
 ## Design decisions
 
-1. **Static vs dynamic system-prompt boundary.** The `__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__` sentinel and `--exclude-dynamic-system-prompt-sections` flag exist so that per-machine fragments do not invalidate prompt caches. Treating cacheability as a first-class concern is a deliberate context-engineering choice.
-2. **Layered context, not single template.** Memory files, settings, slash commands, skills, agents, MCP, tools, and session history are independent contributors; the assembler merges them per turn instead of relying on one monolithic template.
-3. **Provider classifier in one place.** Instead of having each call site detect the provider, environment gates (`CLAUDE_CODE_USE_*`) are checked once and downstream code consumes a single classifier result.
-4. **Credential resolution by precedence, not branching.** API key, OAuth token, helper script, and file-descriptor sources are tried in a fixed order so the rest of the loop can treat credentials as opaque.
-5. **Headless mode is a different projection, not a different agent.** `HeadlessRunner` and `HeadlessFrameMultiplexer` reuse the same context assembly and provider router as the TUI; only the projection (stream-JSON frames vs UI updates) differs.
-6. **Frame multiplexing keeps non-model state observable.** Rate limit events, prompt suggestions, session-state changes, transcript mirrors, and bridge state are first-class outbound frames so SDK/remote consumers do not have to infer them.
-7. **Compaction is a runtime concern, not a settings flag.** `PreCompact`/`PostCompact` hooks let external code participate in context shrinking; budget/turn limits are enforced inside the loop rather than at the model boundary.
-8. **Fallback model only in non-interactive paths.** The `--fallback-model` documentation strings restrict fallback to print mode, which keeps interactive sessions predictable.
+1. **Prompt precedence and request partition are separate.** `vne()` chooses base prompt text; `fetchSystemPromptParts()` produces default prompt, `userContext`, and `systemContext`; tool schemas remain structured request data. No one array faithfully represents all context contributors.
+2. **Dynamic exclusion is relocation.** `SYSTEM_PROMPT_DYNAMIC_BOUNDARY` lets `M2()` omit selected default fragments, while `rxo()` and `fetchSystemPromptParts()` move the relevant dynamic/system material into `userContext` and empty `systemContext` for that path.
+3. **Primary provider routing is ordered.** Gateway state wins before environment-selected cloud adapters; first party is the final fallback. The separate Bedrock-to-Mantle secondary route is model-specific and does not change the primary identity.
+4. **Authentication is a branch matrix.** Bearer/OAuth provenance, API-key provenance, WIF eligibility, cloud SDK/host credentials, header shaping, and refresh/recovery are separate decisions. Each lane has internal precedence, but there is no universal credential list spanning every provider.
+5. **Headless mode is a different projection, not a different agent.** The headless runner reuses the same context/model loop, then adds correlated controls and non-model frames. SDK and subprocess cleanup remain separate from print-loop draining.
+6. **Terminal result is an ordering boundary.** The loop holds `result` until queued notifications, task state, suggestions, transcript mirrors, and other active producers are drained, so consumers can treat it as terminal without dropping earlier work.
+7. **Compaction is a family of runtime paths.** Full, partial, reactive, and precomputed flows share boundary/materialization concepts but differ in trigger, hook timing, preserved suffix, retries, and persistence. A version-1 `.precompact.json` sidecar can rehydrate an eligible ready main-session result after validation.
+8. **Fallback has multiple meanings.** Startup third-party availability probes can assign provider-usable family defaults; the ordered `--fallback-model` chain handles overload in print/headless mode; internal helper/compaction requests also have availability fallback chains. These must not be collapsed into one feature.
 
 ## Failure modes
 
 | Failure | Behavior |
 |---|---|
 | Invalid format combination (e.g. `--input-format=stream-json` without `--output-format=stream-json`) | `HeadlessRunner` rejects with a precise error before any provider call. |
-| Provider auth missing or expired | Credential resolver returns null; the loop reports a structured error frame and (in headless) exits with an `error_during_execution` subtype. |
-| Rate limit hit | `rate_limit_event` frame emitted; provider state is preserved and the loop can re-issue or wait based on policy. |
+| Provider auth missing or expired | The applicable lane can refresh under its lock/cooldown/host callback or invalidate unusable state; unrecovered execution errors become structured headless errors when framing is available. |
+| Rate limit hit | Parsed unified limit state can emit `rate_limit_event`; retry/fallback behavior depends on the request path and status rather than the frame itself. |
 | Turn or budget exhausted | `result` frame uses `error_max_turns`, `error_max_budget_usd`, or `error_max_structured_output_retries` so callers can distinguish stop conditions. |
-| Context too large after assembly | Compaction is triggered through `PreCompact`/`PostCompact` hooks before the request is built; large agent descriptions also raise pre-flight warnings. |
-| Stream interruption | The headless loop drains any in-flight tool calls; the SDK adapter explicitly ignores frame types it does not understand instead of crashing. |
+| Context pressure or withheld prompt-too-long result | Threshold routing can use full compaction or a reactive/precomputed swap. Hooks can block; grouped retry can preserve more recent groups; repeated automatic failures open a circuit breaker. |
+| Stale precomputed compaction | Missing boundary, session/model mismatch, age, token-delta, or missing preserved UUID rejects reuse and schedules sidecar cleanup; normal compaction remains available. |
+| Unknown/malformed control or cancellation | Rejected or converted to a correlated error when possible; it is not fed to the model as user input. |
+| Logical turn completes with active producers | Final `result` is held back while queued outbound work drains. |
+| SDK transport closes | `performCleanup()` rejects unresolved control promises and closes resources; subprocess transport then escalates from stdin close to `SIGTERM` and, after five seconds, `SIGKILL` if required. |
 
 ## Extension points
 
 | Extension | How it plugs in |
 |---|---|
-| Add a context source | Contribute through settings/plugins/MCP rather than touching the assembler directly. |
-| Add a provider | Add a `CLAUDE_CODE_USE_*` branch to the classifier and a credential adapter; existing model flags remain stable. |
-| Add a new outbound frame type | Define the schema near the existing `y.object(...)` schemas (~line 2004) and emit it from `HeadlessFrameMultiplexer`; SDK adapters must opt into handling it. |
-| Customize compaction | Subscribe to `PreCompact`/`PostCompact` hooks; do not mutate prompt assembly directly. |
-| Override prompt cacheability | Use the dynamic-section flag rather than rewriting the prompt; this preserves provider-side caching. |
+| Add a context source | Choose its request plane deliberately: base prompt fragment, `userContext`, `systemContext`, attachment/message, or structured tool. Do not assume all sources belong in system text. |
+| Add a provider | Extend ordered primary/secondary routing, model-ID mapping, credential/refresh contract, endpoint/header shaping, and availability probes together. |
+| Add a new control subtype | Define request/response schemas, preserve `request_id` correlation and cancellation, and reject pending promises during cleanup. |
+| Add a new outbound frame type | Define its schema, producer lifetime, result-ordering/drain behavior, and explicit SDK adapter handling. |
+| Customize compaction | Subscribe to `PreCompact`/`PostCompact`; account for precompute hook timing and the fact that `PostCompact` runs only when a result is materialized. |
+| Change dynamic prompt placement | Update `M2()`/boundary exclusion and `rxo()` relocation as one contract, then verify the `userContext`/`systemContext` partition. |
 
 ## Caveats
 

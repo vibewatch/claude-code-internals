@@ -8,15 +8,17 @@ Short version: the daemon is the **long-lived local supervisor process** used by
 
 | Semantic alias | String or symbol | Meaning |
 | --- | --- | --- |
-| BootstrapDaemonFastPath | `OuterBootstrap` fast paths include daemon/background helpers | Daemon/background handling can run before full main interactive dispatch. |
-| DaemonLabelSwitch | `pj(){return isDaemonServiceInstallEnabled()?"daemon":"background service"}` | UI/UX naming toggles between daemon vs background-service wording. |
+| BootstrapDaemonFastPath | `ZIS()`, `vel(t)`, `cli_daemon_path`, `cli_bg_path` | Daemon/background handling runs before the normal `UkS()` import. |
+| DaemonCli | `daemonMain` | Parses user-facing daemon operations and starts/probes the supervisor. |
+| DaemonSupervisor | `krm()` at ~981,900 | Owns locking, auth, manager/workers, idle/takeover, upgrade, and shutdown. |
+| DaemonLabelSwitch | `bgSupervisorNoun()` / `isDaemonServiceInstallEnabled()` | UI/UX naming toggles between daemon vs background-service wording. |
 | DaemonHintInErrors | ``run 'claude daemon ${H}'`` | Error/status copy points users to daemon commands. |
 | DaemonServiceUnitTemplate | `Description=Claude Daemon` | Built-in systemd/launchd service template exists. |
 | DaemonServiceExec | `ExecStart=... daemon --json-path ... --log-file ... --origin service` | Service starts daemon with state/log paths and service origin tag. |
-| DaemonServiceStart | `Tj8()` / `systemctl --user start com.anthropic.claude-daemon.service` | The CLI kicks the installed service instead of directly owning the daemon process. |
-| DaemonEnsureRunning | `async function tB(H={})` | Main ensure-running state machine: probe existing daemon, prefer service, fall back to transient spawn. |
-| DaemonServiceInstalledCheck | `Zx5()` checks `CLAUDE_CONFIG_DIR`, launchd/systemd availability, and installed service status | Service mode is only used when the per-user singleton service is available for the default config dir. |
-| DaemonTransientSpawn | `UP8(["daemon", "run", ... "--origin", "transient"])` | Fallback path starts an on-demand detached daemon outside the OS service manager. |
+| DaemonServiceStart | `$4o()` / `systemctl --user start com.anthropic.claude-daemon.service` | The CLI kicks the installed service instead of directly owning the daemon process. |
+| DaemonEnsureRunning | `JK()` around `controlRequest({ proto: BG_PROTO, op: "nudge" })` | Probes an existing daemon, conditionally prefers a service, and can fall back to transient spawn. |
+| DaemonServiceInstalledCheck | `J1p()` checks `CLAUDE_CONFIG_DIR`, launchd/systemd availability, and installed service status | Service mode is only used when the per-user singleton service is available for the default config dir. |
+| DaemonTransientSpawn | `j4o(["daemon", "run", ... "--origin", "transient"])` | Fallback path starts an on-demand detached daemon outside the OS service manager. |
 | DaemonInstallPrompt | `Install as a service now? [y/N/never, or 'once' just for now]` | Cold-start UX asks whether to install persistent service. |
 | DaemonReachabilityCheck | `daemon did not become reachable ... check 'claude daemon status'` | Health probe after install/spawn; explicit status command guidance. |
 | DaemonLockFile | `daemon.lock` | Single-supervisor locking and stale-process checks. |
@@ -24,9 +26,13 @@ Short version: the daemon is the **long-lived local supervisor process** used by
 | DaemonSpawnFallback | `WMI spawn failed ... daemon will not survive SSH/terminal close` | Windows fallback path and survivability caveat. |
 | DaemonServiceStaleExec | `daemon service exec path is stale ... Run 'claude daemon install' to repair.` | Detect/repair stale service executable path after upgrades/moves. |
 | DaemonStatusWarnings | `run \`claude daemon stop\` to reap them` | Status output includes orphan/roster cleanup guidance. |
-| DaemonControlProtocol | `h4A(...)` handles `ping`, `nudge`, `dispatch`, `attach`, `shutdown`, `list`, `kill`, `reply` | The daemon's actual work is exposed through the local control socket protocol. |
-| DaemonServiceCLI | `Install as a launchctl/systemd service (persists across reboot)` | User-facing help states the service's persistence contract. |
-| DaemonTransientIdleExit | `origin === "transient"` idle-exit branch | Transient daemons exit after clients/jobs drain; service daemons are managed by the OS service manager. |
+| DaemonControlClient | `controlRequest(e, t)` at ~745,600 | Writes one newline-delimited JSON request and resolves the first response line; default timeout is 5 seconds. |
+| DaemonControlServer | `V1p()` / `FX_()` at ~762,300 | Binds the local socket, frames requests by newline, validates protocol/schema/peer/auth, and dispatches operations. |
+| DaemonProtocolVersion | `BG_PROTO = 1`, `BG_PROTO_MIN = 1`, `EPROTO` | Rejects unsupported protocol versions with restart guidance. |
+| DaemonLease | `openDaemonLease()`, `{ proto: BG_PROTO, op: "lease", client }` | Persistent client connection that pins transient-daemon liveness and reconnects after closure. |
+| DaemonServiceCLI | `isDaemonServiceInstallEnabled()`, `NIS`, `FIS` | Service commands/help are feature-gated; some builds/accounts expose only on-demand operation. |
+| DaemonTransientIdleExit | `Q = () => leaseCount() + liveHandleCount()` in `krm()` | Transient liveness is pinned by client leases and live background handles, not configured registry workers. |
+| DaemonDisplacementCleanup | `close({ displaced })`, `skipUnlink`, `leaving successor's control.sock in place` | A displaced supervisor does not unlink a successor's socket or lock state. |
 | DaemonTelemetryFamily | `tengu_bg_daemon_*`, `tengu_bg_orphan_reap`, `tengu_bg_dispatch_*` | Operational telemetry families around daemon lifecycle. |
 | AgentJsonSurface | `claude agents --json`, `--all`, `waitingFor` | Scriptable active/completed session roster and blocked-on state. |
 | CorporateProcessWrapper | `processWrapper`, `CLAUDE_CODE_PROCESS_WRAPPER` | Required launcher prefix for the supervisor, workers, and covered background self-spawns. |
@@ -58,13 +64,13 @@ Think of the split as:
 
 | Layer | Responsibility | Source-visible behavior |
 |---|---|---|
-| Daemon process | Owns the control socket, dispatches/attaches/kills/replies to background sessions, adopts workers, watches `daemon.json`, writes `roster.json` and `daemon.log`. | `h4A(...)` handles socket ops such as `dispatch`, `attach`, `list`, `kill`, `reply`, and `shutdown`. |
-| Service | Lets the OS start/stop/restart the daemon as a per-user background service. | The generated unit runs `claude daemon ... --origin service`; help describes install as `launchctl/systemd` service that “persists across reboot”. |
-| Transient daemon | Temporary fallback started by a CLI client when no installed service is usable. | `UP8(...)` launches `daemon run --origin transient`; transient origin can idle-exit after clients/jobs drain. |
+| Daemon process | Owns the control socket, dispatches/attaches/kills/replies to background sessions, adopts workers, watches `daemon.json`, writes roster/log state, and enforces local protocol/auth checks. | `krm()` starts the manager; `V1p()`/`FX_()` handle control operations. |
+| Service | When the service-install gate and host integration allow it, lets the OS start/stop/restart the daemon as a per-user background service. | Generated launchd/systemd material uses `--origin service`; `NIS` versus `FIS` controls whether install/start/restart help is exposed. |
+| Transient daemon | On-demand supervisor started when no usable persistent service owns the role. | `--origin transient`; exits after its startup/idle grace when both leases and live background handles reach zero. |
 
 The practical purpose of the service is to make background features reliable when there is no foreground terminal keeping the process alive:
 
-- **Persistence**: keep the daemon available across terminal close, SSH disconnect, logout, and reboot when the host service manager supports it.
+- **Persistence**: when installation is enabled and supported, keep the daemon available across terminal close, SSH disconnect, logout, and reboot according to host service-manager behavior.
 - **Autostart/control**: expose `claude daemon install/start/restart/stop/uninstall/logs/status` as lifecycle operations around the OS service.
 - **Stable singleton**: install only for the default config directory; the service is treated as a per-user singleton rather than one daemon per arbitrary `CLAUDE_CONFIG_DIR`.
 - **Upgrade repair**: detect a stale or deleted service executable path and instruct users to rerun `claude daemon install`.
@@ -82,22 +88,22 @@ flowchart LR
       AttachStop["attach / logs / stop / respawn"]
    end
 
-   Clients --> Ensure["ensure daemon running\ntB()"]
-   Ensure --> Probe["control probe\nN3 ping / nudge"]
+   Clients --> Ensure["ensure daemon running\nJK()"]
+   Ensure --> Probe["control probe\ncontrolRequest ping / nudge"]
    Probe --> Existing["existing daemon\ncontrol.sock reachable"]
 
-   Ensure --> ServiceCheck["service check\nZx5() + Vj8()"]
+   Ensure --> ServiceCheck["service check\nJ1p() + N4o()"]
    ServiceCheck --> Service["per-user OS service\nlaunchd / systemd"]
    Service --> ServiceDaemon["claude daemon run\n--origin service"]
 
-   ServiceCheck --> Transient["detached fallback\nUP8(... --origin transient)"]
+   ServiceCheck --> Transient["detached fallback\nj4o(... --origin transient)"]
    Transient --> TransientDaemon["claude daemon run\n--origin transient"]
 
    Existing --> Supervisor["daemon supervisor"]
    ServiceDaemon --> Supervisor
    TransientDaemon --> Supervisor
 
-   Supervisor --> ControlSock["local control socket\nh4A protocol handler"]
+   Supervisor --> ControlSock["local control socket\nV1p / FX_ protocol handler"]
    Supervisor --> StateFiles["daemon.lock\nroster.json\ndaemon.log"]
    Supervisor --> ConfigWorkers["daemon.json workers\nheartbeat / scheduled / remoteControl"]
    Supervisor --> BgWorkers["background session workers\nPTY + session state"]
@@ -107,9 +113,9 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-   Client["CLI command\n--bg / agents / attach / stop"] --> Ensure["tB() ensure-running"]
-   Ensure --> Socket["N3(...) local socket RPC"]
-   Socket --> Handler["daemon protocol handler\nh4A(...)"]
+   Client["CLI command\n--bg / agents / attach / stop"] --> Ensure["JK() ensure-running"]
+   Ensure --> Socket["controlRequest(...)\nnewline-delimited JSON"]
+   Socket --> Handler["daemon protocol handler\nV1p / FX_"]
 
    Handler --> Ping["ping / nudge\nhealth and restart convergence"]
    Handler --> Dispatch["dispatch / await-ack\nstart background work"]
@@ -133,43 +139,57 @@ The daemon is operational plumbing, not a separate product runtime layer:
   - runtime-level note that operational boundaries are embedded rather than daemon-only (`00-start-here/system-architecture.md`)
   - scheduler note that cron/scheduled work is in-session and not an always-on separate scheduler daemon (`06-agents-automation/agent-runtime-scheduling-and-completion.md`)
 
+## Local control protocol
+
+The daemon control socket is a local newline-delimited JSON protocol, not an in-process function call and not MCP:
+
+1. `controlRequest(request, timeout)` connects to the control socket, writes `JSON(request) + "\n"`, and resolves the first complete response line. Its default timeout is 5,000 ms. Connection and timeout failures are classified (including `ENOCONN` and `ETIMEOUT`) so callers can distinguish an unavailable daemon from an operation-level error.
+2. The server accepts one or more newline-framed requests, rejects a request buffer above 1 MiB, validates the peer UID where the platform exposes it, then validates request shape and protocol range.
+3. The only supported protocol in this build is version 1 (`BG_PROTO_MIN = BG_PROTO = 1`). A mismatch returns `EPROTO` with guidance to restart the daemon so client and supervisor versions converge.
+4. Operations include early health/lifecycle requests (`ping`, `nudge`, `yield`, `lease`, `leases`, `shutdown`) and manager requests such as `list`, `has`, `await-ack`, `dispatch`, `reply`, `kill`, `respawn-stale`, `resize`, `attach`, `ensure-spare`, `permission-response`, and `subscribe`.
+5. Sensitive operations validate the daemon control key: `dispatch`, `reply`, `permission-response`, and keyed `attach` requests cannot rely solely on access to a serializable request shape. Peer-UID checks provide an additional local boundary where supported.
+
+`openDaemonLease()` differs from a one-shot request: it keeps the socket open after sending `{ proto: 1, op: "lease", client }`. Closure removes the lease server-side, and the client attempts to reconnect after one second. `subscribeControl()` is likewise long-lived but receives a stream of newline-delimited events rather than resolving one response.
+
 ## Startup modes
 
-Claude Code appears to support two practical daemon startup paths:
+Claude Code contains two practical daemon origins, but persistent service installation is conditional:
 
 1. **Persistent service mode** (systemd/launchd style)
    - Uses generated unit/plist-like template with `ExecStart ... daemon --json-path ... --log-file ... --origin service`.
    - Survives terminal close/reboot according to host service manager behavior.
-   - Is preferred by the ensure-running path when service support is present, the service is installed, and the service executable is not stale.
+   - Is preferred by the ensure-running path only when the service-install feature is enabled, host support is present, the service is installed, and its executable is not stale.
 
-2. **Transient spawn mode** ("once" / cold start fallback)
+2. **Transient spawn mode** (on-demand / cold-start fallback)
    - Spawns detached process without persistent service install.
    - On some fallback paths (notably Windows WMI fallback), survivability across SSH/terminal lifecycle is reduced.
-   - Is used when service install is unavailable, dismissed, stale, or not selected by the user.
+   - Is used when persistent service operation is unavailable, disabled, dismissed, stale, or not selected.
+
+The help strings themselves expose the gate: `NIS` contains `install`, `start`, and `restart`, while `FIS` says service install is disabled and the daemon runs on demand. The existence of launchd/systemd templates therefore proves implementation support, not unconditional product availability.
 
 ## Ensure-running state machine
 
-`tB(H={})` is the key source-level decision point used before background dispatch/attach paths. In simplified form:
+The ensure-running path used before background dispatch/attach behaves, in simplified form, as follows:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> ProbeExisting: Wx5() nudge / ping
+   [*] --> ProbeExisting: control nudge / ping
     ProbeExisting --> Ready: control socket reachable
     ProbeExisting --> CheckService: not reachable
 
-    CheckService --> StartService: Zx5() true and Vj8() false
+   CheckService --> StartService: gate + host + install true; exec current
     CheckService --> SpawnTransient: no usable service
     CheckService --> SpawnTransient: service exec stale
 
-    StartService --> ZombieCheck: sN4()
+   StartService --> ZombieCheck: stale supervisor/socket recheck
     ZombieCheck --> Failed: stale live supervisor cannot be restarted
-    ZombieCheck --> ServiceKick: no blocking zombie
-    ServiceKick --> WaitService: Tj8() then oEH(5000)
+   ZombieCheck --> ServiceKick: no blocking zombie
+   ServiceKick --> WaitService: start service, then wait about 5s
     WaitService --> Ready: service daemon reachable
     WaitService --> SpawnTransient: service start did not converge
 
-    SpawnTransient --> WaitTransient: UP8(... --origin transient)
-    WaitTransient --> Ready: oEH(30000) reachable
+   SpawnTransient --> WaitTransient: spawn ... --origin transient
+   WaitTransient --> Ready: control socket becomes reachable
     WaitTransient --> Failed: transient unreachable
 ```
 
@@ -178,37 +198,37 @@ The same branch as a client/service sequence:
 ```mermaid
 sequenceDiagram
    participant C as CLI client
-   participant E as tB ensure-running
+   participant E as ensure-running
    participant D as daemon control socket
    participant S as launchd/systemd service
    participant T as transient spawner
 
    C->>E: background feature needs daemon
-   E->>D: N3({ op: "nudge" }) / ping
+   E->>D: controlRequest({ proto: 1, op: "nudge" }) / ping
    alt Existing daemon reachable
       D-->>E: up
       E-->>C: ready
    else No reachable daemon
-      E->>S: Zx5(): installed service available?
+      E->>S: gate/host/install checks: service available?
       alt Service available and not stale
-         E->>D: sN4(): zombie/socket recheck
-         E->>S: Tj8(): start installed service
+         E->>D: zombie/socket recheck
+         E->>S: start installed service
          S->>D: run claude daemon --origin service
-         E->>D: oEH(5000): wait for ping
+         E->>D: wait for control ping
          alt Service daemon reachable
             D-->>E: ready
             E-->>C: ready
          else Service did not converge
-            E->>T: UP8(... --origin transient)
+            E->>T: spawn ... --origin transient
             T->>D: run detached transient daemon
-            E->>D: oEH(30000): wait for ping
+            E->>D: wait for ping
             D-->>E: ready or timeout
             E-->>C: ready or error reason
          end
       else No service, custom config dir, or stale ExecStart
-         E->>T: UP8(... --origin transient)
+         E->>T: spawn ... --origin transient
          T->>D: run detached transient daemon
-         E->>D: oEH(30000): wait for ping
+         E->>D: wait for ping
          D-->>E: ready or timeout
          E-->>C: ready or error reason
       end
@@ -217,9 +237,9 @@ sequenceDiagram
 
 Important details in that flow:
 
-- Existing daemon wins first: `Wx5()` tries the control socket with `nudge`, and waits through short `restarting`, timeout, or connection-race windows before declaring it down.
-- Service is preferred but not mandatory: `Zx5()` returns false when `CLAUDE_CONFIG_DIR` is set, when launchd/systemd support is absent, or when the service is not installed.
-- Stale service files are repaired by the user-visible path: `Vj8()` reads the service file's `ExecStart`; if the binary path no longer exists, the CLI warns and falls back to transient spawn.
+- Existing daemon wins first: the client tries the control socket with `nudge`/`ping` and accounts for short restart, timeout, and connection-race windows before declaring it down.
+- Service is preferred but not mandatory: selection fails closed when installation is gated off, `CLAUDE_CONFIG_DIR` makes the singleton inappropriate, host launchd/systemd support is absent, or the service is not installed.
+- Stale service files are repaired by the user-visible path: the CLI inspects the configured executable; if it no longer exists, it warns and can fall back to transient spawn.
 - Transient is intentionally less durable: the code warns on Linux/WSL if `KillUserProcesses=yes`, because SSH logout can kill the transient daemon and its background jobs.
 - Service mode and transient mode both run the same daemon supervisor; the difference is who owns its lifecycle.
 
@@ -235,6 +255,26 @@ Observed safeguards include:
 - **Reachability probing**: install/spawn waits for daemon to become reachable; advises `claude daemon status` on failure.
 - **Stale exec detection**: warns when service points to deleted/moved binary and suggests reinstall repair.
 - **Orphan handling**: status/help text warns about workers in roster with no live supervisor and recommends reaping via stop.
+- **Protocol compatibility**: control requests outside protocol version 1 fail with `EPROTO` rather than being interpreted optimistically.
+- **Local caller checks**: peer UID is checked where supported, and sensitive operations require the daemon control key.
+- **Request limits**: an unframed/oversized request is capped at 1 MiB.
+
+## Transient idle and takeover
+
+`krm()` computes the transient keep-alive count as:
+
+`manager.leaseCount() + manager.liveHandleCount()`
+
+If that sum is nonzero, the idle timer is canceled. Once it reaches zero, a transient supervisor uses a longer startup grace before it has ever had a client and the configured idle grace thereafter (5 seconds by default in this build). `daemon.json` registry workers are deliberately excluded: after loading the config, the supervisor logs that configured workers do not pin it and will be stopped when the last client lease and live background job are gone.
+
+Takeover is asymmetric:
+
+- A foreground/service-origin daemon may ask an existing transient daemon to `yield`, then waits up to five seconds for the lock to clear.
+- A transient daemon never displaces an existing daemon.
+- While running, a transient daemon periodically checks whether another PID owns `daemon.lock`. If displaced, it yields and closes the manager with `displaced: true`.
+- Manager close propagates that state to `skipUnlink`, and shutdown rechecks ownership before removing the lock. The explicit invariant is to leave a successor's `control.sock` in place.
+
+Shutdown telemetry records the cause (`upgrade`, `service_recall`, `displaced`, `yield`, `shutdown_op`, `idle_exit`, `bg_manager_failed`, or signal), uptime, lease count, and live-handle count. Registry-worker stop escalation (IPC/SIGTERM, then SIGKILL after five seconds) belongs to those worker owners and is not a universal process-shutdown rule.
 
 ## Operational UX and commands
 
@@ -267,6 +307,9 @@ This implies daemon ownership of worker orchestration metadata and long-lived bo
 - Service executable path becomes stale after binary upgrades/moves.
 - Spawn method fallback on Windows (WMI failure) can reduce detach robustness.
 - Supervisor absent while roster still lists workers (requires reap/stop cleanup).
+- Client/supervisor package skew (`EPROTO`; restart the daemon).
+- A request that reaches the socket but fails peer/control-key validation.
+- Failed foreground/service takeover when a transient daemon acknowledges `yield` but retains the lock past five seconds.
 
 ## Practical takeaway
 

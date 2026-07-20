@@ -1,149 +1,155 @@
 # Team memory
 
-Team Memory is a separate shared-knowledge layer that lives alongside the personal `CLAUDE.md` / memory files. It is gated by the `tengu_herring_clock` GrowthBook feature and the existence of a team-memory directory under the active session's config root. This page documents the runtime: path resolution, path-traversal protection, write-path validation, search/edit detection, and the combined prompt assembly.
+Team memory is a multi-store shared-knowledge subsystem alongside personal `CLAUDE.md`, rules, and auto-memory. In Claude Code `2.1.215`, the client either parses explicit store descriptors from `CLAUDE_MEMORY_STORES` or conditionally discovers organization-provided mounts. It then exposes each store through a per-mount local mirror, synchronizes that mirror with a memory-service backend, and can add a bounded store index to the model prompt.
+
+This is not one canonical `<config>/team/` directory behind a single feature flag. Configuration, service I/O, local synchronization, prompt exposure, and path safety are separate planes with different failure behavior.
 
 Use this page alongside:
 
-- [Prompt, context, and memory](prompt-context-memory.md) for the personal `CLAUDE.md` / memory files this layer composes with.
-- [Built-in tools and permissions](../03-tools-integrations-security/built-in-tools-and-permissions.md) for the Read/Write tools that touch team-memory paths.
-- [Feature gates reference](../05-hosted-agent-ops/feature-gates-reference.md) for `tengu_herring_clock` and related auth gates.
+- [Prompt, context, and memory](prompt-context-memory.md) for personal/project memory and the surrounding prompt layers.
+- [Models, providers, and auth](models-providers-auth.md) for the first-party OAuth conditions used by organization discovery.
+- [Built-in tools and permissions](../03-tools-integrations-security/built-in-tools-and-permissions.md) for generic file-tool authorization, which remains distinct from memory-store validation.
 
 ## Source anchors
 
 | Semantic alias | String or symbol | Meaning |
 | --- | --- | --- |
-| TeamMemoryGate | `function isTeamMemoryEnabled()` | `C9() && tengu_herring_clock` GrowthBook feature; the master enable for the whole subsystem. |
-| TeamMemoryPath | `function getTeamMemPath()` | Returns `<UY()>/team/` (NFC-normalized) — the canonical team-memory directory. |
-| TeamMemoryActiveProbe | `function isTeamMemoryActiveForCwd()` | True only when the subsystem is enabled AND the team-memory server reports `"has-content"`. |
-| TeamMemFilePredicate | `function isTeamMemFile(filePath)` | True when the path is under the team-memory directory AND `isTeamMemoryEnabled()`. |
-| TeamMemPathPredicate | `function isTeamMemPath(filePath)` | True when `path.resolve(filePath)` is under `getTeamMemPath()` (does not check the gate). |
-| TeamMemKeyValidator | `async function validateTeamMemKey(key)` | Sanitizes a key, joins it under the team-memory dir, then runs symlink-aware containment check. Throws `PathTraversalError` on any escape. |
-| TeamMemWritePathValidator | `async function validateTeamMemWritePath(absolutePath)` | Same containment check for absolute paths supplied by the model. Throws `PathTraversalError` on null bytes or path escapes. |
-| PathTraversalError | `class PathTraversalError extends Error` | Single error class raised by every validation helper; `error.name === "PathTraversalError"`. |
-| KeySanitizer | `function uR1(key)` | Rejects null bytes, Unicode-normalized traversal, backslashes, and absolute path keys before the per-call check. |
-| TeamMemorySearchPredicate | `function isTeamMemorySearch(toolUse)` | True when the model's tool call is a search (Grep/Glob) against the team-memory dir. |
-| TeamMemoryEditPredicate | `function isTeamMemoryWriteOrEdit(toolUse, allowedTools)` | True for `Write` / `Edit` / `NotebookEdit` calls targeting the team-memory dir. |
-| TeamMemorySummaryAppender | `function appendTeamMemorySummaryParts(parts, toolUse, allowedTools)` | Builds the per-tool-call summary line about which team-memory files were touched. |
-| CombinedMemoryPromptBuilder | `function buildCombinedMemoryPrompt(individualMemoryFiles, includeHowToSave = false)` | Stitches the user's personal CLAUDE.md/memory files together with the team-memory directory listing. |
+| ExplicitStoreConfig | `CLAUDE_MEMORY_STORES`, `L4i()`, `N7h()` | Parses and validates explicit store descriptors. |
+| OrganizationMountDiscovery | `/v1/code/local/memory/mounts` | Fetches organization-provided mounts when first-party OAuth, policy, and feature conditions allow it. |
+| StoreDescriptor | `path`, `mode`, `scope`, `mount`, `promptIndex`, `promptIndexMaxBytes` | Client-side store shape and prompt-index controls. |
+| TeamMirrorRoot | `ER()` | Resolves the local team-memory mirror root below the auto-memory root. |
+| SyncManifest | `.memory-sync` | Per-mount synchronization metadata used to reconcile local and remote state. |
+| MemoryKeyValidator | `yji()` | Rejects unsafe service keys before they are mapped into a mirror. |
+| MirrorContainmentValidator | `o4c()` | Checks local containment, including symlink escape. |
+| PromptIndexFetch | `promptIndex`, `<memory>` | Fetches bounded index content and treats it as untrusted reference data. |
 
-## Bundle modules in `cli.renamed.js`
+The principal implementation is near [`cli.renamed.js` lines 190175–194000](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L190175); synchronization and watcher paths are near [lines 436000–439214](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L436000). Minified aliases are version-specific; exact strings and descriptor fields are the more durable anchors.
 
-| Semantic alias | Loader line(s) | Representative renamed exports | Atlas entry |
-|---|---:|---|---|
-| `TeamMemoryPaths` | 171560 | `isTeamMemoryEnabled`, `getTeamMemPath`, `isTeamMemoryActiveForCwd`, `isTeamMemPath`, `validateTeamMemWritePath`, `validateTeamMemKey`, `isTeamMemFile`, `PathTraversalError` | [Bundle module map — models, prompts, and memory](../99-research-atlas/module-map-from-renamed-cli.md#models-prompts-and-memory) |
-| `TeamMemoryToolSummary` | 498757 | `isTeamMemorySearch`, `isTeamMemoryWriteOrEdit`, `appendTeamMemorySummaryParts` | [Bundle module map — models, prompts, and memory](../99-research-atlas/module-map-from-renamed-cli.md#models-prompts-and-memory) |
-
-## How the gate is checked
+## Architecture
 
 ```mermaid
 flowchart TD
-    Boot[Session boot] --> Gate{tengu_herring_clock?}
-    Gate -->|no| Disabled[isTeamMemoryEnabled = false]
-    Gate -->|yes| Auth{C9 auth predicate?}
-    Auth -->|no| Disabled
-    Auth -->|yes| Enabled[isTeamMemoryEnabled = true]
+    Explicit[CLAUDE_MEMORY_STORES] --> Parse[Parse and validate descriptors]
+    Eligible[First-party OAuth + policy + feature eligibility] --> Discover[GET /v1/code/local/memory/mounts]
+    Explicit --> Choice{Explicit config present?}
+    Choice -->|yes| Parse
+    Choice -->|no| Discover
 
-    Enabled --> ActiveProbe[isTeamMemoryActiveForCwd]
-    ActiveProbe --> Status{server reports has-content?}
-    Status -->|no| InactiveCwd[do not inject team-memory section]
-    Status -->|yes| ActiveCwd[buildCombinedMemoryPrompt includes team section]
+    Parse --> Stores[Normalized store descriptors]
+    Discover --> Stores
+    Stores --> Service[Memory-service CRUD]
+    Stores --> Mirrors[Per-mount local mirrors]
+    Service <--> Sync[Reconciliation and watchers]
+    Sync <--> Mirrors
+    Mirrors --> Tools[Generic file tools, subject to normal permissions]
+    Stores --> Prompt[Private / writable-team / read-only-team prompt sections]
+    Service --> Index[Optional bounded prompt index]
+    Index --> Prompt
 ```
 
-`isTeamMemoryEnabled()` is the synchronous gate; it reads the `tengu_herring_clock` feature value via `getFeatureValue_CACHED_MAY_BE_STALE` so it is safe to call on the hot path. `isTeamMemoryActiveForCwd()` adds the server-side check via `getTeamMemoryServerStatus()` — the prompt-builder only injects the team-memory section when the server has actually published content for the current cwd.
+The two configuration lanes converge on the same descriptor and mirror machinery, but they do not have the same authority. Explicit environment configuration suppresses organization discovery. Discovered organization stores are normalized conservatively and remain read-only unless the negotiated access state grants writing.
 
-The personal memory files (`CLAUDE.md` etc.) are unaffected by these gates and always loaded via the regular `MemoryFileRules` path described in [Prompt, context, and memory](prompt-context-memory.md).
+Personal `CLAUDE.md`, project rules, and auto-memory do not become team stores. They continue through the ordinary memory pipeline documented in [Prompt, context, and memory](prompt-context-memory.md).
 
-## Directory layout
+## Control plane: explicit and discovered stores
 
-```
-<UY()>/                       # config root: ~/.claude or $CLAUDE_CONFIG_DIR
-└── team/                     # getTeamMemPath()
-    ├── notes/...
-    ├── decisions/...
-    └── ...
-```
+### Explicit descriptors
 
-The trailing `/` is intentional: `getTeamMemPath()` normalises to `<UY()>/team` + `path.sep` so substring containment checks (`absolutePath.startsWith(teamMemPath)`) work without false matches on sibling directories like `<UY()>/team-old/`.
+`CLAUDE_MEMORY_STORES` contains a JSON array. Each validated entry has this client-visible shape:
 
-The whole path is NFC-normalised so unicode-equivalent path keys produce the same containment result regardless of input form.
-
-## Path-traversal protection
-
-The team-memory layer is the only path-restricted Read/Write surface in Claude Code. Three layers protect it:
-
-### Layer 1: `uR1(key)` key sanitizer
-
-`uR1(key)`:
-
-- Throws `PathTraversalError("Null byte in path key")` if the key contains `\0`.
-- Throws `PathTraversalError("Unicode-normalized traversal in path key")` if NFC-normalising the key surfaces a traversal segment that wasn't present in the raw text.
-- Throws `PathTraversalError("Backslash in path key")` — the runtime is POSIX-rooted; backslashes are never path separators here.
-- Throws `PathTraversalError("Absolute path key")` if the key starts with `/`.
-
-### Layer 2: `validateTeamMemKey(key)`
-
-After `uR1(key)`, the function joins the key under `getTeamMemPath()` and runs `path.resolve(...)`. If the resolved path does not start with the team-memory root, it throws `PathTraversalError("Key escapes team memory directory")`.
-
-### Layer 3: Symlink-aware containment via `fvK(...)` + `OvK(...)`
-
-`fvK(path)` walks up the path tree, calling `fs.realpath(...)` on each ancestor:
-
-- On `ENOENT` (path doesn't exist), it explicitly checks for `isSymbolicLink()` on the last component and throws `PathTraversalError("Dangling symlink detected")` if the target is missing.
-- On `ELOOP`, throws `PathTraversalError("Symlink loop detected in path")`.
-- On unhandled errno (`ENOTDIR`, `ENAMETOOLONG` ignored; anything else), throws `PathTraversalError("Cannot verify path containment (<errno>): ...")`.
-
-`OvK(resolvedPath)` then checks whether the realpath of the team-memory root is a prefix of the resolved path. If not (or if the team-memory root resolution fails non-recoverably), the validator throws `PathTraversalError("...escapes team memory directory via symlink")`.
-
-Putting it together, `validateTeamMemKey(key)` and `validateTeamMemWritePath(absolutePath)` both guarantee that the final path:
-
-- Has no null bytes or unicode normalization tricks.
-- Resolves (with symlinks fully expanded) to a location strictly under the team-memory directory.
-- Has no symlink chain that escapes the directory.
-
-These are the only entrypoints the rest of the runtime uses to materialize a team-memory file path before any I/O.
-
-## Tool-call detection
-
-Two helpers tag each tool call by its relationship with team memory:
-
-| Predicate | Matches |
+| Field | Contract |
 |---|---|
-| `isTeamMemorySearch(toolUse)` | `Grep` / `Glob` (or compatible) calls whose target path is under the team-memory directory. |
-| `isTeamMemoryWriteOrEdit(toolUse, allowedTools)` | `Write` / `Edit` / `NotebookEdit` calls whose target path is under the team-memory directory, scoped by the allow-list. |
+| `path` | Required backend/source path identifying the store. |
+| `mode` | `"rw"` or `"ro"`; defaults to `"rw"`. |
+| `scope` | `"team"` or `"user"`; defaults to `"team"`. |
+| `mount` | Local mount name used to select the mirror directory. Duplicate mounts are rejected. |
+| `promptIndex` | Optional backend path for prompt-ready index content. |
+| `promptIndexMaxBytes` | Optional positive byte limit for that index. Invalid non-positive values are rejected. |
 
-These are used by the post-turn summary to surface what changed in team memory ("Edited team/notes/foo.md", "Searched team/decisions/...").
+At most one explicit descriptor may use `scope:"user"`. That store is a private memory-store lane, not an alias for the regular user `CLAUDE.md` hierarchy.
 
-`appendTeamMemorySummaryParts(parts, toolUse, allowedTools)` is the formatter that builds the human-readable summary line for the UI — it appends entries to `parts` rather than returning a string so the caller can compose multiple tool-uses into one summary block.
+Malformed JSON, an invalid enum/value, duplicate mounts, or multiple user-scoped stores fail descriptor validation rather than being silently flattened into a single directory.
 
-## Combined prompt assembly
+### Organization discovery
 
-`buildCombinedMemoryPrompt(individualMemoryFiles, includeHowToSave = false)` produces the combined memory block injected into the system prompt:
+When explicit stores are absent, the client may query `/v1/code/local/memory/mounts`. The observed eligibility path requires all of the following:
 
-1. Reads the user config root (`UY()`) and the team-memory root (`getTeamMemPath()`).
-2. When `includeHowToSave` is true, prepends a "## How to save memories" section pointing the model at the team-memory directory.
-3. Composes the individual memory files (already loaded by the `MemoryFileRules` path) and the team-memory listing into one block.
+- a first-party API/base-URL path rather than a third-party provider route;
+- Claude.ai OAuth with the required scopes;
+- policy and feature state that permit organization memory;
+- no `CLAUDE_MEMORY_STORES` override.
 
-The composition is opt-in per turn — the prompt assembler decides whether to call this builder based on the current model loop's needs. When team memory is disabled, `getTeamMemPath()` still resolves and the helper still composes, but the team section is empty.
+The client caches discovery state and has flows for selecting stores and negotiating grants. Discovered team stores are treated as read-only until the returned/negotiated access state establishes write permission. The retained client source proves those gates and normalization rules; it does not prove how the service decides membership or persists a grant.
 
-## Why team memory is a separate layer
+## Data plane: service, mirrors, and synchronization
 
-The personal memory (`CLAUDE.md`, `.claude/memory/*.md`) is governed by [`MemoryFileRules`](prompt-context-memory.md) and shows the contents inline. Team memory is referenced by path only — the model sees the directory listing in the system prompt and then loads individual files through the `Read` tool (subject to the layer-2/layer-3 validators above).
+The store descriptor's backend path is not itself the path exposed to file tools. `ER()` resolves a team-memory root below the auto-memory area, and each mount receives its own local directory. A conceptual layout is:
 
-This split has three concrete consequences:
+```text
+<auto-memory-root>/
+└── team/
+    ├── <mount-a>/
+    │   ├── .memory-sync
+    │   └── <mirrored files>
+    └── <mount-b>/
+        ├── .memory-sync
+        └── <mirrored files>
+```
 
-- **Token cost** — team memory does not balloon the system prompt; only file names appear.
-- **Per-call validation** — every read/write goes through `validateTeamMemKey`/`validateTeamMemWritePath`, so the model cannot trick the tool layer into touching a sibling directory via traversal.
-- **Auth-gated** — the `tengu_herring_clock` feature flag plus the auth predicate `C9()` mean the layer is fully off unless the operator opts in.
+The client contains memory-service list/read/write/delete operations plus reconciliation and watcher code. `.memory-sync` is per-mount synchronization metadata used to compare local and remote state; it is not model-authored memory content. Writable stores can participate in both directions, while read-only stores reject mutation and are presented to the model with read-only guidance.
 
-## Caveats
+This client-side implementation establishes a synchronized-mirror design, but not server internals. The bundle does not establish the service's durability guarantees, replication strategy, conflict-resolution policy beyond the client-visible branches, or cross-client consistency model.
 
-- `PathTraversalError` is the only error class used; surface it in error logs but do not swap it for generic `Error` — the daemon and analytics pipelines key off the name.
-- `isTeamMemPath(...)` does not check the gate; the runtime callers always combine it with `isTeamMemoryEnabled()` (which is exactly what `isTeamMemFile(...)` does).
-- The realpath probe (`fvK`) caches nothing and runs synchronously per call; for path-heavy operations the runtime debounces or batches checks at the tool layer.
+## Path and key safety
+
+The observed memory-service/mirror paths apply two distinct checks:
+
+1. `yji()` rejects unsafe store keys, including null bytes, URL-encoded traversal, traversal exposed by Unicode normalization, backslashes, and absolute keys.
+2. `o4c()` maps a key into the selected local mirror and verifies containment, including symlink escape.
+
+That protects the specialized synchronization and memory-backend operations seen in these call paths. It does **not** prove that every ordinary `Read`, `Write`, `Edit`, `Glob`, or `Grep` invocation is universally mediated by `yji()`/`o4c()`. Generic tools still have their own path normalization, permission, sandbox, and policy boundaries. Documentation should therefore not describe team memory as Claude Code's only path-restricted surface or promise per-call use of these validators without a concrete tool call path.
+
+## Prompt exposure
+
+Prompt construction distinguishes three store roles:
+
+- a private user-scoped store;
+- writable team stores;
+- read-only team stores.
+
+The corresponding prompt variants tell the model where the local mounts live and whether saving is allowed. Team memory is therefore not merely a filename list. A descriptor may also supply `promptIndex`; the client fetches that index, applies `promptIndexMaxBytes`, escapes it, wraps it in a `<memory>` reference-data block, and adds it to the relevant prompt section.
+
+The index is explicitly treated as reference data rather than trusted instructions. If no index is configured or fetched, the model can still inspect mirrored files through available tools. Whether a particular tool call is allowed remains a normal tool/permission decision, and a read-only backend remains non-writable even if prompt text is ignored.
+
+## Tool and UI feedback
+
+The runtime recognizes searches and write/edit activity under memory mirrors so it can annotate tool activity and summarize which shared-memory paths were touched. These predicates are classification and presentation surfaces; they are not, by themselves, authorization checks. Enforcement comes from the store mode/backend plus the ordinary tool permission and sandbox paths.
+
+## Failure and cleanup behavior
+
+| Failure point | Client-visible behavior established by the bundle |
+|---|---|
+| Invalid explicit JSON or descriptor | Validation fails; the malformed entry is not converted into a mount. |
+| Duplicate mount or multiple `scope:"user"` entries | Configuration is rejected rather than merged. |
+| Discovery ineligible | Organization discovery is skipped; personal/project memory remains unaffected. |
+| Discovery, prompt-index, or sync request fails | Dedicated timeout/error/warning branches surface the failure; the client does not reinterpret failed remote content as trusted prompt text. |
+| Write against `mode:"ro"` | The memory backend rejects the mutation and the prompt labels the mount read-only. |
+| Unsafe key or mirror escape | Key/containment validation rejects the operation before the specialized backend path performs I/O. |
+| Watcher or reconciliation failure | The sync layer logs/surfaces the failure and owns watcher lifecycle during reconfiguration or teardown. |
+
+The retained source confirms client-side cleanup and watcher ownership, not server-side garbage collection or eventual recovery guarantees.
+
+## Evidence limits
+
+- The client proves explicit and discovered multi-store lanes; it does not reveal the memory service's storage implementation.
+- Organization eligibility and grant negotiation are visible, but the server-side policy decision is not.
+- Specialized key and mirror validation is source-confirmed; universal mediation of generic file tools is not.
+- Prompt indexes can contain more than filenames, but their exact content is store-controlled and runtime-dependent.
+- Minified aliases such as `L4i`, `N7h`, `ER`, `yji`, and `o4c` are anchors for `2.1.215`, not public APIs.
 
 ## Related docs
 
 - [Prompt, context, and memory](prompt-context-memory.md)
+- [Models, providers, and auth](models-providers-auth.md)
 - [Built-in tools and permissions](../03-tools-integrations-security/built-in-tools-and-permissions.md)
-- [Feature gates reference](../05-hosted-agent-ops/feature-gates-reference.md)
 - [Bundle module map](../99-research-atlas/module-map-from-renamed-cli.md)

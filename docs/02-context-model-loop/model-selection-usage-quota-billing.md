@@ -11,10 +11,10 @@ Scope: model aliases and precedence, main/helper/subagent/advisor/fallback model
 | DefaultModelResolvers | `getDefaultSonnetModel`, `getDefaultOpusModel`, `getDefaultHaikuModel`, `getDefaultMainLoopModel` | Resolver exports for the model family defaults. |
 | SmallFastModelOverride | `ANTHROPIC_SMALL_FAST_MODEL` | Small/fast helper model override. |
 | MainModelEnvOverride | `ANTHROPIC_MODEL` | Environment-level main model override. |
-| PerTurnModelResolver | `nG({permissionMode,mainLoopModel,exceeds200kTokens})` | Per-turn model resolver; plan mode can alter the selected model. |
+| PerTurnModelResolver | `getRuntimeMainLoopModel({permissionMode,mainLoopModel,exceeds200kTokens})` | Per-turn model resolver; plan mode can alter the selected model. |
 | ModelAliasResolver | `case "opusplan"`, `case "sonnet"`, `case "haiku"`, `case "opus"`, `case "best"` | Alias-to-concrete-model mapping. |
-| StartupModelPrecedence | `hgK({cli,env,settings,agentFrontmatter})` | Startup model precedence across CLI, env, settings, and agent frontmatter. |
-| FallbackModelResolver | `ygK({cli:{fallbackModel}})` | Fallback-model resolver. |
+| StartupModelPrecedence | `ibc({cli,env,settings,agentFrontmatter})` | Startup model precedence across CLI, env, settings, and agent frontmatter. |
+| FallbackModelResolver | `obc({cli,settings})` | CLI/settings fallback-chain resolver; normalizes, filters, deduplicates, and caps the chain at three candidates. |
 | StartupModelState | `startup_resolve_model` | Root startup path stores effective and initial model state. |
 | ModelSelectionFlag | `--model <model>` | Root model-selection flag. |
 | FallbackModelFlag | `--fallback-model <model>` | Print-mode overload fallback flag. |
@@ -24,7 +24,7 @@ Scope: model aliases and precedence, main/helper/subagent/advisor/fallback model
 | SubagentModelOverride | `CLAUDE_CODE_SUBAGENT_MODEL` | Subagent model override. |
 | AutoModeClassifierConfig | `tengu_auto_mode_config`, `twoStageClassifier` | Auto-mode classifier model/config selection. |
 | AutoModeRequestSource | `querySource:"auto_mode"` | Auto-mode classifier provider request source. |
-| MemoryHelperModel | `Select memories relevant to:`, `model:iv()` | Memory relevance helper uses the Sonnet resolver. |
+| MemoryHelperModel | `Izy()`, `Select memories relevant to:`, `getDefaultSonnetModel()` | Memory-file relevance helper uses the default Sonnet resolver. |
 | QuotaProbeRequest | `source:"quota_check"`, `max_tokens:1`, `messages:[{..."quota"}]` | Quota probe sends a tiny helper request. |
 | ProviderRequestWrapper | `[API REQUEST]`, `x-client-request-id` | Fetch wrapper logs requests and injects a client request ID. |
 | SseStreamDetector | `text/event-stream` | Streaming response detection. |
@@ -56,19 +56,19 @@ Model selection is a layered resolver, not one static constant.
 
 ```mermaid
 flowchart TD
-    CLI[--model / -m] --> Startup[hgK startup resolver]
+    CLI[--model / -m] --> Startup[ibc startup resolver]
     AgentFrontmatter[agent frontmatter model] --> Startup
     Env[ANTHROPIC_MODEL] --> Startup
     Settings[settings model] --> Startup
     Default[default main loop model] --> Startup
     Startup --> State[mainLoopModelOverride + initialMainLoopModel]
-    State --> Turn[nG per-turn resolver]
+    State --> Turn[getRuntimeMainLoopModel per-turn resolver]
     Permission[permission mode / plan mode] --> Turn
     Context[context size, e.g. >200k] --> Turn
     Turn --> Request[Provider request]
 ```
 
-The root startup path calls `hgK(...)`, then stores two pieces of state:
+The root startup path calls `ibc(...)`, then stores two pieces of state:
 
 | State | Meaning |
 |---|---|
@@ -91,15 +91,15 @@ There is no fixed “number of concrete models” baked into the CLI. Concrete I
 
 | Role | Resolver / setting | Purpose |
 |---|---|---|
-| Main loop model | `R7()`, `lJ()`, `--model`, `ANTHROPIC_MODEL`, settings | Normal assistant turns. The concrete default is account/provider/policy aware; do not assume one universal Sonnet ID. |
-| Default Sonnet | `iv()`, `ANTHROPIC_DEFAULT_SONNET_MODEL` | Everyday/default work; also used by memory relevance/fact extraction helpers. |
-| Default Opus / best | `nv()`, alias `opus`, alias `best`, `opusplan` in plan mode | More capable/plan-mode work and “best” alias. |
-| Default Haiku / small-fast | `SxH()`, `LL()`, `ANTHROPIC_SMALL_FAST_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Lightweight helper requests such as quota probing, some web/search/count/token/helper paths, and small-fast mode when available. |
-| Auto-mode classifier | `tengu_auto_mode_config.model` else `R7()`, `twoStageClassifier` | Classifies tool/action safety for auto mode with `querySource:"auto_mode"`. |
-| Memory helper | `iv()` | Selects relevant memories and extracts facts using JSON-schema outputs. |
+| Main loop model | `getMainLoopModel()`, `getDefaultMainLoopModel()`, `--model`, `ANTHROPIC_MODEL`, settings | Normal assistant turns. The concrete default is account/provider/policy aware; do not assume one universal Sonnet ID. |
+| Default Sonnet | `getDefaultSonnetModel()`, `ANTHROPIC_DEFAULT_SONNET_MODEL` | Everyday/default work; also used by the structured memory-file selector. |
+| Default Opus / best | `getDefaultOpusModel()`, `getBestModel()`, alias `opus`, alias `best`, `opusplan` in plan mode | More capable/plan-mode work and the catalog-driven “best” alias. |
+| Default Haiku / small-fast | `getDefaultHaikuModel()`, `getSmallFastModel()`, `ANTHROPIC_SMALL_FAST_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL` | Lightweight helper requests such as quota probing and small-fast mode when available. Other helper paths choose their model independently. |
+| Auto-mode classifier | `tengu_auto_mode_config.model`, `twoStageClassifier` | Classifies tool/action safety for auto mode with `querySource:"auto_mode"`; its effective fallback is runtime/configuration dependent. |
+| Memory helper | `Izy()`, `getDefaultSonnetModel()` | Selects up to five relevant memory files using a `selected_memories` JSON result. No separate fact-extraction model call was confirmed in this build. |
 | Advisor tool model | `advisorModel` | Server-side advisor tool model override. |
 | Subagent model | `CLAUDE_CODE_SUBAGENT_MODEL`, agent model/frontmatter, or inherit | Lets subagents use an explicit model or inherit from the main loop. |
-| Fallback model | `--fallback-model` / `ygK` | Print/headless overload fallback when the primary model repeatedly returns overload. |
+| Fallback model | `--fallback-model` / `obc()` | Print/headless overload fallback when the primary model repeatedly returns overload. |
 
 The important answer to “how many models” is therefore: **the CLI uses multiple logical model roles; it does not hard-code one universal count of concrete models.** In a normal local session, the main loop may use one model, while helper calls can use Sonnet or small-fast/Haiku, auto-mode can make classifier calls, and subagents/advisor/fallback can introduce additional models.
 
@@ -109,12 +109,12 @@ The alias resolver maps user-facing names to current concrete IDs:
 
 | Alias | Source-confirmed behavior |
 |---|---|
-| `sonnet` | Resolves through `iv()`. |
-| `haiku` | Resolves through `SxH()`. |
-| `opus` | Resolves through `nv()`. |
+| `sonnet` | Resolves through `getDefaultSonnetModel()`. |
+| `haiku` | Resolves through `getDefaultHaikuModel()`. |
+| `opus` | Resolves through `getDefaultOpusModel()`. |
 | `fable` | Resolves to the current Fable family default. |
 | `best` | Resolves through the catalog's `best` family, which is `fable` in `2.1.215`. |
-| `opusplan` | Resolves to Sonnet normally but can switch to Opus in plan mode through `nG(...)`. |
+| `opusplan` | Resolves to Sonnet normally but can switch to Opus in plan mode through `getRuntimeMainLoopModel(...)`. |
 | `default` | Treated as the current default concrete model in CLI/fallback handling. |
 
 Because aliases are resolved at runtime, docs should prefer “Sonnet/Opus/Haiku resolver” unless a concrete build-specific model ID is the point of the discussion.
@@ -141,8 +141,8 @@ Provider calls share a common shape even when the backend differs.
 ```mermaid
 sequenceDiagram
     participant ContextLoop as Context/model loop
-    participant Client as Provider client Su(...)
-    participant Fetch as fetch wrapper Uv1
+    participant Client as Provider client
+    participant Fetch as transport wrapper
     participant Provider as Anthropic/Bedrock/Vertex/etc.
     participant Accounting as usage/cost state
 
@@ -246,7 +246,7 @@ This is local run-budget enforcement. It is separate from server-side account qu
 
 ### Quota probing
 
-The function anchored by `source:"quota_check"` creates a client with `maxRetries:0`, selects `LL()` as the helper model, and sends a one-token `messages.create` request with the user content `quota`. This is a low-cost probe designed to surface quota/rate-limit headers rather than to generate meaningful text.
+`hIg()`, anchored by `source:"quota_check"`, creates a client with `maxRetries:0`, selects `getSmallFastModel()` as the helper model, and sends a one-token `messages.create` request with the user content `quota`. This is a low-cost probe designed to surface quota/rate-limit headers rather than to generate meaningful text.
 
 ### Unified rate-limit headers
 
@@ -299,40 +299,41 @@ This confirms that billing/quota handling is not just a raw API error. The CLI p
 - Cost is an estimate derived from known model pricing tables and response usage. `hasUnknownModelCost` exists because not every model can be priced by the local table.
 - `--fallback-model` is documented by the CLI as print-mode-only. Interactive model changes use `/model`, Remote Control `set_model`, or session state transitions rather than the fallback flag.
 
-## Provider upgrade probe (Bedrock and Vertex)
+## Third-party default availability and startup fallbacks
 
-The `ProviderUpgradeProbe` module (`cli.renamed.js:705680`-`706250`) is the runtime that decides whether a user's currently configured Bedrock/Vertex model has a newer variant available, by probing the provider for the candidate model id before suggesting an upgrade.
+The current build does not implement the previously documented Bedrock/Vertex “upgrade candidate” map at the old `705680` range, nor does this path use Bedrock `ListFoundationModels`. Its startup concern is narrower: determine whether configured/default model families are callable on the selected third-party provider, then assign usable defaults when they are not.
 
-### Bedrock upgrade flow
+### Accessibility probes
 
-| Function | Behavior |
-|---|---|
-| `findBedrockUpgradeCandidates()` | Returns the list of `{from: <currentModelId>, to: <upgradeModelId>}` pairs based on the bundle's hard-coded `upgradeKey` map. Returns an empty list when the user is not on Bedrock. |
-| `checkBedrockDefaultAvailability()` | Calls Bedrock's `ListFoundationModels` (or equivalent) to confirm the operator's default Bedrock model id is reachable from the configured AWS credentials / region. Used at startup so an unreachable default surfaces immediately. |
-| `probeBedrockModel(modelId, options)` | Issues a single-token `InvokeModel` request against `modelId`. Returns `{available: true}` on 200, `{available: false, reason}` on access denied / not found / region mismatch. The probe is the source of truth for "can this account use this model?" — the rest of the runtime does not assume entitlement from the upgrade map alone. |
+Provider-specific probes near [`cli.renamed.js` lines 506675–507237](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L506675) create the provider client and issue a minimal `messages.create` request with `max_tokens:1`. These are capability/access checks, not meaningful model turns and not upgrade recommendations.
 
-The `upgradeKey` constant is a per-provider map from current model id to recommended upgrade. It encodes upgrades like Claude 4.5 → Claude 4.6 → Claude 4.7 so the runtime can surface "your model has a newer version" prompts without making the upgrade decision unilaterally.
+The important result rule is:
 
-### Vertex upgrade flow
+- a successful tiny request means the model is accessible;
+- HTTP `429` also counts as accessible because rate limiting proves that the provider recognized and admitted the model route;
+- access, configuration, region, or model-not-found failures leave that candidate unavailable for default assignment.
 
-The Vertex side mirrors Bedrock with provider-specific calls:
+The exact provider SDK may adapt the request into its native transport, but the probe is expressed through the common Messages client rather than a bespoke `InvokeModel` result object such as `{available, reason}`.
 
-| Function | Behavior |
-|---|---|
-| `findVertexUpgradeCandidates()` | Same shape as Bedrock; reads the Vertex-specific `vertexUpgradeKey` map and returns candidate pairs. |
-| `checkVertexDefaultAvailability()` | Probes the configured Vertex project/region for the default model id. |
-| `probeVertexModel(modelId)` | Issues a single-token Vertex prediction request to confirm the upgrade target is accessible to the project/region. |
+### Startup fallback application
 
-### How the runtime uses the probe
+`apply3PDefaultFallbacks()` is exported near [`cli.renamed.js:507237`](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L507237) and invoked during startup near [`cli.renamed.js:933334`](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L933334). It uses the availability results to choose provider-usable family defaults before the normal loop begins.
 
-The upgrade probe is offered as guidance, not as an automatic switch:
+User-visible descriptions can explain the substitution, for example `Opus unavailable — using ...`. This is automatic **default-family fallback**, not the same feature as the ordered overload chain configured by `--fallback-model`:
 
-1. At session start, `checkBedrockDefaultAvailability()` / `checkVertexDefaultAvailability()` confirms the configured default model is reachable. Failure surfaces a clear error before the first model call.
-2. When the user opens `/model` or the UI inspects available upgrades, the runtime calls `findBedrockUpgradeCandidates()` / `findVertexUpgradeCandidates()` for the active provider.
-3. For each candidate, `probeBedrockModel(...)` / `probeVertexModel(...)` confirms the upgrade target is actually accessible from the account/project.
-4. The UI surfaces only confirmed upgrades — pairs whose target is reachable.
+| Mechanism | Trigger | Lifetime |
+|---|---|---|
+| Third-party default fallback | A configured/default family is unavailable on the provider/account/region at startup. | Adjusts the defaults used for the session/provider environment. |
+| `--fallback-model` chain | Repeated overload while executing a print/headless turn. | Temporarily advances candidates; the primary is retried on the next user turn. |
+| `/model` or explicit `--model` | User chooses a model. | Explicit selection remains subject to provider availability and organization policy. |
 
-This split is important: a hard-coded upgrade map can stay accurate across builds, but a real "is this model usable for me right now?" answer must come from the provider. The probe is the only function that contacts the provider; everything else operates on the in-memory upgrade map.
+### Bedrock model discovery
+
+Bedrock's separate discovery path uses `ListInferenceProfiles` near [`cli.renamed.js:119465`](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L119465). Inference-profile enumeration helps map available Bedrock model/profile IDs; it is not evidence for the obsolete `ListFoundationModels` upgrade flow.
+
+### Evidence boundary
+
+The client establishes the one-token probe, 429 treatment, fallback application, and inference-profile discovery. Provider-side entitlement rules and the reason a deployment omits a model remain outside the retained artifact.
 
 ## Related docs
 

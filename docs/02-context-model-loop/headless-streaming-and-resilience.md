@@ -16,6 +16,11 @@ This page documents the non-interactive execution path used by `claude -p`, SDK 
 | SdkUrlTransportFlag | `--sdk-url <url>` | Remote WebSocket endpoint for SDK I/O streaming. |
 | SdkPermissionControlFrame | `can_use_tool control_request` | Permission prompt/control frame surface for SDK hosts. |
 | BridgePermissionResponseFrame | `permission_response` | Remote/bridge permission response frame. |
+| ControlRequestEnvelope | `type:"control_request"`, `request_id`, `request` | Correlated request from the runtime to a host or from a host into the runtime. |
+| ControlResponseEnvelope | `type:"control_response"`, `response:{subtype,request_id,...}` | Correlated success/error response. |
+| ControlCancelEnvelope | `type:"control_cancel_request"`, `request_id` | Cancels the pending operation with the same request ID. |
+| SdkCleanup | `performCleanup()` | Rejects unresolved control promises and closes registered transports/resources. |
+| SubprocessTermination | `SIGTERM`, `SIGKILL`, `5000` | Closes stdin, terminates, then force-kills a surviving SDK subprocess after five seconds. |
 
 ## Headless flow
 
@@ -40,7 +45,10 @@ flowchart TD
 | `--include-partial-messages` | Emits partial message chunks for stream-JSON print mode. |
 | `--replay-user-messages` | Re-emits user messages from stdin for stream-JSON acknowledgement. |
 | `--json-schema <schema>` | Adds structured-output validation for print mode. |
-| `control_request` | Host-facing request frame family. |
+| `control_request` | Correlated host/runtime request frame family. |
+| `control_response` | Success/error reply carrying the original `request_id`. |
+| `control_cancel_request` | Correlated cancellation for a pending request. |
+| `keep_alive` | Liveness frame; not a control response and has no request correlation semantics. |
 | `can_use_tool` | Permission prompt request subtype. |
 | `permission_response` | Host/bridge response to a permission prompt. |
 | `mcp_tool_call` | MCP tool-call telemetry/error surface in the headless/runtime path. |
@@ -56,6 +64,38 @@ The headless runner validates several incompatible combinations before executing
 - Print mode requires input unless the resume/SDK path supplies it.
 
 `HeadlessControlLoop` is the headless equivalent of the interactive dispatcher. It handles stream input, permission/control requests, MCP status and calls, background-task control, bash command messages, session state, and result emission.
+
+## Control protocol and correlation
+
+The control channel uses an outer envelope and a subtype-specific payload. The source-confirmed wire shapes are:
+
+```text
+control_request = {
+    type: "control_request",
+    request_id: <string>,
+    request: <subtype-specific object>
+}
+
+control_response = {
+    type: "control_response",
+    response: {
+        subtype: "success" | "error",
+        request_id: <same string>,
+        ...response fields
+    }
+}
+
+control_cancel_request = {
+    type: "control_cancel_request",
+    request_id: <same string>
+}
+```
+
+`request_id` is the correlation key. A response resolves/rejects the pending request registered under that ID; cancellation targets the same pending operation. `keep_alive` is a separate top-level frame and must not be interpreted as an empty response.
+
+Permission prompts and user-dialog requests can remain pending while ordinary model/system frames continue. Success/error responses preserve enough pending-request information for replay/reconnection paths to reconstruct unresolved permission or dialog interactions instead of silently treating them as approved. The exact subtype payload varies; the invariant is envelope correlation, not one universal response body.
+
+The frame schemas and pending-response machinery are near [`cli.renamed.js` lines 943000–944999](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L943000), with the print/control loop near [lines 952700–955800](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L952700).
 
 ## Control-loop internals
 
@@ -147,10 +187,41 @@ Important mechanics inside `HeadlessControlLoop`:
 
 The result schema around line ~2004 differentiates normal results from structured error results. The error subtype enum includes `error_during_execution`, `error_max_turns`, `error_max_budget_usd`, and `error_max_structured_output_retries`, so headless callers can distinguish execution error, turn limit, budget limit, and structured-output retry exhaustion.
 
+### Result holdback and queue draining
+
+A logical model result is not always written immediately. The print/control loop can hold the final `result` while background tasks, queued notifications, prompt suggestions, transcript-mirror work, or other outbound producers still have frames to publish. It drains those sources and emits the terminal result only when the ordering contract can be satisfied.
+
+This prevents a consumer from treating `result` as end-of-stream and dropping a task notification that was already in flight. It also means “the model turn finished” and “the transport is fully drained” are separate states.
+
+On an unexpected loop failure, the runtime constructs an `error_during_execution` result, writes/flushes the available terminal output, and then enters final cleanup. A crash does not intentionally skip result framing merely because non-model subscriptions were active.
+
+### Three cleanup layers
+
+| Layer | Owner | Confirmed responsibilities |
+|---|---|---|
+| Print/control-loop finalizer | `HeadlessControlLoop` | Unsubscribes auth/rate-limit/bridge listeners, stops task/suggestion/MCP/session side channels, drains or closes outbound state, and performs final notification/session cleanup. |
+| SDK query cleanup | `performCleanup()` and registered cleanup callbacks | Rejects every still-pending control request, clears correlation maps/listeners, and closes SDK transports/resources. The implementation is near [`cli.renamed.js` line 608462](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L608462). |
+| Subprocess transport shutdown | SDK subprocess transport | Closes stdin first, sends `SIGTERM`, waits up to five seconds, then sends `SIGKILL` if the child survives. |
+
+Pending control promises must be rejected during SDK cleanup; leaving them unresolved would make a host wait forever after the underlying transport has closed. Conversely, subprocess escalation is transport cleanup, not proof that the higher-level print loop drained successfully—each layer has its own completion contract.
+
+### Failure matrix
+
+| Failure | Observable handling |
+|---|---|
+| Unknown or malformed control frame | Rejected/converted into an error response where correlation is available; it is not treated as model input. |
+| Cancellation for a pending request | Targets the operation by `request_id`; completion still uses the correlated response/error path. |
+| Transport closes with pending requests | SDK cleanup rejects pending promises and clears them. |
+| Model/loop throws | Emits an `error_during_execution` result when possible, flushes output, then finalizes side channels. |
+| Background producer still active at logical completion | Holds back the final result until queued work/notifications are drained or cleanup resolves them. |
+| SDK child ignores graceful shutdown | Escalates from stdin close to `SIGTERM`, then `SIGKILL` after five seconds. |
+
 ### Caveats
 
 - `HeadlessControlLoop` is large and minified. This section documents confirmed side channels and frame families, not every branch.
 - Some frame schemas are defined outside `HeadlessControlLoop` near line ~2004 and are included here only when the loop also emits or references the same frame family.
+- `bridge_state` is source-confirmed in the loop near `cli.renamed.js:955774`; a low string-hit count is not evidence that the frame is absent.
+- The retained client establishes local draining and cleanup behavior. It does not prove how an arbitrary remote host persists or replays frames after its own transport fails.
 
 ## Related docs
 

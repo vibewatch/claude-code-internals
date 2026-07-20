@@ -9,10 +9,12 @@ The `Projects` tool in Claude Code `2.1.215` connects one session to one claude.
 | Semantic alias | Approximate location in `cli.renamed.js` | Exact string or symbol | Meaning |
 |---|---:|---|---|
 | ProjectTransport | [~267,430-267,670](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L267430) | `/api/organizations/:orgUUID/projects/`, `/v2/ccr-sessions/-/chat-project` | Direct and CCR-session project API routes. |
+| ProjectResponseGuard | [~267,630-267,675](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L267630) | `qot`, `ProjectsApiError` | Rejects transport failures and every non-2xx response before operation decoding. |
 | ProjectAuthResolver | [~267,678-267,780](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L267678) | `qZn`, `user:projects:read`, `user:projects:write` | Policy/provider/traffic checks and OAuth scope expansion. |
 | AttachedProjectContext | [~267,800-268,050](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L267800) | `getProjectContextBlock`, `CLAUDE_PROJECT_UUID` | Fetches and formats the attached project's instructions/docs/files/sync sources. |
 | ProjectsToolPrompt | [~411,950](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L411950) | `Read and write the claude.ai Project attached to this session` | Defines the one-project/no-discovery contract. |
 | ProjectsOperations | [~412,100-412,550](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L412100) | `project_info`, `project_read`, `project_search`, `project_write`, `project_delete` | Implements project knowledge operations. |
+| ProjectReadSpill | [~412,260](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L412260) | `project-doc-${r(e)}.txt`, `tool-results` | Stores large reads in the current local session's tool-result directory. |
 | ProjectsDescriptor | [~412,606](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L412606) | `ProjectsTool = Ai({...})` | Tool schema, availability, classification, validation, and execution. |
 
 ## Attachment and availability
@@ -35,7 +37,7 @@ At startup, `getProjectContextBlock()` fetches project detail with a five-second
 - synced-source descriptions (for example Google Drive, GitHub, Outline, or MCP resources);
 - guidance to read/search relevant project knowledge before answering and to save only durable project-relevant outputs.
 
-Fetch failure is logged and degrades to no attached-project block rather than aborting the session. The `Projects` tool remains the explicit operation surface.
+Fetch failure is logged and degrades to no attached-project block rather than aborting the session. This wrapper has a five-second context budget; ordinary tool requests use the project transport's 30-second request timeout. The `Projects` tool remains the explicit operation surface even when startup injection timed out or failed.
 
 ## Operation contract
 
@@ -65,11 +67,13 @@ flowchart TD
 
 ### Read sizing
 
-Text at or below 256 KiB is returned inline. Larger text is written to a mode-`0600` temporary file and returned as `local_file`, allowing the normal `Read` tool to page it into context. Image and other non-document uploads are identified but not decoded by this path.
+Text whose UTF-8 encoding is at or below 256 KiB is returned inline. Larger text is written to the current local session's `tool-results` directory and returned as `local_file`, allowing the normal `Read` tool to page it into context. The deterministic filename is `project-doc-<sanitized remote document-or-file UUID>.txt`; another large read of the same remote object overwrites that spill path rather than creating a per-call file. Image and other non-document uploads are identified but not decoded by this path.
+
+The write requests mode `0o600` when creating the spill file, but does not chmod a pre-existing path. The Projects call does not unlink the file after returning. The normal retention sweep later removes stale files in session `tool-results` directories by filesystem `mtime`, subject to `cleanupPeriodDays` and its settings-safety gates. A spill-write failure propagates as a tool error rather than falling back to an oversized inline response.
 
 ### Write namespacing and replacement
 
-An existing path is replaced in place. A new bare filename is namespaced under `claude/` (for example `notes.md` becomes `claude/notes.md`) so agent-authored docs remain distinguishable from user uploads. An explicit nested path bypasses that default namespace.
+An existing path is replaced in place from the tool caller's perspective. A new bare filename is namespaced under `claude/` (for example `notes.md` becomes `claude/notes.md`) so agent-authored docs remain distinguishable from user uploads. An explicit nested path bypasses that default namespace.
 
 Project documents are whole-document values: the edit pattern is read → modify locally/in context → write the complete replacement. There is no remote patch method.
 
@@ -92,7 +96,14 @@ Before a write, the runtime estimates tokens as roughly `ceil(UTF-8 bytes / 4)` 
 
 ## Transport split
 
-Normal attached sessions use organization project endpoints with `teleport-org` authentication. A session with the CCR/session access token instead dispatches operation names such as `detail`, `read-doc`, `write-doc`, and `kb-search` through `/v2/ccr-sessions/-/chat-project`. Both routes normalize into the same `ProjectsTool` result schema.
+Normal attached sessions use organization project endpoints with `teleport-org` authentication. A session with a CCR/session access token instead dispatches operation names such as `detail`, `read-doc`, `write-doc`, and `kb-search` through `/v2/ccr-sessions/-/chat-project`. Every non-2xx response is converted to `ProjectsApiError`; this layer has no source-visible automatic retry loop. Both routes normalize successful responses into the same `ProjectsTool` result schema.
+
+Replacement ordering differs by route:
+
+- the direct organization route updates an existing document with one `PATCH`;
+- the CCR operation route implements replacement as `delete-doc` followed by `write-doc`, after checking cancellation before the pair begins.
+
+The latter is not atomic in the client: if creation fails after deletion, the artifact shows no rollback. The tool is consequently marked not concurrency-safe, and callers should re-read before replacing a document whose concurrent modification would matter.
 
 ## Failure and security boundaries
 
@@ -102,6 +113,9 @@ Normal attached sessions use organization project endpoints with `teleport-org` 
 - `project_delete` cannot remove uploaded binary files.
 - Tool presence in the SDK does not imply a project is attached; `CLAUDE_PROJECT_UUID` is mandatory.
 - Compliance policy can disable the entire upload/read surface because project operations transmit workspace content to claude.ai.
+- A knowledge-base search `403` is the one operation-specific degradation path: it returns the current document-name list with `rag: false`. Other API failures propagate as tool errors.
+- Project identity is fixed by `CLAUDE_PROJECT_UUID` for the process; there is no source-visible mid-session switch or synchronized local document cache. Large reads do leave the session-scoped spill file described above until overwritten or removed by retention.
+- Server-side versioning, conflict detection, retention, and consistency across direct and CCR routes are not established by the client artifact.
 
 ## Related docs
 

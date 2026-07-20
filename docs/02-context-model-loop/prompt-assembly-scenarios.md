@@ -9,8 +9,9 @@ For exact provider-facing prompt text for one live session, instrument or captur
 | Semantic alias | String or symbol | Meaning |
 | --- | --- | --- |
 | DynamicPromptBoundary | `__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__` | Boundary between cache-stable and per-session/per-machine prompt sections. |
-| CliPromptMergeHelper | `IgK` | Merges CLI `systemPrompt`, CLI `appendSystemPrompt`, and policy-helper `appendSystemPrompt`. |
-| SystemPromptFragmentSelector | `Lb` | Selects override, agent, custom/default, and appended system prompt fragments. |
+| SystemPromptResolver | `vne()` | Resolves total override, coordinator, agent replacement/append, custom/default base, and late append branches. |
+| DefaultPromptBuilder | `M2()` | Builds the default system-prompt fragment array and marks the dynamic boundary. |
+| PromptPartsFetcher | `fetchSystemPromptParts()` | Returns `{defaultSystemPrompt,userContext,systemContext}` and redirects dynamic sections when requested. |
 | WebFetchApplyPrompt | `web_fetch_apply` | Helper model call for applying fetched web content to a user task. |
 | WebSearchHelperPrompt | `web_search_tool` | Web-search helper call with a dedicated short system prompt and web-search tool schema. |
 | SubagentPromptBuilder | `Cq5` / `jX$` | Subagent prompt construction from `getSystemPrompt()` plus subagent runtime notes. |
@@ -22,9 +23,11 @@ For exact provider-facing prompt text for one live session, instrument or captur
 | StopConditionEvaluatorPrompt | stop-condition hook evaluator | Hook-condition model call that judges transcript/condition satisfaction. |
 | InteractiveAgentBasePrompt | `iB5`, `rB5`, `oB5`, `$p5` | Main interactive-agent base instructions and behavior-rule fragments. |
 | DynamicEnvironmentPrompt | `_p5`, `jX$` | Dynamic environment/model/cwd/additional-directory and subagent notes. |
-| ProviderRequestAssembler | `QEH`, `NiH`, `iE`, `VDH`, `sp5` | Request assembly, helper-call wrappers, system block cache metadata. |
-| MainLoopSystemPromptArray | `lr6`, `KH=H9([...])` | Main loop builds default/custom/appended system prompt array before turns. |
+| ProviderRequestAssembler | `callModel()` → `Ead()`, `qSy()`, `asSystemPrompt()`, `KSy()`, `messages.create(...)` | Main/helper request assembly, message normalization, provider system blocks, cache metadata, and final dispatch. |
+| MainLoopPromptInputs | `customSystemPrompt`, `appendSystemPrompt`, `mainThreadAgentDefinition` | Current main-loop inputs passed to `vne()`. |
 | PromptOverrideFlags | `--system-prompt`, `--append-system-prompt`, files, `--exclude-dynamic-system-prompt-sections` | CLI override/append/dynamic-section controls and file loading. |
+
+Current implementation anchors are [`vne()` near line 333575](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L333575), [`fetchSystemPromptParts()` near line 563486](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L563486), and the default builder/dynamic boundary near [lines 568000–569300](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L568000). The older aliases previously listed on this page are not used as behavioral anchors for `2.1.215`.
 
 ## Notation
 
@@ -41,14 +44,11 @@ The scenario sketches below use this notation:
 
 ## Scenario 1: normal interactive coding session
 
-The default interactive session is not one giant literal. The main loop first asks `lr6` for the default system prompt and context, then creates `KH=H9([...default/custom, optional extra, append])` before calling the model path. `QEH`/`KS4` then prepends runtime prefix/attribution sections and decorates cacheable system blocks.
+The default interactive session is not one giant literal. `fetchSystemPromptParts()` first constructs three different families, then `vne()` chooses the base text array. Structured tools remain outside all three:
 
 ```text
-SYSTEM[0] provider/runtime prefix
-  - provider compatibility and request framing
-  - non-interactive / append-system-prompt attribution flags
-
-SYSTEM[1] main interactive-agent base
+DEFAULT SYSTEM PROMPT (M2)
+  main interactive-agent base
   - identity as an interactive software-engineering agent
   - terminal/markdown/tool-output harness rules
   - tool permission mode expectations
@@ -56,56 +56,50 @@ SYSTEM[1] main interactive-agent base
   - prompt-injection caution for external tool output
   - compaction/context-continuation behavior
 
-SYSTEM[2] coding and safety behavior rules
   - prefer minimal task-scoped changes
   - do not over-engineer or add speculative abstractions
   - preserve user work and avoid risky destructive actions
   - ask/adjust when permission is denied
   - respect output style and language settings
 
-SYSTEM[3] stable tool/capability context
-  - built-in tool schemas and descriptions
-  - deferred-tool / tool-search hints when enabled
-  - MCP, plugin, browser, IDE, and skill capability hints when active
-
-SYSTEM[4] dynamic sections after the boundary
+  stable capability guidance and dynamic sections around
+  __SYSTEM_PROMPT_DYNAMIC_BOUNDARY__
   - model name / model family hints
   - cwd, shell, platform, OS version
   - additional working directories
   - git repository and git status summaries
-  - memory paths and loaded instruction files
   - settings-derived mode flags
 
-SYSTEM[5] user/org/project instructions
-  - CLAUDE.md / CLAUDE.local.md / .claude/rules
-  - managed claudeMd and AutoMem material
-  - output style prompt, if one is active
+USER CONTEXT MAP
+  - user/org/project instructions and memory-file context
+  - context intended to travel with user-visible conversation input
 
-SYSTEM[6] appended material
-  - --append-system-prompt or --append-system-prompt-file
-  - policy-helper appendSystemPrompt, if present
+SYSTEM CONTEXT MAP
+  - dynamic context normally supplied as system-side context
+
+SELECTED SYSTEM PROMPT (vne)
+  - default prompt, unless another branch replaces or layers it
+  - appendSystemPrompt last when the selected branch permits it
 
 MESSAGES
   - normalized transcript
   - user prompt and attachments
   - runtime <system-reminder> blocks injected near the relevant turn
 
-TOOLS
+STRUCTURED TOOLS
   - built-in tools selected for the current mode
   - MCP/plugin/custom tools that survived filtering/defer policy
 ```
 
-Key evidence: `$p5`, `iB5`, `rB5`, and `oB5` provide the main interactive and behavior-rule fragments; `_p5` contributes environment/model sections; `__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__` marks the stable/dynamic split; `QEH` prepends request-level prefix/attribution with `ri$(...)` and `ii$(...)` before `sp5(...)` attaches cache metadata.
+`M2()` supplies default prompt fragments, `fetchSystemPromptParts()` supplies the context maps, and the provider request path normalizes/cache-decorates those values later. Memory files and tool schemas should not be described as literal `SYSTEM[n]` blocks merely because they count toward total context.
 
 ## Scenario 2: custom `--system-prompt`
 
-When `--system-prompt` or `--system-prompt-file` is supplied, the CLI reads the literal/file into `cli.systemPrompt`, `IgK` returns it, and the main loop uses it instead of the default system prompt body.
+When `--system-prompt` or `--system-prompt-file` supplies the `overrideSystemPrompt` lane, `vne()` returns `[overrideSystemPrompt]` immediately. This is a total base-prompt replacement branch.
 
 ```text
-SYSTEM[0] provider/runtime prefix
-SYSTEM[1] <user supplied --system-prompt text>
-SYSTEM[2] [policy/runtime extra for custom prompts, when enabled]
-SYSTEM[3] [--append-system-prompt text, if also supplied]
+SELECTED SYSTEM PROMPT
+  <user supplied override text>
 
 MESSAGES
   - transcript and current user message
@@ -119,27 +113,27 @@ Important edge cases:
 
 - `--system-prompt` and `--system-prompt-file` are mutually exclusive; the same is true for append prompt vs append prompt file.
 - `--exclude-dynamic-system-prompt-sections` is documented as applying only with the default system prompt, so it is ignored when the system prompt is replaced.
-- A custom system prompt replaces the default body, but request-level normalization, provider prefixing, tool schemas, and runtime reminders still exist.
+- The total `overrideSystemPrompt` branch returns before `vne()`'s ordinary append branch. Do not promise that a separately supplied general append survives this branch unless the caller has already merged it into the override input.
+- Request-level normalization, structured tool schemas, transcript messages, and runtime reminders still exist outside the replaced base prompt.
 
 ## Scenario 3: default prompt plus appended prompt
 
-The append path preserves the default system prompt and appends extra instructions. `IgK` also merges policy-helper append material returned by `GDq()` after the CLI append text.
+The ordinary append path preserves the selected default/custom/agent base and places `appendSystemPrompt` last.
 
 ```text
-SYSTEM[0] provider/runtime prefix
-SYSTEM[1..N] normal default interactive prompt sections
-SYSTEM[N+1] <CLI append prompt>
-SYSTEM[N+2] <policy-helper append prompt>
+SELECTED SYSTEM PROMPT
+  normal default/custom base fragments
+  <appendSystemPrompt>
 
 MESSAGES / TOOLS
   - same as the default interactive session
 ```
 
-This is the safest static mental model for enterprise/managed policy additions: they do not need to rewrite the base prompt; they can be appended late and still be visible to the model.
+Upstream CLI/policy wiring can contribute to the value passed as `appendSystemPrompt`; `vne()` itself observes one late append input rather than exposing separate guaranteed CLI-versus-policy slots.
 
 ## Scenario 4: default prompt with dynamic sections excluded
 
-With `--exclude-dynamic-system-prompt-sections`, per-machine sections move out of the system prompt and into the first user message. The stated purpose is cross-user prompt-cache reuse.
+With `--exclude-dynamic-system-prompt-sections`, `fetchSystemPromptParts()` keeps the default prompt's stable fragments but merges the normally system-side dynamic map and the separately generated excluded sections into `userContext`; it returns an empty `systemContext`.
 
 ```text
 SYSTEM
@@ -148,7 +142,7 @@ SYSTEM
   - appended prompt, if present
 
 FIRST USER MESSAGE
-  <system-reminder or context block>
+  <redirected user-context sections>
     - cwd
     - environment info
     - memory paths
@@ -158,7 +152,7 @@ SUBSEQUENT MESSAGES
   - normal transcript and user turns
 ```
 
-The source anchor is the root flag description and the dynamic-boundary sentinel. The important design point is that cache-stable identity/rules/tool text can remain cacheable while high-churn local state is carried as message context.
+The exact insertion helper later maps that user-context object into early conversation context. The important design point is that cache-stable identity/rules text can remain cacheable while high-churn local state is redirected away from `systemContext`; structured tools remain separate.
 
 ## Scenario 5: `--bare` / minimal mode
 
@@ -179,19 +173,21 @@ OMITTED OR REDUCED
 
 This scenario is useful when trying to reproduce prompt behavior because it removes many dynamic sources; it does not remove runtime request framing or explicitly configured tools/context.
 
-## Scenario 6: custom or selected main-thread agent
+## Scenario 6: coordinator or selected main-thread agent
 
-Agent prompt selection is controlled by `Lb`. Its ordering rule is compact enough to reconstruct:
+Prompt selection is controlled by `vne()`. Its branch matrix is compact enough to state exactly:
 
 ```text
 if overrideSystemPrompt exists:
   SYSTEM = [overrideSystemPrompt]
-else if agent.getSystemPrompt() exists and agent.appendSystemPrompt is true:
-  SYSTEM = [custom/default main prompt, agent prompt, append prompt]
-else if agent.getSystemPrompt() exists:
-  SYSTEM = [agent prompt, append prompt]
+else if coordinator mode is active and no main-thread agent exists:
+  SYSTEM = [coordinator prompt, append prompt?]
+else if agent prompt exists and agent.appendSystemPrompt is true:
+  SYSTEM = [custom/default base, agent prompt, append prompt?]
+else if agent prompt exists:
+  SYSTEM = [agent prompt, append prompt?]
 else:
-  SYSTEM = [custom/default main prompt, append prompt]
+  SYSTEM = [custom/default base, append prompt?]
 ```
 
 The practical consequences are:
@@ -201,7 +197,7 @@ The practical consequences are:
 - `--append-system-prompt` remains a late append in either case;
 - custom/SDK/plugin agents can add memory-derived text to `getSystemPrompt()` when the relevant memory feature is active.
 
-Related anchors: plugin/custom agent `getSystemPrompt` surfaces around line ~1297 and line ~1623, built-in agent prompts around line ~1355, ~1411, ~1424, ~1473, and ~1609, and CLI-selected agent injection around line ~19358 and ~19536.
+The coordinator branch builds its own prompt based in part on whether a comms-role MCP server is present. It does not first build the ordinary default prompt and then append coordinator text.
 
 ## Scenario 7: subagent / fork / teammate prompt
 
@@ -282,7 +278,7 @@ The helper result is then converted back into model-visible search-result conten
 
 ## Scenario 10: WebFetch apply helper
 
-For fetched page content, the line ~3435 path truncates very large content, builds a user prompt from the page content plus the original task, and calls `iE` with an empty system prompt array.
+For fetched page content, the helper path truncates very large content, builds a user prompt from the page content plus the original task, and invokes the shared model-call wrapper with an empty system prompt array.
 
 ```text
 SYSTEM
@@ -343,7 +339,7 @@ The main anchors are line ~8903 for stop-condition evaluation and line ~8918 for
 
 ## Scenario 13: small helper prompts
 
-Many helper calls use `iE` or `VDH` with either an empty system prompt or a short task-specific system prompt. These are not the main session prompt, but they are prompt surfaces worth tracking.
+Many helper calls use the shared model-call wrappers with either an empty system prompt or a short task-specific system prompt. These are not the main session prompt, but they are prompt surfaces worth tracking.
 
 | Helper | Prompt shape | Anchor |
 |---|---|---:|
@@ -374,11 +370,13 @@ This makes `/insights` a helper-model workflow around local session analytics. T
 
 For a live session, the exact provider-visible request exists only after runtime interpolation and normalization. Useful capture points are:
 
-1. after `lr6(...)` and `KH=H9([...])` in the main loop, to see the pre-provider system array;
-2. after `QEH`/`KS4` prepends `ri$(...)` and `ii$(...)`, to see provider-ready system blocks;
-3. after `sp5(...)`, to see cache-control metadata on system blocks;
-4. after message normalization converts `api_system` to provider `role:"system"` or falls back to `<system-reminder>`;
-5. in the prompt-cache diagnostics path that reports system-prompt changes and tool-schema hashes.
+1. after `M2()` / `Jw()` / `ux()` and `vne()` in the main loop, where the query handoff contains `messages`, `systemPrompt`, `userContext`, `systemContext`, selected tools, and cache-breaker state;
+2. at `callModel()` / `Ead()` entry, where the resolved system-prompt array, transcript, thinking configuration, selected tools, and model-call options meet;
+3. after `qSy()` message normalization, to compare `messagesPreNormalize` with `messagesForAPI` and see whether `api_system` survived as provider `role:"system"` or took the fallback path;
+4. after `asSystemPrompt()` and `KSy()`, where runtime prefix blocks are prepended and system-block cache metadata is applied;
+5. in the request-body builder immediately before `messages.create(...)`, where the final `model`, normalized `messages`, `system`, structured `tools`, `tool_choice`, betas, metadata, thinking/effort, cache controls, and extra body parameters are all present.
+
+The first point captures Claude Code's assembled query inputs, while the fifth captures the provider-visible body for a particular attempt. They can differ because normalization, capability gates, retries, and cache decoration occur between them. Capture tooling must redact secrets and sensitive local context; authorization headers are transport data, not part of the prompt.
 
 The static catalog answers “which prompt templates exist?” The scenario map above answers “how do major paths assemble them?” A runtime capture answers “what exactly did this specific request send?”
 

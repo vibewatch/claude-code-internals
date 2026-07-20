@@ -53,6 +53,23 @@ flowchart TD
 | `CLAUDE_CODE_DEBUG_LOG_LEVEL` | Sets the log-level threshold when recognized. |
 | `latest` symlink | The debug writer updates a `latest` symlink next to log files. |
 
+## Debug writer lifecycle
+
+`getDebugLogPath()` resolves the destination in this order:
+
+1. `--debug-file` (either `--debug-file=<path>` or the next CLI argument), resolved to an absolute path;
+2. a per-process fallback path cached after the originally selected path cannot be appended;
+3. `CLAUDE_CODE_DEBUG_LOGS_DIR`;
+4. `<claude-dir>/debug/<sessionId>.txt`.
+
+Each accepted entry is trimmed, redacted by the secret scanner, timestamped as ISO-8601, and formatted as `[LEVEL]` before it reaches the writer. Multiline formatted output is normalized when needed. `CLAUDE_CODE_DEBUG_LOG_LEVEL` recognizes `verbose`, `debug`, `info`, `warn`, and `error`; an absent or invalid value falls back to `debug`.
+
+The writer uses a one-second flush interval and a maximum buffer of 100 entries, with immediate mode while debug mode is active. Writes are serialized through a promise chain so batches do not race. It creates the parent directory on the first write to a new directory and installs both asynchronous shutdown disposal and a synchronous process-`exit` fallback for queued entries.
+
+After a write, `maybeRotateDebugLog()` tracks the file size. Once it exceeds 10 MiB, the current file is renamed to `<name>.1.txt` (or `<name>.1` for a non-`.txt` path), replacing or removing an older single rotated generation if necessary. Rotation failure is swallowed to avoid turning diagnostics into a runtime failure. The writer then refreshes a sibling `latest` symlink to the active path on a best-effort basis.
+
+This is a support log, not a durability guarantee: directory creation, fallback, rotation, and symlink errors are deliberately non-fatal.
+
 ## Startup and runtime diagnostics
 
 | Diagnostic family | Evidence | Meaning |
@@ -63,9 +80,18 @@ flowchart TD
 | Crash/error recording | `recordUncaughtAndCheckBreaker` | Centralizes uncaught exception/breaker classification before shutdown. |
 | Shutdown flush | `gracefulShutdown`, `flushAnalyticsSinks` | Gives logs/telemetry sinks a final best-effort drain. |
 
+### Startup profiler artifacts
+
+Startup profiling uses performance marks independently of the ordinary debug-file name. When detailed startup profiling is enabled, `profileReport()` writes:
+
+- `<claude-dir>/startup-perf/<sessionId>.txt` — a human-readable checkpoint timeline with optional RSS/heap snapshots;
+- `<claude-dir>/startup-perf/<sessionId>.json` — metadata, raw marks, memory snapshots, and process boot timing.
+
+The same report is also sent through the debug logger. A sampled non-detailed path can emit `tengu_startup_perf` metrics without writing the detailed files. Therefore the existence of startup performance telemetry does not imply that the two local profiling files were enabled for that session.
+
 ## Error reporting boundary
 
-Error reporting is related to diagnostics but gated separately from debug logs. `DISABLE_ERROR_REPORTING` and traffic policy determine whether error reports are sent externally; local debug logs can still exist depending on debug settings. For the traffic and external sink behavior, see [Telemetry and tracing](telemetry-and-tracing.md).
+Error reporting is related to diagnostics but gated separately from debug logs. `DISABLE_ERROR_REPORTING` and traffic policy determine whether error reports are sent externally; local debug logs can still exist depending on debug settings. Date-stamped local error and MCP JSONL writers are also distinct from this debug writer and are covered in [Telemetry and tracing](telemetry-and-tracing.md). Disabling one route should not be described as disabling every other route.
 
 ## Interpretation rules
 
