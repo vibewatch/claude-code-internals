@@ -33,13 +33,13 @@ This page is the table-first companion to [Commands and flags](commands-and-flag
 | SDK-style headless | `--sdk-url`, stream/control frames | Exposes structured frames and control requests for external hosts. |
 | Resume/continue | `--continue`, `--resume`, `--session-id` | Restores a local JSONL session into the live envelope. |
 | Remote/teleport/control | `--remote`, `--teleport`, `--remote-control`, `--rc` | Adds bridge/session-ingress control around the same session model. |
-| Recovery/accessibility | `--safe-mode`, `--ax-screen-reader` | Starts without customizations or selects screen-reader-friendly flat output. |
+| Recovery/accessibility | `--safe-mode`, `--ax-screen-reader` | [Safe mode](../05-hosted-agent-ops/safe-mode-and-recovery.md) isolates broken customizations; [screen-reader mode](accessibility-and-screen-reader-mode.md) selects the classic flat renderer. |
 
 ## Root flag families
 
 | Family | Flags | Primary owner |
 |---|---|---|
-| Diagnostics/recovery | `-d, --debug [filter]`, `--debug-file`, `--verbose`, `--safe-mode` | [Diagnostics and debug logs](../05-hosted-agent-ops/diagnostics-and-debug-logs.md) |
+| Diagnostics/recovery | `-d, --debug [filter]`, `--debug-file`, `--verbose`, `--safe-mode` | [Diagnostics and debug logs](../05-hosted-agent-ops/diagnostics-and-debug-logs.md), [Safe mode and recovery](../05-hosted-agent-ops/safe-mode-and-recovery.md) |
 | Headless/SDK output | `-p, --print`, `--output-format`, `--input-format`, `--json-schema`, `--include-partial-messages`, `--include-hook-events`, `--replay-user-messages`, `--forward-subagent-text`, `--prompt-suggestions` | [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md) |
 | Thinking and budget | `--effort`, `--max-budget-usd`, `--fallback-model` | [Model selection, calls, usage, quota, and billing](../02-context-model-loop/model-selection-usage-quota-billing.md) |
 | Tools and permissions | `--tools`, `--allowedTools`, `--allowed-tools`, `--disallowedTools`, `--disallowed-tools`, `--permission-mode`, `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions` | [Tool inventory and schemas](../03-tools-integrations-security/tool-inventory-and-schemas.md) |
@@ -47,7 +47,7 @@ This page is the table-first companion to [Commands and flags](commands-and-flag
 | Sessions | `-c, --continue`, `-r, --resume`, `--fork-session`, `--from-pr`, `--no-session-persistence`, `--session-id`, `--name`, `--bg` | [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md) |
 | Models and auth | `--model`, `--fallback-model`, `--betas` | [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md) |
 | Settings and integrations | `--settings`, `--setting-sources`, `--mcp-config`, `--strict-mcp-config`, `--plugin-dir`, `--plugin-url`, `--agents`, `--agent`, `--ide`, `--chrome`, `--file` | [Settings schema reference](../03-tools-integrations-security/settings-schema-reference.md) |
-| Accessibility | `--ax-screen-reader` | [Settings schema reference](../03-tools-integrations-security/settings-schema-reference.md) |
+| Accessibility | `--ax-screen-reader` | [Accessibility and screen-reader mode](accessibility-and-screen-reader-mode.md) |
 | Remote and deep links | `--remote`, `--teleport`, `--remote-control`, `--rc`, `--remote-control-session-name-prefix`, `--prefill`, `--deep-link-origin` | [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) |
 
 ## Command families
@@ -104,6 +104,8 @@ This page is the table-first companion to [Commands and flags](commands-and-flag
 
 - [Commands and flags](commands-and-flags.md)
 - [CLI main paths](cli-main-paths.md)
+- [Accessibility and screen-reader mode](accessibility-and-screen-reader-mode.md)
+- [Safe mode and recovery](../05-hosted-agent-ops/safe-mode-and-recovery.md)
 - [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md)
 - [Tool inventory and schemas](../03-tools-integrations-security/tool-inventory-and-schemas.md)
 - [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md)

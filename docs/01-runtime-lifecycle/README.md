@@ -1,6 +1,6 @@
 # Runtime lifecycle
 
-This section reverse-engineers package/Bun startup, command-line routing, runtime mode selection, and high-level session entry paths to show how Claude Code reaches a live session.
+This section reverse-engineers package/Bun startup, command-line routing, runtime mode selection, accessibility rendering, and high-level session entry paths to show how Claude Code reaches a live session.
 
 ## Source-anchor policy
 
@@ -32,13 +32,15 @@ flowchart TD
 | 3 | [Daemon and background service](daemon-and-background-service.md) | What does `claude daemon` supervise, how does service install/transient startup work, and how are locks/roster/reachability handled? |
 | 4 | [Commands and flags](commands-and-flags.md) | Which root flags and top-level command families define the user-facing CLI surface? |
 | 5 | [Command-line reference](command-line-reference.md) | Which source-visible flags, subcommands, aliases, and mode-specific CLI surfaces exist? |
-| 6 | [Runtime lifecycle architecture](architecture.md) | How is bootstrap → main → Commander composed, what is the public interface, and what design decisions drive mode dispatch and shutdown? |
+| 6 | [Accessibility and screen-reader mode](accessibility-and-screen-reader-mode.md) | How do flag/env/setting precedence, classic renderer selection, animation suppression, terminal cues, and child propagation compose? |
+| 7 | [Runtime lifecycle architecture](architecture.md) | How is bootstrap → main → Commander composed, what is the public interface, and what design decisions drive mode dispatch and shutdown? |
 
 ## Handoffs
 
 - Prompt/context and model/provider state continue in [Context and model loop](../02-context-model-loop/README.md).
 - Tool and permission boundaries continue in [Tools, integrations, and security](../03-tools-integrations-security/README.md).
 - Resume, transcripts, remote, and Remote Control continue in [Sessions, persistence, and remote](../04-sessions-persistence-remote/README.md).
+- Configuration-isolation recovery continues in [Safe mode and recovery](../05-hosted-agent-ops/safe-mode-and-recovery.md).
 
 ## Navigation
 

@@ -38,6 +38,9 @@ This page is the canonical inventory for Claude Code tool names, tool families, 
 | AgentToolContract | `Agents run in the background by default` | Delegated agents are asynchronous unless `run_in_background: false` is supplied. |
 | WorkflowToolContract | `Execute a workflow script that orchestrates multiple subagents deterministically` | Dynamic workflows start in the background and report completion through task notifications. |
 | RefreshMcpToolsContract | `RefreshMcpTools`, status `refreshed` / `error` / `not_connected` | Re-queries live MCP tool lists without dialing disconnected servers. |
+| ProjectsToolContract | `ProjectsTool`, `CLAUDE_PROJECT_UUID` | Reads/searches/writes the one claude.ai Project attached to the session. |
+| ArtifactToolContract | `ARTIFACT_TOOL_NAME = "Artifact"`, `ArtifactTool` | Publishes/lists/version-tracks hosted HTML or Markdown pages. |
+| ClaudeDesignContracts | `DesignTool`, `DesignSyncTool` | Discovers collaborative design operations or synchronizes a local design system through path-scoped plans. |
 
 ## Built-in tool families
 
@@ -52,6 +55,7 @@ This page is the canonical inventory for Claude Code tool names, tool families, 
 | Deterministic orchestration | `Workflow` | Run a JavaScript workflow that coordinates many agents with shared concurrency/token budgets. | Workflow enablement/policy, usage warning, permission decision, workflow runtime. |
 | MCP lifecycle | `RefreshMcpTools`, `ListMcpResources`, `ReadMcpResource`, `ReadMcpResourceDir` | Refresh live tool discovery and browse/read MCP resources. | MCP connection state, server schema, normal permission boundary. |
 | Scheduled/monitor work | `CronCreate`, `CronDelete`, `CronList`, `ScheduleWakeup`, `Monitor`, `RemoteTrigger` | Schedule local prompts, arm plugin monitors, or manage gated remote routines. | Cron/monitor/plugin trust and remote-session policy. |
+| Hosted knowledge and creation | `Projects`, `Artifact`, `ClaudeDesign`, `DesignSync` | Read/write attached Project knowledge, publish hosted pages, and edit/synchronize collaborative design projects. | Account/provider/policy gates plus operation-specific local-read, consent, plan, grant, and destructive-write checks. |
 
 ## Schema ownership
 
@@ -72,7 +76,7 @@ The packaged `sdk-tools.d.ts` union adds the following schema owners relative to
 | `Monitor` | Arms a persistent background script whose stdout lines become task notifications. | Primarily plugin/host supplied; runs at hook-like trust, not as an ordinary sandboxed shell call. |
 | `PushNotification` | Sends a mobile notification when the connected host/Remote Control surface permits it. | Remote Control and notification preference gates. |
 | `RefreshMcpTools` | Re-runs `tools/list` on connected servers and reports added/removed tool names. | Never establishes a new connection; returns `not_connected` when no live client exists. |
-| `Projects`, `Artifact`, `ClaudeDesign` | Hosted project/knowledge, artifact, and design RPC contracts. | Host/account feature gates; do not assume local CLI availability. |
+| [`Projects`](../04-sessions-persistence-remote/hosted-projects-and-knowledge.md), [`Artifact`](artifact-publishing-and-live-pages.md), [`ClaudeDesign`](claude-design-and-design-sync.md) | Hosted Project knowledge, versioned page publication, and collaborative design RPC contracts. `DesignSync` is the fixed-schema design-system companion. | Host/account/provider/policy/feature gates; do not assume local CLI availability. |
 | `RemoteTrigger` | Lists, creates, updates, or runs remote routines through the authenticated trigger API. | Claude.ai subscription, remote-policy, feature, and local-session gates. |
 | `ReportFindings` | Returns structured code-review findings and optional fix outcomes. | Review workflows/hosts. |
 | `ProposeSkills` | Returns structured skill proposals. | Host/bundled feature gate. |
@@ -91,6 +95,7 @@ The built-in tools are exposed through bundled descriptors created by `LK(...)`.
 | File mutation | `Edit` at line ~5005, `Write` at line ~3226 | Mutation descriptors expose input/output schema accessors and pair with freshness guards such as `File has not been read yet...` and `File content has changed...`. | Exact patch/write algorithms and notebook edit shapes remain a candidate companion reference if schema dumps are required. |
 | Web | `WebFetch` at line ~3438, `WebSearch` at line ~3628 | Web tools are deferred and guarded; `WebSearch` has provider-support gates and wildcard validation. | Provider-specific fetch/search transport is separate from tool-name/schema inventory. |
 | Planning and automation | `TodoWrite` at line ~2621, `Skill` at line ~3172, task tool constants at line ~1091 | Todo writes are allowed checklist state updates; skills validate an invocation name and can return direct or forked execution results. | Full task/subagent scheduling belongs in [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md). |
+| Hosted collaboration | `ProjectsTool` at line ~412606, `ArtifactTool` at line ~421819, `DesignTool`/`DesignSyncTool` around lines ~410125-411200 | Descriptors expose explicit read/destructive classifiers, account gates, structured schemas, and operation-specific permission helpers. | Read [Hosted Projects and knowledge](../04-sessions-persistence-remote/hosted-projects-and-knowledge.md), [Artifact publishing and live pages](artifact-publishing-and-live-pages.md), and [Claude Design and design-system sync](claude-design-and-design-sync.md). |
 
 ### Built-in schema extraction status
 
@@ -145,6 +150,9 @@ High-signal guard strings include:
 | Hook/event names and frame families | [Hooks and events reference](hooks-and-events-reference.md) |
 | Settings/policy keys that shape tools | [Settings schema reference](settings-schema-reference.md) |
 | Task/subagent tool behavior | [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md) |
+| Attached claude.ai Project knowledge | [Hosted Projects and knowledge](../04-sessions-persistence-remote/hosted-projects-and-knowledge.md) |
+| Hosted page publication and live updates | [Artifact publishing and live pages](artifact-publishing-and-live-pages.md) |
+| Collaborative design and design-system sync | [Claude Design and design-system sync](claude-design-and-design-sync.md) |
 
 ## Related docs
 

@@ -8,7 +8,7 @@ The file is bundled/minified production JavaScript. The document therefore uses 
 
 `cli.renamed.js` is not a thin prompt wrapper. It is the main Claude Code agent runtime. It parses the command line, establishes process identity, loads settings and managed policy, initializes authentication and model/provider state, manages sessions, assembles tools, applies permissions, loads MCP servers and plugins, orchestrates custom agents, background agents, and dynamic workflows, routes execution into interactive/headless/remote modes, and handles accessibility, observability, updates, and shutdown.
 
-The `2.1.215` snapshot adds several source-confirmed surfaces that were absent from the previous `2.1.143` documentation baseline: Sonnet 5, Opus 4.8, and Fable 5 model records; the `Workflow` tool and `/workflows` UI; background-by-default and nested subagents; an implicit team model; `/fork` background copies plus `/subtask`; screen-reader and safe modes; MCP tool refresh/auto-backgrounding; richer hooks and telemetry; and hard per-session WebSearch/subagent budgets.
+The `2.1.215` snapshot adds several source-confirmed surfaces that were absent from the previous `2.1.143` documentation baseline: Sonnet 5, Opus 4.8, and Fable 5 model records; the `Workflow` tool and `/workflows` UI; background-by-default and nested subagents; an implicit team model; `/fork` background copies plus `/subtask`; session-bound `Projects` knowledge, `Artifact` publishing, and Claude Design/design-system sync; screen-reader and safe modes; MCP tool refresh/auto-backgrounding; richer hooks and telemetry; and hard per-session WebSearch/subagent budgets.
 
 Two useful lenses for the runtime are **context engineering** and **harness engineering**:
 
@@ -26,6 +26,8 @@ Two useful lenses for the runtime are **context engineering** and **harness engi
 | MCP | `McpCoordinator` | `tools/list`, `roots/list`, `notifications/roots/list_changed`, `RefreshMcpTools` | Connects MCP servers, publishes roots, and refreshes tool sets. |
 | Sessions | `SessionRestorer` | `transcriptSource:"local-jsonl"`, `--resume`, `--fork-session` | Finds recent sessions and restores or forks transcript state. |
 | Tools/workflows | `BuiltInToolNames` | `Bash`, `Read`, `Edit`, `WebFetch`, `WebSearch`, `Agent`, `Workflow`, `RefreshMcpTools` | Core coding, delegation, orchestration, and integration capabilities. |
+| Hosted knowledge | `ProjectsTool` | `CLAUDE_PROJECT_UUID`, `project_info`, `project_search`, `project_write` | Binds one session to one durable claude.ai Project knowledge container. |
+| Hosted creation | `ArtifactTool`, `DesignTool`, `DesignSyncTool` | `Artifact`, `ClaudeDesign`, `DesignSync` | Publishes versioned pages and edits/synchronizes collaborative design projects under account/policy gates. |
 | Hooks | `HookEvents` | `PreToolUse`, `PostToolBatch`, `MessageDisplay`, `SessionStart`, `TaskCreated` | Authorization, display, lifecycle, task, and automation event surface. |
 | Ops/recovery | `TrafficAndDebugGates` | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `--safe-mode`, `CLAUDE_CODE_SAFE_MODE` | Debug/traffic policy plus configuration-isolation recovery. |
 
@@ -82,12 +84,13 @@ flowchart TB
 | Settings/policy/integrations | `.claude/settings.json`, managed settings, `--settings`, `--ide`, `--chrome`, `statusLine` | Layered settings, config roots, policy toggles, IDE/Chrome/file integration, API-key helper scripts. | [Settings, policy, and integrations](../03-tools-integrations-security/settings-policy-and-integrations.md) |
 | Sessions and transcripts | `--continue`, `--resume`, `--session-id`, JSONL paths | Local transcript roots, latest-session lookup, resume/continue, fork, no-persistence, rewind. | [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md) |
 | Remote/teleport/control | `--remote`, `--teleport`, `remote-control`, `--rc`, remote token env vars | Remote session creation/attach, teleport hydration, Remote Control bridge, permission forwarding. | [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) |
+| Hosted projects/artifacts/design | `CLAUDE_PROJECT_UUID`, `Projects`, `Artifact`, `ClaudeDesign`, `DesignSync` | Attached knowledge context and CRUD, versioned hosted pages, collaborative design files/previews, and guarded design-system synchronization. | [Hosted Projects and knowledge](../04-sessions-persistence-remote/hosted-projects-and-knowledge.md), [Artifact publishing and live pages](../03-tools-integrations-security/artifact-publishing-and-live-pages.md), [Claude Design and design-system sync](../03-tools-integrations-security/claude-design-and-design-sync.md) |
 | Agents and automation | `agents`, `--agents`, `Agent`, `/fork`, `/subtask`, `Workflow`, `ultrareview`, `auto-mode` | Background sessions, custom agents, background-by-default/nested subagents, implicit teams, deterministic workflows, and classifier inspection. | [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md), [Dynamic workflows](../06-agents-automation/dynamic-workflows.md) |
 | Diagnostics/ops/media | `--debug-file`, `doctor`, `update`, telemetry env vars, image/audio N-API modules | Debug logs, telemetry and traffic gates, native updater, doctor checks, media module extraction. | [Diagnostics and debug logs](../05-hosted-agent-ops/diagnostics-and-debug-logs.md), [Telemetry and tracing](../05-hosted-agent-ops/telemetry-and-tracing.md), [Updater and doctor](../05-hosted-agent-ops/updater-and-doctor.md), [Media native modules](../05-hosted-agent-ops/media-native-modules.md) |
 
 ## Takeaways
 
-The main capabilities in `cli.renamed.js` can be summarized as: **bootstrap, modes, context, models, tools, integrations, sessions, remote control, agents, and operations**.
+The main capabilities in `cli.renamed.js` can be summarized as: **bootstrap, modes, context, models, tools, integrations, sessions, hosted collaboration, remote control, agents, and operations**.
 
 More concretely:
 

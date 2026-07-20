@@ -4,7 +4,7 @@ This wiki reverse-engineers `@anthropic-ai/claude-code` to explain how Claude Co
 
 `claude-code-pkg/src/entrypoints/cli.js`
 
-The wiki is organized around reverse-engineered internals questions: how the Bun standalone runtime starts, routes command-line modes, shapes model context, exposes tools, persists sessions, supports remote control, runs agents, and exposes operational/debug/native surfaces.
+The wiki is organized around reverse-engineered internals questions: how the Bun standalone runtime starts, routes command-line and accessibility/recovery modes, shapes model context, exposes local and hosted tools, persists sessions and Project knowledge, supports remote control, runs agents, and exposes operational/debug/native surfaces.
 
 Because `cli.renamed.js` is a renamed view of a bundled/minified artifact, symbol names are unstable across builds. Source anchors are intended for searching the analyzed bundle, not as public API names. Implementation pages use `Semantic alias` as the first source-anchor table column, followed by the anchor string or symbol grep target and a one-line meaning.
 
@@ -55,11 +55,11 @@ flowchart TD
 | Section | Purpose |
 |---|---|
 | [Start here](00-start-here/README.md) | Minimal orientation: what the bundle is, how to read anchors, and the first path through the runtime. |
-| [Runtime lifecycle](01-runtime-lifecycle/README.md) | Package/Bun bootstrap, CLI flags, root command routing, headless/interactive modes, and subcommands. |
+| [Runtime lifecycle](01-runtime-lifecycle/README.md) | Package/Bun bootstrap, CLI flags, root command routing, headless/interactive/accessibility modes, and subcommands. |
 | [Context and model loop](02-context-model-loop/README.md) | Prompt/context sources, memory/settings, model/provider/auth selection, and headless stream-JSON turns. |
-| [Tools, integrations, and security](03-tools-integrations-security/README.md) | Built-in tools, permissions, MCP, plugins, hooks, settings policy, IDE/Chrome/file integrations. |
-| [Sessions, persistence, and remote](04-sessions-persistence-remote/README.md) | Local JSONL transcripts, resume/continue/fork/rewind, remote sessions, teleport, and Remote Control. |
-| [Hosted agent ops](05-hosted-agent-ops/README.md) | Debug logs, telemetry/traffic policy, doctor/update, hosted review signals, and native image/audio modules. |
+| [Tools, integrations, and security](03-tools-integrations-security/README.md) | Built-in and hosted tools, permissions, MCP, plugins, hooks, settings policy, Artifact, Claude Design, and IDE/Chrome integrations. |
+| [Sessions, persistence, and remote](04-sessions-persistence-remote/README.md) | Local JSONL transcripts, resume/continue/fork/rewind, attached Project knowledge, remote sessions, teleport, and Remote Control. |
+| [Hosted agent ops](05-hosted-agent-ops/README.md) | Debug logs, telemetry/traffic policy, doctor/update, safe-mode recovery, hosted review signals, and native image/audio modules. |
 | [Agents and automation](06-agents-automation/README.md) | Custom/background agents, task/subagent tools, lifecycle hooks, slash commands, and auto-mode. |
 | [Research atlas](99-research-atlas/README.md) | Generated module/string inventories, source-anchor methodology, and promotion rules for future source reads. |
 
@@ -72,9 +72,11 @@ flowchart TD
 | Understand one complete local run | [CLI main paths](01-runtime-lifecycle/cli-main-paths.md) → [Prompt, context, and memory](02-context-model-loop/prompt-context-memory.md) → [Prompt assembly scenarios](02-context-model-loop/prompt-assembly-scenarios.md) → [Prompt template catalog](02-context-model-loop/prompt-template-catalog.md) |
 | Understand context budgets and model billing | [Context, memory, compaction, checkpoints, and rewind](02-context-model-loop/context-memory-compaction-checkpoints.md) → [Model selection, calls, usage, quota, and billing](02-context-model-loop/model-selection-usage-quota-billing.md) → [Headless streaming and resilience](02-context-model-loop/headless-streaming-and-resilience.md) |
 | Understand scriptable/headless mode | [Commands and flags](01-runtime-lifecycle/commands-and-flags.md) → [Headless streaming and resilience](02-context-model-loop/headless-streaming-and-resilience.md) → [Context and model loop architecture](02-context-model-loop/architecture.md) |
+| Understand accessibility and recovery modes | [Accessibility and screen-reader mode](01-runtime-lifecycle/accessibility-and-screen-reader-mode.md) → [Safe mode and recovery](05-hosted-agent-ops/safe-mode-and-recovery.md) → [Settings, policy, and integrations](03-tools-integrations-security/settings-policy-and-integrations.md) |
 | Use canonical reference tables | [Command-line reference](01-runtime-lifecycle/command-line-reference.md) → [Tool inventory and schemas](03-tools-integrations-security/tool-inventory-and-schemas.md) → [Hooks and events reference](03-tools-integrations-security/hooks-and-events-reference.md) → [Settings schema reference](03-tools-integrations-security/settings-schema-reference.md) → [Environment variables reference](05-hosted-agent-ops/environment-variables-reference.md) |
 | Understand durable sessions and remote control | [Sessions, persistence, and remote](04-sessions-persistence-remote/README.md) → [Session resume and transcripts](04-sessions-persistence-remote/session-resume-and-transcripts.md) → [Remote control and teleport](04-sessions-persistence-remote/remote-control-and-teleport.md) → [Session API, events, and storage](04-sessions-persistence-remote/session-api-events-and-storage.md) |
 | Review trust boundaries | [Tools, integrations, and security](03-tools-integrations-security/README.md) → [Tool runtime, events, and integration flows](03-tools-integrations-security/tool-runtime-events-and-integrations.md) → [Built-in tools and permissions](03-tools-integrations-security/built-in-tools-and-permissions.md) → [Sandbox and isolation](03-tools-integrations-security/sandbox-and-isolation.md) → [MCP, plugins, and hooks](03-tools-integrations-security/mcp-plugins-hooks.md) |
+| Understand hosted knowledge and creation | [Hosted Projects and knowledge](04-sessions-persistence-remote/hosted-projects-and-knowledge.md) → [Artifact publishing and live pages](03-tools-integrations-security/artifact-publishing-and-live-pages.md) → [Claude Design and design-system sync](03-tools-integrations-security/claude-design-and-design-sync.md) |
 | Understand voice/audio dictation | [Hosted agent ops](05-hosted-agent-ops/README.md) → [Media native modules](05-hosted-agent-ops/media-native-modules.md) → [Audio capture and voice mode](05-hosted-agent-ops/audio-capture-and-voice.md) |
 | Study agents and automation | [Agents and automation](06-agents-automation/README.md) → [Agents, tasks, and subagents](06-agents-automation/agents-tasks-and-subagents.md) → [Dynamic workflows](06-agents-automation/dynamic-workflows.md) → [Agent runtime, scheduling, and completion](06-agents-automation/agent-runtime-scheduling-and-completion.md) → [Cron and scheduled tasks](06-agents-automation/cron-and-scheduled-tasks.md) |
 
@@ -82,13 +84,13 @@ flowchart TD
 
 | Concern | Primary internals section | Supporting sections |
 |---|---|---|
-| Runtime mode selection | [Runtime lifecycle](01-runtime-lifecycle/README.md) | [Command-line reference](01-runtime-lifecycle/command-line-reference.md), [Start here](00-start-here/README.md), [Sessions, persistence, and remote](04-sessions-persistence-remote/README.md) |
+| Runtime mode selection | [Runtime lifecycle](01-runtime-lifecycle/README.md) | [Command-line reference](01-runtime-lifecycle/command-line-reference.md), [Accessibility and screen-reader mode](01-runtime-lifecycle/accessibility-and-screen-reader-mode.md), [Safe mode and recovery](05-hosted-agent-ops/safe-mode-and-recovery.md) |
 | Communication protocols | [Runtime communication protocols](00-start-here/runtime-communication-protocols.md) | [MCP, plugins, and hooks](03-tools-integrations-security/mcp-plugins-hooks.md), [Remote control and teleport](04-sessions-persistence-remote/remote-control-and-teleport.md), [Agents and automation](06-agents-automation/README.md) |
 | Context engineering | [Context and model loop](02-context-model-loop/README.md) | [Context, memory, compaction, checkpoints, and rewind](02-context-model-loop/context-memory-compaction-checkpoints.md), [Agents and automation](06-agents-automation/README.md), [Tools, integrations, and security](03-tools-integrations-security/README.md) |
 | Model usage, quota, and billing | [Model selection, calls, usage, quota, and billing](02-context-model-loop/model-selection-usage-quota-billing.md) | [Models, providers, and auth](02-context-model-loop/models-providers-auth.md), [Headless streaming and resilience](02-context-model-loop/headless-streaming-and-resilience.md) |
-| Tool execution | [Tool inventory and schemas](03-tools-integrations-security/tool-inventory-and-schemas.md) | [Built-in tools and permissions](03-tools-integrations-security/built-in-tools-and-permissions.md), [Tool runtime, events, and integration flows](03-tools-integrations-security/tool-runtime-events-and-integrations.md), [Agents and automation](06-agents-automation/README.md) |
+| Tool execution | [Tool inventory and schemas](03-tools-integrations-security/tool-inventory-and-schemas.md) | [Built-in tools and permissions](03-tools-integrations-security/built-in-tools-and-permissions.md), [Artifact publishing and live pages](03-tools-integrations-security/artifact-publishing-and-live-pages.md), [Claude Design and design-system sync](03-tools-integrations-security/claude-design-and-design-sync.md) |
 | Session/event lifecycle | [Session API, events, and storage](04-sessions-persistence-remote/session-api-events-and-storage.md) | [Data models and frame schemas](04-sessions-persistence-remote/data-models-and-frame-schemas.md), [Hooks and events reference](03-tools-integrations-security/hooks-and-events-reference.md), [Hosted agent ops](05-hosted-agent-ops/README.md) |
-| Remote/hosted operation | [Sessions, persistence, and remote](04-sessions-persistence-remote/README.md) | [Hosted agent ops](05-hosted-agent-ops/README.md), [Agents and automation](06-agents-automation/README.md) |
+| Remote/hosted operation | [Hosted Projects and knowledge](04-sessions-persistence-remote/hosted-projects-and-knowledge.md) | [Artifact publishing and live pages](03-tools-integrations-security/artifact-publishing-and-live-pages.md), [Claude Design and design-system sync](03-tools-integrations-security/claude-design-and-design-sync.md), [Remote control and teleport](04-sessions-persistence-remote/remote-control-and-teleport.md) |
 | Permissions and policy | [Tools, integrations, and security](03-tools-integrations-security/README.md) | [Context and model loop](02-context-model-loop/README.md), [Hosted agent ops](05-hosted-agent-ops/README.md) |
 | Settings, hooks, and environment references | [Settings schema reference](03-tools-integrations-security/settings-schema-reference.md) | [Hooks and events reference](03-tools-integrations-security/hooks-and-events-reference.md), [Environment variables reference](05-hosted-agent-ops/environment-variables-reference.md), [Settings, policy, and integrations](03-tools-integrations-security/settings-policy-and-integrations.md) |
 | Sandbox and isolation | [Sandbox and isolation](03-tools-integrations-security/sandbox-and-isolation.md) | [Built-in tools and permissions](03-tools-integrations-security/built-in-tools-and-permissions.md), [Settings, policy, and integrations](03-tools-integrations-security/settings-policy-and-integrations.md) |
@@ -104,6 +106,8 @@ flowchart TD
 | System module boundaries and data/control flow | [System architecture](00-start-here/system-architecture.md) |
 | Runtime protocol families across modules, agents, bridges, and remote servers | [Runtime communication protocols](00-start-here/runtime-communication-protocols.md) |
 | Command-line flags, subcommands, and aliases | [Command-line reference](01-runtime-lifecycle/command-line-reference.md) |
+| Terminal accessibility renderer selection | [Accessibility and screen-reader mode](01-runtime-lifecycle/accessibility-and-screen-reader-mode.md) |
+| Configuration-isolation recovery | [Safe mode and recovery](05-hosted-agent-ops/safe-mode-and-recovery.md) |
 | Per-module architecture deep dives | [Runtime lifecycle architecture](01-runtime-lifecycle/architecture.md), [Context and model loop architecture](02-context-model-loop/architecture.md), [Tool runtime and security architecture](03-tools-integrations-security/architecture.md), [Session and remote-control architecture](04-sessions-persistence-remote/architecture.md), [Operations and native-support architecture](05-hosted-agent-ops/architecture.md), [Agent and automation architecture](06-agents-automation/architecture.md) |
 | Headless stream/control event loop | [Headless streaming and resilience](02-context-model-loop/headless-streaming-and-resilience.md) |
 | Prompt/template extraction catalog | [Prompt template catalog](02-context-model-loop/prompt-template-catalog.md) |
@@ -113,12 +117,15 @@ flowchart TD
 | Tool runtime, events, shell execution, SDK/LSP/Web, context exclusion, settings, and persistence | [Tool runtime, events, and integration flows](03-tools-integrations-security/tool-runtime-events-and-integrations.md) |
 | Tool names, schema owners, and tool-family reference | [Tool inventory and schemas](03-tools-integrations-security/tool-inventory-and-schemas.md) |
 | Tool authorization and execution boundary | [Built-in tools and permissions](03-tools-integrations-security/built-in-tools-and-permissions.md) |
+| Hosted page publication, versioning, and live updates | [Artifact publishing and live pages](03-tools-integrations-security/artifact-publishing-and-live-pages.md) |
+| Collaborative design RPC and design-system synchronization | [Claude Design and design-system sync](03-tools-integrations-security/claude-design-and-design-sync.md) |
 | Hook names, lifecycle events, and stream/control frames | [Hooks and events reference](03-tools-integrations-security/hooks-and-events-reference.md) |
 | Known settings roots, keys, and policy groups | [Settings schema reference](03-tools-integrations-security/settings-schema-reference.md) |
 | Command sandbox design and platform isolation | [Sandbox and isolation](03-tools-integrations-security/sandbox-and-isolation.md) |
 | MCP runtime connection and elicitation | [MCP, plugins, and hooks](03-tools-integrations-security/mcp-plugins-hooks.md) |
 | Resume/continue/fork state restoration | [Session resume and transcripts](04-sessions-persistence-remote/session-resume-and-transcripts.md) |
 | Session API, event, storage, and remote-control reference | [Session API, events, and storage](04-sessions-persistence-remote/session-api-events-and-storage.md) |
+| Session-bound shared Project knowledge | [Hosted Projects and knowledge](04-sessions-persistence-remote/hosted-projects-and-knowledge.md) |
 | Session data models, transcript records, and frame schemas | [Data models and frame schemas](04-sessions-persistence-remote/data-models-and-frame-schemas.md) |
 | Diagnostics and debug logs | [Diagnostics and debug logs](05-hosted-agent-ops/diagnostics-and-debug-logs.md) |
 | Telemetry and tracing | [Telemetry and tracing](05-hosted-agent-ops/telemetry-and-tracing.md) |

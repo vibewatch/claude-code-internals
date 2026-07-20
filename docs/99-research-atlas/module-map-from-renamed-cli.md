@@ -24,7 +24,7 @@ node scripts/extract-cli-module-map.mjs
 | Bun module loader | Structurally detected outer-arrow → inner-arrow lazy initializer (for example `var loaderName = b(() => { ... })`) | Each loader call marks one original ESM module; statements above it (up to the previous loader) form its forward declarations. |
 | Module export table | Any helper call whose second argument is a non-empty object of identifier-returning getters | Maps original ESM export names onto internal implementations without depending on a minified helper name. |
 | Theme classification | Regex match on the set of semantic names per module | Order-sensitive priority list in [`scripts/extract-cli-module-map.mjs`](../../scripts/extract-cli-module-map.mjs). |
-| Line numbers | 1-based lines in `claude-code-pkg/src/entrypoints/cli.renamed.js` | Loader line = location of the `var loaderName = T(...)` statement. Function definitions usually sit a few hundred lines earlier in the same partition. |
+| Line numbers | 1-based lines in `claude-code-pkg/src/entrypoints/cli.renamed.js` | Loader line = location of the structurally recognized lazy-loader call. Function definitions usually sit earlier in the same partition. |
 
 ## Coverage summary
 

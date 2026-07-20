@@ -61,6 +61,8 @@ The in-session `/doctor` (alias `/checkup`) is broader. Its bundled prompt at ap
 
 This distinction matters: `claude doctor` is a deterministic CLI diagnostic; `/doctor` is an agent-assisted repair workflow over the current project and user configuration.
 
+When a customization prevents normal startup or makes `/doctor` unusable, [safe mode](safe-mode-and-recovery.md) is the recovery envelope: it keeps auth, models, built-in tools, permissions, and managed policy active while suppressing project/user CLAUDE.md, plugins, MCP servers, skills, agents, workflows, themes, keybindings, and related customizations. Repairs save normally but are intentionally tested only after restarting without safe mode.
+
 Use [Diagnostics and debug logs](diagnostics-and-debug-logs.md) for the log/debug evidence generated around these checks.
 
 ## Hosted review and operational preflights
@@ -81,6 +83,7 @@ The bundle also includes hosted multi-agent review strings and preflight calls a
 - [Diagnostics and debug logs](diagnostics-and-debug-logs.md)
 - [Telemetry and tracing](telemetry-and-tracing.md)
 - [Feature gates reference](feature-gates-reference.md)
+- [Safe mode and recovery](safe-mode-and-recovery.md)
 - [Command-line reference](../01-runtime-lifecycle/command-line-reference.md)
 - [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md)
 - [Operations and native-support architecture](architecture.md)

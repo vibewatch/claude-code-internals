@@ -114,6 +114,8 @@ The section index is in [`docs/SUMMARY.md`](docs/SUMMARY.md). Highlights:
 
 - [`docs/99-research-atlas/module-map-from-renamed-cli.md`](docs/99-research-atlas/module-map-from-renamed-cli.md) — bundle module map with 36 populated themes.
 - [`docs/02-context-model-loop/prompt-template-catalog.md`](docs/02-context-model-loop/prompt-template-catalog.md) — index into the per-category prompt shards (full text of 1,940 prompts).
+- [`docs/04-sessions-persistence-remote/hosted-projects-and-knowledge.md`](docs/04-sessions-persistence-remote/hosted-projects-and-knowledge.md), [`docs/03-tools-integrations-security/artifact-publishing-and-live-pages.md`](docs/03-tools-integrations-security/artifact-publishing-and-live-pages.md), and [`docs/03-tools-integrations-security/claude-design-and-design-sync.md`](docs/03-tools-integrations-security/claude-design-and-design-sync.md) — the new hosted project, publication, and collaborative-design subsystems.
+- [`docs/01-runtime-lifecycle/accessibility-and-screen-reader-mode.md`](docs/01-runtime-lifecycle/accessibility-and-screen-reader-mode.md) and [`docs/05-hosted-agent-ops/safe-mode-and-recovery.md`](docs/05-hosted-agent-ops/safe-mode-and-recovery.md) — the new terminal accessibility and configuration-isolation modes.
 - [`docs/05-hosted-agent-ops/audio-capture-native.md`](docs/05-hosted-agent-ops/audio-capture-native.md) and [`docs/05-hosted-agent-ops/image-processor-native.md`](docs/05-hosted-agent-ops/image-processor-native.md) — binary-level reverse engineering of the two Rust N-API addons (cpal + ALSA / Rust `image` crate ecosystem).
 
 ## Website wiki

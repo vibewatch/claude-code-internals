@@ -59,7 +59,7 @@ flowchart TD
 | Authentication and telemetry helpers | `apiKeyHelper`, `proxyAuthHelper`, `otelHeadersHelper` | Lets settings point to helper scripts for credentials/proxy auth and telemetry headers. |
 | Plugin/MCP config | `mcpServers`, plugin marketplaces, output styles, hooks | Integrations can be contributed through settings and plugins. |
 | IDE/Chrome/file resources | `--ide`, `--chrome`, `--file` | Adds editor/browser/file startup integration surfaces. |
-| Accessibility/recovery | `axScreenReader`, `--ax-screen-reader`, `--safe-mode` | Selects flat rendering or isolates broken customizations. |
+| Accessibility/recovery | `axScreenReader`, `--ax-screen-reader`, `--safe-mode` | Selects the [screen-reader-friendly classic renderer](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md) or enters [configuration-isolation recovery](../05-hosted-agent-ops/safe-mode-and-recovery.md). |
 | Workflow/model/version policy | `disableWorkflows`, `availableModels`, `enforceAvailableModels`, `requiredMinimumVersion`, `requiredMaximumVersion` | Constrains orchestration, model resolution, and allowed client builds. |
 | Corporate launch | `processWrapper`, `CLAUDE_CODE_PROCESS_WRAPPER` | Ensures background supervisors/workers and covered self-spawns use the configured launcher. |
 
@@ -75,7 +75,7 @@ This mirrors the broader trust-boundary pattern: helper script settings can exte
 
 ## Recovery, sideload, and process-launch boundaries
 
-`--safe-mode` sets `CLAUDE_CODE_SAFE_MODE=1` and disables `CLAUDE.md`, skills, plugins, hooks, MCP servers, custom commands/agents, output styles, workflows, custom themes, keybindings, and similar customizations. Managed policy still applies, and authentication, model selection, built-in tools, and permissions continue normally. This makes safe mode a configuration-isolation diagnostic, not a permission bypass.
+[`--safe-mode`](../05-hosted-agent-ops/safe-mode-and-recovery.md) sets `CLAUDE_CODE_SAFE_MODE=1` and disables `CLAUDE.md`, skills, plugins, hooks, MCP servers, custom commands/agents, output styles, workflows, custom themes, keybindings, and similar customizations. Managed policy still applies, and authentication, model selection, built-in tools, and permissions continue normally. This makes safe mode a configuration-isolation diagnostic, not a permission bypass.
 
 Managed `disableSideloadFlags` closes CLI-only extension paths by rejecting `--plugin-dir`, `--plugin-url`, `--agents`, and non-SDK `--mcp-config` at startup. Approved marketplaces/settings remain the intended deployment path.
 
@@ -86,6 +86,8 @@ Claude in Chrome is a first-class integration in this build (`--chrome` / `--no-
 ## Related docs
 
 - [Settings schema reference](settings-schema-reference.md)
+- [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md)
+- [Safe mode and recovery](../05-hosted-agent-ops/safe-mode-and-recovery.md)
 - [Environment variables reference](../05-hosted-agent-ops/environment-variables-reference.md)
 - [Telemetry and tracing](../05-hosted-agent-ops/telemetry-and-tracing.md)
 - [Prompt, context, and memory](../02-context-model-loop/prompt-context-memory.md)

@@ -29,7 +29,7 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | IdeIntegrationFlag | `--ide` | Auto-connect IDE integration flag. |
 | ChromeIntegrationFlag | `--chrome` | Chrome integration flag. |
 | StartupFileResourceFlag | `--file <specs...>` | Startup file-resource download integration. |
-| AccessibilitySetting | `axScreenReader` | Selects flat text without decorative borders or animations; env/CLI take precedence. |
+| AccessibilitySetting | `axScreenReader` | Selects the [screen-reader-friendly classic renderer](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md); env/CLI take precedence. |
 | AutoModeShellSetting | `autoMode.classifyAllShell` | Routes all Bash/PowerShell commands through the auto-mode classifier. |
 | WorkflowSettings | `enableWorkflows`, `disableWorkflows`, `workflowKeywordTriggerEnabled`, `workflowSizeGuideline` | Enables workflows, controls the `ultracode` trigger, and advises default fan-out size. |
 | SandboxCredentialPolicy | `sandbox.credentials` | Protects credential files and environment variables inside sandboxed subprocesses. |
@@ -67,7 +67,7 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | Prompt/context | system prompt, append prompt, output styles, memory/context exclusions | Shapes model-visible context and prompt assembly. | [Prompt, context, and memory](../02-context-model-loop/prompt-context-memory.md) |
 | Integrations | `--ide`, `--chrome`, `--file` plus integration settings | Adds editor/browser/file-resource integration surfaces. | [Settings, policy, and integrations](settings-policy-and-integrations.md) |
 | Sandbox/runtime behavior | sandbox mode, ignore-file behavior, tool-specific safety switches | Constrains process/file/network access after permission approval. | [Sandbox and isolation](sandbox-and-isolation.md) |
-| Accessibility/UI | `axScreenReader`, `wheelScrollAccelerationEnabled`, `vimInsertModeRemaps` | Selects accessible rendering and terminal input behavior. | [Command-line reference](../01-runtime-lifecycle/command-line-reference.md) |
+| Accessibility/UI | `axScreenReader`, `wheelScrollAccelerationEnabled`, `vimInsertModeRemaps` | Selects accessible rendering and terminal input behavior. | [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md) |
 | Permission defaults/auto mode | `permissions.defaultMode`, `autoMode.classifyAllShell` | `manual` aliases historical `default`; auto mode can classify every shell command. | [Built-in tools and permissions](built-in-tools-and-permissions.md) |
 | Workflows | `enableWorkflows`, `disableWorkflows`, `workflowKeywordTriggerEnabled`, global `workflowSizeGuideline` | Controls feature availability, `ultracode` keyword opt-in, and advisory workflow size. | [Dynamic workflows](../06-agents-automation/dynamic-workflows.md) |
 | Memory | `autoMemoryDirectory` | Sets the auto-memory directory; project settings are ignored for this key. | [Prompt, context, and memory](../02-context-model-loop/prompt-context-memory.md) |
@@ -114,6 +114,8 @@ When adding new settings detail, prefer this ownership split:
 ## Related docs
 
 - [Settings, policy, and integrations](settings-policy-and-integrations.md)
+- [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md)
+- [Safe mode and recovery](../05-hosted-agent-ops/safe-mode-and-recovery.md)
 - [Tool inventory and schemas](tool-inventory-and-schemas.md)
 - [Hooks and events reference](hooks-and-events-reference.md)
 - [MCP, plugins, and hooks](mcp-plugins-hooks.md)

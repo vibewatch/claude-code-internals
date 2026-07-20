@@ -35,6 +35,9 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | DisableCronEnv | `CLAUDE_CODE_DISABLE_CRON` | Cron/scheduled-task kill switch. |
 | SafeModeEnv | `CLAUDE_CODE_SAFE_MODE` | Disables customizations for recovery startup. |
 | ScreenReaderEnv | `CLAUDE_AX_SCREEN_READER` | Forces screen-reader-friendly flat rendering. |
+| AttachedProjectEnv | `CLAUDE_PROJECT_UUID` | Host-provided ID of the claude.ai Project attached to this session. |
+| DisableArtifactEnv | `CLAUDE_CODE_DISABLE_ARTIFACT` | Hard-disables the hosted Artifact tool. |
+| DesignOAuthClientEnv | `CLAUDE_CODE_DESIGN_OAUTH_CLIENT_ID` | Overrides the registered OAuth client used by `/design-login`. |
 | SubagentLimitEnv | `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | Session-wide agent spawn budget (default 200). |
 | WebSearchLimitEnv | `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` | Session-wide WebSearch budget (default 200). |
 
@@ -104,13 +107,21 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | `CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS` | Changes/disables the foreground duration before a long MCP call becomes a background task. | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
 | `CLAUDE_CODE_PROCESS_WRAPPER` | Corporate launcher prefix for the background supervisor/workers and covered self-spawns. | [Daemon and background service](../01-runtime-lifecycle/daemon-and-background-service.md) |
 
+## Hosted projects, artifacts, and design
+
+| Variable | Effect | Owner |
+|---|---|---|
+| `CLAUDE_PROJECT_UUID` | Binds the session to one claude.ai Project; without it the `Projects` tool is hidden. Usually supplied by the host rather than typed manually. | [Hosted Projects and knowledge](../04-sessions-persistence-remote/hosted-projects-and-knowledge.md) |
+| `CLAUDE_CODE_DISABLE_ARTIFACT` | Hard-disables Artifact eligibility before account, policy, preference, or feature gates are evaluated. | [Artifact publishing and live pages](../03-tools-integrations-security/artifact-publishing-and-live-pages.md) |
+| `CLAUDE_CODE_DESIGN_OAUTH_CLIENT_ID` | Selects the OAuth client used for the separate design credential flow. | [Claude Design and design-system sync](../03-tools-integrations-security/claude-design-and-design-sync.md) |
+
 ## Feature, context, UI, and update gates
 
 | Variable | Effect | Owner |
 |---|---|---|
 | `CLAUDE_CODE_DISABLE_CRON` | Disables scheduled tasks / Kairos cron paths. | [Agent runtime, scheduling, and completion](../06-agents-automation/agent-runtime-scheduling-and-completion.md) |
-| `CLAUDE_CODE_SAFE_MODE` | Environment equivalent of `--safe-mode`; disables user/project customizations but not managed policy. | [Settings, policy, and integrations](../03-tools-integrations-security/settings-policy-and-integrations.md) |
-| `CLAUDE_AX_SCREEN_READER` | Overrides the `axScreenReader` setting and `--ax-screen-reader` selection. | [Command-line reference](../01-runtime-lifecycle/command-line-reference.md) |
+| `CLAUDE_CODE_SAFE_MODE` | Environment equivalent of `--safe-mode`; disables user/project customizations but not managed policy. | [Safe mode and recovery](safe-mode-and-recovery.md) |
+| `CLAUDE_AX_SCREEN_READER` | Overrides the `axScreenReader` setting and `--ax-screen-reader` selection. | [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md) |
 | `CLAUDE_CODE_DISABLE_MOUSE_CLICKS` | Disables click/drag/hover while retaining wheel scrolling. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_CLIENT_PRESENCE_FILE` | Marker file that suppresses mobile push notifications while the user is present at the machine. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_ENABLE_STREAM_WATCHDOG` | Enables/disables the provider stream idle watchdog (enabled by default in this build). | [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md) |
@@ -139,6 +150,8 @@ This page centralizes environment variables visible in the analyzed runtime and 
 - [Telemetry and tracing](telemetry-and-tracing.md)
 - [Feature gates reference](feature-gates-reference.md)
 - [Updater and doctor](updater-and-doctor.md)
+- [Safe mode and recovery](safe-mode-and-recovery.md)
+- [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md)
 - [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md)
 - [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md)
 - [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md)

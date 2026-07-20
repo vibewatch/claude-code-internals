@@ -21,6 +21,9 @@ Use [Telemetry and tracing](telemetry-and-tracing.md) for telemetry/export behav
 | WorkflowGates | `enableWorkflows`, `disableWorkflows`, `CLAUDE_CODE_DISABLE_WORKFLOWS`, `allow_workflows` | User, managed, environment, and organization workflow gates. |
 | SafeModeGate | `--safe-mode`, `CLAUDE_CODE_SAFE_MODE` | Hard-disables customizations for diagnostics. |
 | ScreenReaderGate | `--ax-screen-reader`, `CLAUDE_AX_SCREEN_READER`, `axScreenReader`, `tengu_ax_screen_reader` | CLI/env/settings/feature selection for accessible flat rendering. |
+| ProjectsGates | `allow_projects_tool`, `CLAUDE_PROJECT_UUID` | Requires organization permission and a host-attached Project. |
+| ArtifactGates | `CLAUDE_CODE_DISABLE_ARTIFACT`, `disableArtifact`, `enableArtifact`, `allow_cobalt_plinth`, `tengu_cobalt_plinth` | Combines hard disable, preference, policy, account, and rollout checks. |
+| DesignGates | `allow_design_sync`, `tengu_omelette_fouet`, `tengu_slate_quill` | Controls collaborative design and fixed-schema design-system sync exposure. |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -65,13 +68,14 @@ The table groups source-visible keys by nearby behavior. It does **not** claim e
 | Scheduled tasks / Kairos cron | `tengu_kairos_cron`, `tengu_kairos_cron_durable`, `tengu_kairos_loop_dynamic`, `tengu_kairos_loop_persistent`, `tengu_kairos_loop_prompt`, `tengu_kairos_push_notifications`, `tengu_kairos_input_needed_push`, `CLAUDE_CODE_DISABLE_CRON` | Cron/scheduled prompt feature family and autonomous-loop behavior. |
 | Agents / background agents | `tengu_auto_background_agents`, `tengu_agent_list_attach`, `tengu_mcp_subagent_prompt`, `tengu_slim_subagent_claudemd`, `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`, `CLAUDE_CODE_DISABLE_AGENT_VIEW` | Agent UI, background agents, subagent prompt/context behavior. |
 | Dynamic workflows | `enableWorkflows`, `disableWorkflows`, `workflowKeywordTriggerEnabled`, `CLAUDE_CODE_DISABLE_WORKFLOWS`, `CLAUDE_CODE_WORKFLOWS`, org `allow_workflows` | Workflow availability, keyword opt-in, and policy enforcement. |
+| Hosted projects/artifacts/design | `allow_projects_tool`, `CLAUDE_PROJECT_UUID`, `CLAUDE_CODE_DISABLE_ARTIFACT`, `allow_cobalt_plinth`, `tengu_cobalt_plinth`, `allow_design_sync`, `tengu_omelette_fouet`, `tengu_slate_quill` | Attached Project knowledge, hosted page publication, collaborative design, and design-system synchronization. |
 | Auto-mode / permission automation | `tengu_auto_mode_config`, `tengu_disable_bypass_permissions_mode`, `tengu_auto_notice_once`, policy `defaultMode=auto` | Auto-mode defaults, consent, permission automation. |
 | Tool/runtime security | `tengu_streaming_tool_execution2`, `tengu_harbor_permissions`, `tengu_destructive_command_warning`, `tengu_bash_allowlist_strip_all`, `CLAUDE_CODE_DISABLE_ADVISOR_TOOL`, `CLAUDE_CODE_ENABLE_EXPERIMENTAL_ADVISOR_TOOL` | Tool execution mode, warnings, advisory/permission behavior. |
 | MCP/plugins/skills | `tengu_mcp_directory_visibility`, `tengu_mcp_directory_bff`, `tengu_mcp_singleton_unwrap`, `tengu_skills_dashboard_enabled`, `tengu_plugin_official_mkt_git_fallback`, `CLAUDE_CODE_PLUGIN_PREFER_HTTPS`, `CLAUDE_CODE_PLUGIN_USE_ZIP_CACHE`, `CLAUDE_CODE_SYNC_PLUGIN_INSTALL`, `CLAUDE_CODE_ENABLE_XAA` | MCP discovery, plugin install/update, skills UI, and cross-app OAuth. |
 | Context/model behavior | `CLAUDE_CODE_DISABLE_1M_CONTEXT`, `DISABLE_COMPACT`, `DISABLE_INTERLEAVED_THINKING`, `USE_API_CONTEXT_MANAGEMENT`, `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS`, `tengu_prompt_cache_1h_config`, `tengu_prompt_cache_diagnostics` | Context window, compaction, thinking, prompt cache, beta flags. |
 | Web/search/fetch adjacent | `tengu_tool_search_unsupported_models`, `/api/web/domain_info?domain=` | Web/domain metadata and model support guardrails. |
-| UI/terminal behavior | `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN`, `CLAUDE_CODE_NO_FLICKER`, `CLAUDE_CODE_DISABLE_MOUSE`, `CLAUDE_CODE_DISABLE_MOUSE_CLICKS`, `CLAUDE_CODE_FORCE_SYNC_OUTPUT`, `CLAUDE_AX_SCREEN_READER`, `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` | Terminal rendering, pointer, and accessibility behavior. |
-| Recovery/corporate launch | `CLAUDE_CODE_SAFE_MODE`, `disableSideloadFlags`, `processWrapper`, `CLAUDE_CODE_PROCESS_WRAPPER` | Configuration isolation, extension sideload policy, and required launch wrappers. |
+| UI/terminal behavior | `CLAUDE_CODE_DISABLE_ALTERNATE_SCREEN`, `CLAUDE_CODE_NO_FLICKER`, `CLAUDE_CODE_DISABLE_MOUSE`, `CLAUDE_CODE_DISABLE_MOUSE_CLICKS`, `CLAUDE_CODE_FORCE_SYNC_OUTPUT`, `CLAUDE_AX_SCREEN_READER`, `CLAUDE_CODE_DISABLE_TERMINAL_TITLE` | Terminal rendering, pointer, and [screen-reader behavior](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md). |
+| Recovery/corporate launch | `CLAUDE_CODE_SAFE_MODE`, `disableSideloadFlags`, `processWrapper`, `CLAUDE_CODE_PROCESS_WRAPPER` | [Configuration isolation](safe-mode-and-recovery.md), extension sideload policy, and required launch wrappers. |
 | Updates | `DISABLE_UPDATES`, `DISABLE_AUTOUPDATER`, `FORCE_AUTOUPDATE_PLUGINS`, `auto-update` settings | Native/plugin updater behavior. |
 | Telemetry/diagnostics | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `DISABLE_TELEMETRY`, `DO_NOT_TRACK`, `DISABLE_ERROR_REPORTING`, `DISABLE_GROWTHBOOK`, `OTEL_LOG_TOOL_DETAILS`, `OTEL_LOG_TOOL_CONTENT`, `OTEL_LOG_USER_PROMPTS` | Observability, analytics, error reporting, feature-evaluation fetching. |
 
@@ -267,5 +271,10 @@ The practical outcomes:
 - [Telemetry and tracing](telemetry-and-tracing.md)
 - [Diagnostics and debug logs](diagnostics-and-debug-logs.md)
 - [Environment variables reference](environment-variables-reference.md)
+- [Safe mode and recovery](safe-mode-and-recovery.md)
+- [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md)
+- [Hosted Projects and knowledge](../04-sessions-persistence-remote/hosted-projects-and-knowledge.md)
+- [Artifact publishing and live pages](../03-tools-integrations-security/artifact-publishing-and-live-pages.md)
+- [Claude Design and design-system sync](../03-tools-integrations-security/claude-design-and-design-sync.md)
 - [Agent runtime, scheduling, and completion](../06-agents-automation/agent-runtime-scheduling-and-completion.md)
 - [Operations and native-support architecture](architecture.md)
