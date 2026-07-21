@@ -9,6 +9,9 @@ This page documents slash-command and automation surfaces that complement the ag
 | PluginSlashCommandSchema | `slash command name` | Plugin schema surface for command files becoming slash commands. |
 | SkillSlashDispatch | `via Skill tool or slash command` | Skill dispatch can be triggered by slash commands. |
 | SkillShellExecutionPolicy | `Disable inline shell execution in skills and custom slash commands` | Policy boundary for slash-command shell execution. |
+| SkillShellPlaceholder | `[shell command execution disabled by policy]` | Literal replacement inserted for eligible fenced or inline shell forms when execution is disabled. |
+| ModelInvocationBoundary | `disableModelInvocation` | Excludes a skill from model/`Skill` invocation while preserving direct user invocation when otherwise enabled. |
+| UnknownCommandResult | `Unknown command: /...`, `Did you mean /...?` | Recognized unknown command names return locally without a model request. |
 | SlashCommandKeybindings | `command:help`, `command:compact` | Keybinding action can execute slash commands. |
 | PermissionsSlashCommandHint | `/permissions to manage` | Runtime UX string pointing to permission slash command. |
 | DoctorSlashDiagnosticSurface | `/doctor diagnostics screen` | Slash/UI diagnostic surface. |
@@ -51,6 +54,14 @@ flowchart TD
     Runtime --> Tools[Tool/permission paths]
     Policy[disableSkillShellExecution] --> Slash
 ```
+
+## Execution boundaries
+
+Managed `disableSkillShellExecution` does not reject the whole skill. For eligible user/project/plugin skill and legacy-command content, the runtime replaces `` ```! ... ``` `` fenced blocks and inline `` !`...` `` forms with the literal `[shell command execution disabled by policy]`; it does not run those commands or substitute their output. Policy-sourced skills are trusted separately and bypass this replacement branch, remaining on the normal permission-checked local shell-expansion path. MCP-served prompts neither execute local shell expansion nor receive the placeholder replacement.
+
+`disableModelInvocation` is a caller boundary, not a synonym for “disabled command.” It keeps the command out of model-visible Skill invocation and prevents workers/coordinators from invoking it through that path, while an otherwise enabled, user-invocable command can still run when the user types its slash command directly in the ordinary command path. Conversely, `user-invocable: false` blocks direct user execution and tells the user to ask Claude to use the skill.
+
+If a slash-shaped first token is syntactically command-like but resolves to no enabled command, dispatch returns `Unknown command: /name` locally with an edit-distance suggestion when available and sets `shouldQuery: false`; the model is not invoked. Inputs that fail command parsing in non-interactive mode, or slash-prefixed text that does not meet the command-like branch, can instead fall back to ordinary prompt handling.
 
 ## Auto-mode
 

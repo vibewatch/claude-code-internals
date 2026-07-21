@@ -32,14 +32,14 @@ flowchart TD
     Setup --> MCP[MCP runtime coordinator]
     MCP --> Runner[Headless runner]
     Runner --> Loop[Headless streaming/control loop]
-    Loop --> Result[text / json / stream-json result]
+    Loop --> Output[Text/JSON result or stream-JSON frame stream]
 ```
 
 ## Format and control surfaces
 
 | Surface | Runtime role |
 |---|---|
-| `--output-format text|json|stream-json` | Selects final/result framing. |
+| `--output-format text|json|stream-json` | Selects text/JSON result serialization or the multiplexed stream-JSON frame stream. |
 | `--input-format text|stream-json` | Selects prompt input framing. |
 | `--sdk-url <url>` | Requires stream-JSON input and output and connects to a remote SDK endpoint. |
 | `--include-partial-messages` | Emits partial message chunks for stream-JSON print mode. |
@@ -139,7 +139,7 @@ Rewind is therefore implemented as a standalone transcript/file-state operation,
 
 ### Headless outbound stream model
 
-`HeadlessControlLoop` starts by binding an outbound stream/channel. The outbound stream is not just model text — it multiplexes system state, auth, MCP, plugin, bridge, prompt-suggestion, task, and final result frames:
+`HeadlessControlLoop` starts by binding an outbound stream/channel. The outbound stream is not just model text — it multiplexes system state, auth, MCP, plugin, bridge, prompt-suggestion, task, and logical result frames:
 
 | Frame type or subtype | Meaning |
 |---|---|
@@ -152,7 +152,7 @@ Rewind is therefore implemented as a standalone transcript/file-state operation,
 | `prompt_suggestion` | Predicted next prompt can be emitted after a turn. |
 | `bridge_state` | Remote/SDK bridge state changes are surfaced. |
 | `control_response` | Responses to inbound control requests. |
-| `result` | Final run result, including success or error subtype. |
+| `result` | Logical turn/run result, including success or error subtype; it is not necessarily the last outbound frame. |
 
 ### Control-loop side channels
 
@@ -165,7 +165,7 @@ flowchart TD
     Loop --> Plugins[Sync plugin install]
     Loop --> Tasks[task_notification frames]
     Loop --> Suggestions[prompt_suggestion frames]
-    Loop --> Result[final result]
+    Loop --> Result[logical result]
 
     MCP --> Outbound
     Bridge --> Outbound
@@ -185,25 +185,28 @@ Important mechanics inside `HeadlessControlLoop`:
 
 ### Result and error model
 
-The result schema around line ~2004 differentiates normal results from structured error results. The error subtype enum includes `error_during_execution`, `error_max_turns`, `error_max_budget_usd`, and `error_max_structured_output_retries`, so headless callers can distinguish execution error, turn limit, budget limit, and structured-output retry exhaustion.
+The result schema near [`cli.renamed.js` line 941772](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L941772), with result construction near [lines 947627–947900](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L947627), differentiates normal results from structured error results. The error subtype enum includes `error_during_execution`, `error_max_turns`, `error_max_budget_usd`, and `error_max_structured_output_retries`, so headless callers can distinguish execution error, turn limit, budget limit, and structured-output retry exhaustion.
 
 ### Result holdback and queue draining
 
-A logical model result is not always written immediately. The print/control loop can hold the final `result` while background tasks, queued notifications, prompt suggestions, transcript-mirror work, or other outbound producers still have frames to publish. It drains those sources and emits the terminal result only when the ordering contract can be satisfied.
+A logical model result is not always written immediately, but holdback is narrower than a universal producer barrier. For ordinary queried turns, the print/control loop buffers `result` only when input is already closed and either `S8f()` finds a qualifying running task or `mei()` reports a pending notification wait. A `shouldQuery:false` result bypasses this holdback, and an ordinary result is also enqueued immediately when that closed-input predicate is false.
 
-This prevents a consumer from treating `result` as end-of-stream and dropping a task notification that was already in flight. It also means “the model turn finished” and “the transport is fully drained” are separate states.
+`j7a()` appends held results to a small buffer. After the command/background loop reaches its exit condition, `G7a()` flushes that buffer; if a prompt suggestion completed while the result was held, the pending suggestion is enqueued after the flushed result. When no result is held, asynchronous prompt-suggestion and other side-channel frames can likewise arrive after an immediately emitted result.
+
+The durable consumer rule is therefore: use `result` to observe the logical outcome, but use outbound iterator/stream closure to know that no more frames will arrive. “The model turn finished,” “a held result was released,” “loop-owned producers were finalized,” and “the SDK transport was cleaned up” are separate states.
 
 On an unexpected loop failure, the runtime constructs an `error_during_execution` result, writes/flushes the available terminal output, and then enters final cleanup. A crash does not intentionally skip result framing merely because non-model subscriptions were active.
 
-### Three cleanup layers
+### Four drain and cleanup layers
 
 | Layer | Owner | Confirmed responsibilities |
 |---|---|---|
-| Print/control-loop finalizer | `HeadlessControlLoop` | Unsubscribes auth/rate-limit/bridge listeners, stops task/suggestion/MCP/session side channels, drains or closes outbound state, and performs final notification/session cleanup. |
+| Print/control stream lifecycle | `runHeadlessStreamingForTesting()` | Drains queued commands and eligible background/notification work, flushes held results and pending suggestions, settles inflight suggestion and headless-bash work on input close, runs loop-owned cleanup including MCP clients, enqueues final notifications, then calls `W.done()`. |
+| Runner post-loop drains | `runHeadless()` | After consuming the outbound iterator, drains pending extraction work, flushes the async rewake hook, and gives synchronized-file work a bounded five-second drain. |
 | SDK query cleanup | `performCleanup()` and registered cleanup callbacks | Rejects every still-pending control request, clears correlation maps/listeners, and closes SDK transports/resources. The implementation is near [`cli.renamed.js` line 608462](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L608462). |
 | Subprocess transport shutdown | SDK subprocess transport | Closes stdin first, sends `SIGTERM`, waits up to five seconds, then sends `SIGKILL` if the child survives. |
 
-Pending control promises must be rejected during SDK cleanup; leaving them unresolved would make a host wait forever after the underlying transport has closed. Conversely, subprocess escalation is transport cleanup, not proof that the higher-level print loop drained successfully—each layer has its own completion contract.
+Pending control promises must be rejected during SDK cleanup; leaving them unresolved would make a host wait forever after the underlying transport has closed. Conversely, `W.done()`, runner post-loop drains, SDK query cleanup, and subprocess escalation are different ownership boundaries. Success at one layer is not proof that every later layer completed cleanly.
 
 ### Failure matrix
 
@@ -213,13 +216,14 @@ Pending control promises must be rejected during SDK cleanup; leaving them unres
 | Cancellation for a pending request | Targets the operation by `request_id`; completion still uses the correlated response/error path. |
 | Transport closes with pending requests | SDK cleanup rejects pending promises and clears them. |
 | Model/loop throws | Emits an `error_during_execution` result when possible, flushes output, then finalizes side channels. |
-| Background producer still active at logical completion | Holds back the final result until queued work/notifications are drained or cleanup resolves them. |
+| Input closes while a qualifying task or notification wait remains | Buffers the logical result, drains the command/background loop, then flushes the result. If the predicate is false, the result is emitted immediately. |
+| Consumer exits on the first `result` | Can miss later prompt-suggestion or other side-channel frames; stream closure is the no-more-frames boundary. |
 | SDK child ignores graceful shutdown | Escalates from stdin close to `SIGTERM`, then `SIGKILL` after five seconds. |
 
 ### Caveats
 
 - `HeadlessControlLoop` is large and minified. This section documents confirmed side channels and frame families, not every branch.
-- Some frame schemas are defined outside `HeadlessControlLoop` near line ~2004 and are included here only when the loop also emits or references the same frame family.
+- Some frame schemas are defined outside `HeadlessControlLoop` and are included here only when the loop also emits or references the same frame family.
 - `bridge_state` is source-confirmed in the loop near `cli.renamed.js:955774`; a low string-hit count is not evidence that the frame is absent.
 - The retained client establishes local draining and cleanup behavior. It does not prove how an arbitrary remote host persists or replays frames after its own transport fails.
 

@@ -36,6 +36,21 @@ flowchart TD
 | 3 | [`data/cli-module-themes.json`](data/cli-module-themes.json) | Which semantic modules matched each populated runtime/vendor theme? |
 | 4 | [`data/prompt-catalog.json`](data/prompt-catalog.json) | Which long literal prompts passed the domain/noise filter, with line/offset/hash provenance? |
 
+## Mechanism-question audits
+
+These ledgers record the question → source trace → documentation update → full reread loop for all 53 mechanism-explaining pages in the main wiki. Each page was asked at most ten questions per round, and each domain stopped only after a complete pass produced zero new questions answerable from the retained `2.1.215` artifacts.
+
+| Domain | Audit ledger | Pages | Final result |
+|---|---|---:|---|
+| Runtime and startup | [Runtime mechanism question audit](mechanism-question-audit-runtime.md) | 10 | Converged |
+| Context and model loop | [Context/model mechanism question audit](mechanism-question-audit-context-model.md) | 8 | Converged |
+| Tools, integrations, and security | [Tools/security mechanism question audit](mechanism-question-audit-tools-security.md) | 10 | Converged |
+| Sessions, persistence, and remote | [Sessions/remote mechanism question audit](mechanism-question-audit-sessions-remote.md) | 9 | Converged |
+| Operations and native support | [Operations/native mechanism question audit](mechanism-question-audit-operations-native.md) | 9 | Converged |
+| Agents and automation | [Agents/automation mechanism question audit](mechanism-question-audit-agents-automation.md) | 7 | Converged |
+
+“Converged” is artifact-bounded: server, unavailable native/bootstrap, runtime-only, and future-version questions remain explicitly listed as evidence limits rather than guessed answers.
+
 ## Promotion rules
 
 - Treat raw string hits as leads, not behavioral proof.
@@ -47,4 +62,10 @@ flowchart TD
 
 - [Start here](../00-start-here/README.md)
 - [Bundle module map from `cli.renamed.js`](module-map-from-renamed-cli.md)
+- [Runtime mechanism question audit](mechanism-question-audit-runtime.md)
+- [Context/model mechanism question audit](mechanism-question-audit-context-model.md)
+- [Tools/security mechanism question audit](mechanism-question-audit-tools-security.md)
+- [Sessions/remote mechanism question audit](mechanism-question-audit-sessions-remote.md)
+- [Operations/native mechanism question audit](mechanism-question-audit-operations-native.md)
+- [Agents/automation mechanism question audit](mechanism-question-audit-agents-automation.md)
 - [Full table of contents](../SUMMARY.md)

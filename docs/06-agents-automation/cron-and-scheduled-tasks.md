@@ -90,12 +90,12 @@ A scheduled task can later ask Claude to run a workflow, but scheduling alone is
 | `ScheduleWakeup` | Long prompt at `cli.renamed.js:t3H` — for `/loop` dynamic mode only; pins to `<<autonomous-loop-dynamic>>` for autonomous loops | Session-only (always) |
 | `RemoteTriggerTool` | At `cli.renamed.js:460745` (`triggerResponseSchema`) | Push-triggered, not scheduled |
 
-The off-minute guidance in `buildCronCreatePrompt` is the load-spreading rule: when the user says "around 9am" or "hourly", the model is told to pick `57 8 * * *` rather than `0 9 * * *`, so the fleet doesn't collide on the wall-clock minute boundary. The runtime adds a small deterministic jitter on top:
+The off-minute guidance in `buildCronCreatePrompt` is the load-spreading rule: when the user says "around 9am" or "hourly", the model is told to pick `57 8 * * *` rather than `0 9 * * *`, so the fleet doesn't collide on the wall-clock minute boundary. The runtime adds deterministic jitter on top:
 
-- Recurring tasks fire up to `recurringFrac` (default 10%) of their period late, capped at `recurringCapMs` (15 min).
+- Recurring tasks fire up to `recurringFrac` (default 50%) of their period late, capped at `recurringCapMs` (30 min).
 - One-shot tasks landing on `:00` or `:30` (`oneShotMinuteMod`) fire up to `oneShotMaxMs` (90 s) early.
 
-`getCronJitterConfig()` reads `tengu_kairos_cron_config` via `getFeatureValue_CACHED_WITH_REFRESH` and validates the result against a Zod schema; on validation failure it returns the hardcoded defaults `{recurringFrac: 0.1, recurringCapMs: 1800000, oneShotMaxMs: 90000, oneShotFloorMs: 0, oneShotMinuteMod: 30, recurringMaxAgeMs: 604800000, cacheLeadMs: 15000}`.
+`getCronJitterConfig()` reads `tengu_kairos_cron_config` via `getFeatureValue_CACHED_WITH_REFRESH` and validates the result against a Zod schema; on validation failure it returns the hardcoded defaults `{recurringFrac: 0.5, recurringCapMs: 1800000, oneShotMaxMs: 90000, oneShotFloorMs: 0, oneShotMinuteMod: 30, recurringMaxAgeMs: 604800000, cacheLeadMs: 15000}`.
 
 ## `/loop` dynamic mode
 
@@ -113,6 +113,8 @@ The off-minute guidance in `buildCronCreatePrompt` is the load-spreading rule: w
 8. Emits `tengu_loop_dynamic_wakeup_scheduled` with `chosen_delay_seconds`, `clamped_delay_seconds`, `was_clamped`, and (truncated) reason.
 
 When the user cancels the conversation, `FH8()` enumerates all loop-kind cron tasks in the session store, removes them via `removeSessionCronTasks(...)`, calls `deleteLoopChainStartedAt(...)` per prompt, and emits a `loop_cancel_all` analytic event.
+
+`ScheduleWakeup({stop: true})` has the same dynamic-loop scope: it removes pending session tasks whose `kind === "loop"`, clears dynamic chain/in-flight state, and suppresses a duplicate terminal event when the loop had already ended. It does **not** delete a fixed-interval `/loop`; that mode is stored as a recurring cron task and must be cancelled with `CronDelete`. Consequently, `cancelledWakeups: 0` can mean either that no dynamic wakeup was pending or that the caller is trying to stop the wrong loop mode.
 
 ### Autonomous-loop sentinels
 

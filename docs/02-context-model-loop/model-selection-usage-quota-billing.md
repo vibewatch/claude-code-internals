@@ -43,6 +43,9 @@ Scope: model aliases and precedence, main/helper/subagent/advisor/fallback model
 | UsageLimitMessage | `usage limit`, `extra usage spending limit` | User-visible limit/overage messages. |
 | BillingUpgradeGuidance | `hasBillingAccess`, `/extra-usage`, `/upgrade` | Billing/overage guidance in rate-limit UI. |
 | ApiUsageBillingStatus | `API Usage Billing` | Status-line billing type for API-key/console-style usage. |
+| ThirdPartyAvailabilityFallback | `checkBedrockDefaultAvailability()`, `checkVertexDefaultAvailability()`, `apply3PDefaultFallbacks()` | Startup probes provider-usable defaults and applies session defaults when current family heads are unavailable. |
+| ThirdPartyUpgradeCandidates | `findBedrockUpgradeCandidates()`, `findVertexUpgradeCandidates()` | Detects recognized stale same-tier environment pins and probes newer provider IDs. |
+| ThirdPartyUpgradeDialog | `ThirdPartyModelUpgradeDialog`, `bedrockDeclinedUpgrades`, `vertexDeclinedUpgrades` | Presents upgrades, persists accepted IDs, and suppresses previously declined from/to pairs. |
 
 ## Bundle module in `cli.renamed.js`
 
@@ -227,7 +230,7 @@ Headless `result` frames include `total_cost_usd`, `usage`, and `modelUsage`, so
 
 ## Budget guards
 
-The root flag `--max-budget-usd <amount>` is a print/headless budget guard. The headless loop checks `vW()>=maxBudgetUsd` after events and emits a final result with subtype `error_max_budget_usd` when exceeded.
+The root flag `--max-budget-usd <amount>` is a print/headless budget guard. The headless loop checks `vW()>=maxBudgetUsd` after events and emits a `result` frame with subtype `error_max_budget_usd` when exceeded.
 
 The emitted result contains:
 
@@ -299,13 +302,13 @@ This confirms that billing/quota handling is not just a raw API error. The CLI p
 - Cost is an estimate derived from known model pricing tables and response usage. `hasUnknownModelCost` exists because not every model can be priced by the local table.
 - `--fallback-model` is documented by the CLI as print-mode-only. Interactive model changes use `/model`, Remote Control `set_model`, or session state transitions rather than the fallback flag.
 
-## Third-party default availability and startup fallbacks
+## Third-party availability, startup fallbacks, and pin upgrades
 
-The current build does not implement the previously documented Bedrock/Vertex “upgrade candidate” map at the old `705680` range, nor does this path use Bedrock `ListFoundationModels`. Its startup concern is narrower: determine whether configured/default model families are callable on the selected third-party provider, then assign usable defaults when they are not.
+The current build implements two distinct third-party startup mechanisms. Availability fallback determines whether current family defaults are callable and substitutes usable defaults when necessary. A separate interactive stale-pin upgrade flow detects older recognized Bedrock or Vertex environment pins, probes the current same-tier provider ID, and offers to persist the upgrade. Neither path uses Bedrock `ListFoundationModels`.
 
 ### Accessibility probes
 
-Provider-specific probes near [`cli.renamed.js` lines 506675–507237](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L506675) create the provider client and issue a minimal `messages.create` request with `max_tokens:1`. These are capability/access checks, not meaningful model turns and not upgrade recommendations.
+Provider-specific probes near [`cli.renamed.js` lines 506381–507599](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L506381) create the provider client and issue a minimal `messages.create` request with `max_tokens:1`. These are capability/access checks, not meaningful model turns.
 
 The important result rule is:
 
@@ -319,6 +322,8 @@ The exact provider SDK may adapt the request into its native transport, but the 
 
 `apply3PDefaultFallbacks()` is exported near [`cli.renamed.js:507237`](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L507237) and invoked during startup near [`cli.renamed.js:933334`](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L933334). It uses the availability results to choose provider-usable family defaults before the normal loop begins.
 
+Bedrock and Vertex fallback searches prefer earlier callable entries in the same catalog tier. The Opus path can cross to a Sonnet default when no usable Opus candidate remains. Startup bounds the third-party probe phase rather than allowing model detection to block indefinitely.
+
 User-visible descriptions can explain the substitution, for example `Opus unavailable — using ...`. This is automatic **default-family fallback**, not the same feature as the ordered overload chain configured by `--fallback-model`:
 
 | Mechanism | Trigger | Lifetime |
@@ -327,13 +332,32 @@ User-visible descriptions can explain the substitution, for example `Opus unavai
 | `--fallback-model` chain | Repeated overload while executing a print/headless turn. | Temporarily advances candidates; the primary is retried on the next user turn. |
 | `/model` or explicit `--model` | User chooses a model. | Explicit selection remains subject to provider availability and organization policy. |
 
+### Interactive stale-pin upgrades
+
+`findBedrockUpgradeCandidates()` and `findVertexUpgradeCandidates()` inspect provider-specific family environment pins only for the active provider and only outside host-managed provider-auth mode. A candidate is produced when the configured value is a recognized older model in the same tier and the current provider default is newer and callable. Bedrock additionally ignores application-inference-profile strings, and both paths avoid treating runtime-written fallback values as user-authored stale pins. As with availability probing, HTTP `429` counts as evidence that the newer route is accessible.
+
+The shared `ThirdPartyModelUpgradeDialog` is called from the Bedrock and Vertex startup paths near [`cli.renamed.js` lines 936598–936782](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L936598). Its persistence behavior is:
+
+1. previously declined tier/from/to pairs in `bedrockDeclinedUpgrades` or `vertexDeclinedUpgrades` are not offered again;
+2. acceptance writes the provider-specific model ID into `userSettings.env`; a Haiku upgrade can update both `ANTHROPIC_DEFAULT_HAIKU_MODEL` and `ANTHROPIC_SMALL_FAST_MODEL`;
+3. the process environment is updated only after that settings write succeeds;
+4. a save failure is shown and does not request relaunch;
+5. declining records the specific upgrade key; and
+6. Claude Code relaunches only when at least one accepted upgrade was saved successfully.
+
+This is an explicit-pin migration aid, not automatic default fallback and not the overload fallback chain.
+
 ### Bedrock model discovery
 
 Bedrock's separate discovery path uses `ListInferenceProfiles` near [`cli.renamed.js:119465`](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L119465). Inference-profile enumeration helps map available Bedrock model/profile IDs; it is not evidence for the obsolete `ListFoundationModels` upgrade flow.
 
+### Mantle probe result
+
+Mantle uses a tri-state availability interpretation rather than the Bedrock/Vertex upgrade dialog. A successful request or HTTP `429` establishes accessibility; non-credential `400`, `403`, or `404` responses refute it; other failures remain unknown rather than being forced into an unavailable result.
+
 ### Evidence boundary
 
-The client establishes the one-token probe, 429 treatment, fallback application, and inference-profile discovery. Provider-side entitlement rules and the reason a deployment omits a model remain outside the retained artifact.
+The client establishes the one-token probes, 429 treatment, fallback application, stale-pin candidate and persistence flow, Mantle tri-state result, and inference-profile discovery. Provider-side entitlement rules and the reason a deployment omits a model remain outside the retained artifact.
 
 ## Related docs
 

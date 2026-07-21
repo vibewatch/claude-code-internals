@@ -18,6 +18,9 @@ This page centralizes observable session data models, transcript record families
 | TranscriptRestore | `async function f7o` | Transcript restore into the live envelope. |
 | TranscriptRecorder | `recordTranscript` | Durable transcript append/export surface. |
 | OrderedTranscriptStore | `class ROd`, `drainQueuesOnce` | Per-file queue that appends locally before emitting mirror frames. |
+| MetadataCheckpoint | `bytesSinceMetadataReAppend`, `LITE_READ_BUF_SIZE / 2` | Re-appends cached metadata after approximately 32 KiB of successful UTF-8 current-session writes. |
+| RelocatedRecord | `type:"relocated"`, `relocatedCwd` | Records the latest cwd after physical transcript relocation. |
+| CcrTipSidecar | `.ccr-tip.json`, `getValidatedCCRTip` | Best-effort CCR foreground-delta anchor validated against the local JSONL tail. |
 | FileHistorySnapshotRecorder | `recordFileHistorySnapshot` | File-history snapshot storage. |
 | ContextCollapseSnapshotRecorder | `recordContextCollapseSnapshot` | Context-collapse snapshot storage. |
 | EndedByModelRecorder | `markSessionEndedByModel`, `ended-by-model` | Durable marker that prevents resumed work in a model-ended conversation. |
@@ -41,7 +44,7 @@ This page centralizes observable session data models, transcript record families
 | Layer | Observable fields or records | Responsibility |
 |---|---|---|
 | Session identity | Local session UUID, JSONL filename, optional alias/name; optional hosted bridge ID in metadata. | Stable address for local state plus an explicit link to a distinct Remote Control object. |
-| Durable transcript | User/assistant messages, tool use/results, hook/event records, context-collapse and bridge records. | Ordered append and branch replay history for restore/continue/fork. |
+| Durable transcript | User/assistant messages, tool use/results, hook/event records, context-collapse and bridge records. | Append-oriented ordered history for restore/continue/fork; queued UUID removal can rewrite the file. |
 | Live envelope | Model state, cwd, permission mode, visible tools, hooks, agents/tasks, bridge state. | Process-time runtime state rebuilt from flags/settings/transcript. |
 | Metadata/index | Title/summary, cwd, git branch/tag, timestamps, alias records. | Session picker, latest-session discovery, and restore metadata. |
 | File/checkpoint state | File-history snapshots, leaf checkpoints, context-collapse snapshots. | Rewind and checkpoint restore. |
@@ -57,6 +60,7 @@ This page centralizes observable session data models, transcript record families
 | File-history records | Paths, snapshots, checkpoint IDs, restore metadata. | Rewind/checkpoint mechanics. |
 | Context-collapse records | Summary/replacement metadata, token-savings metadata, commit records. | Context compaction. |
 | Session-lifecycle records | `ended-by-model` with timestamp/session ID. | Conversation termination and resume guard. |
+| Relocation records | `relocated` with local `sessionId` and `relocatedCwd`. | Remembers the cwd associated with a physically moved transcript; it is not a commit record for the whole move. |
 | Sidechain/subagent records | Parent session ID, task/subagent transcript linkage, optional `observer-ref`. | Agent/task and observer runtime. |
 | Queue/control records | Pending task/control operations and bridge messages. | SDK/remote/task control plane. |
 | Remote Control linkage | `bridge-session` with local `sessionId`, `bridgeSessionId`, `lastSequenceNum`, optional `declaredDialogKinds`, optional `sessionGroupingId`. | Reattaches a non-fork local resume to a distinct hosted bridge and its replay cursor. |
@@ -72,18 +76,39 @@ Neither record is an ordinary model message. `ENTRY_APPEND_POLICY` stores `ended
 
 ### `bridge-session` record
 
-The record is append-only metadata; the loader takes later values for a local `sessionId`.
+The record is append-oriented metadata; the loader takes later values for a local `sessionId`. `saveBridgeSession()` updates the current session's in-memory bridge fields immediately but queues this record only when the main transcript store already has a materialized session file. Later metadata re-append can persist those cached fields after materialization. The wider transcript is not strictly append-only because queued UUID removal can truncate or rewrite it.
 
 | Field | Meaning |
 |---|---|
 | `type: "bridge-session"` | Record discriminator. |
 | `sessionId` | Local session UUID whose transcript contains the link. |
 | `bridgeSessionId` | Hosted Remote Control bridge ID; an empty string is the clear/tombstone value. |
-| `lastSequenceNum` | Last accepted bridge sequence used for replay on reattach; clear writes `0`. |
+| `lastSequenceNum` | Highest numeric worker-SSE ID received so far, used as the reattach cursor; it can advance before payload parsing/filtering/handling, and clear writes `0`. |
 | `declaredDialogKinds?` | Last non-empty set of dialog kinds declared by the bridge. |
 | `sessionGroupingId?` | Optional hosted grouping identity, parsed into `bridgeSessionGroupingId` on intermediate log objects. |
 
 Metadata re-append preserves the current in-memory bridge fields near the transcript tail. A clear/tombstone record writes an empty bridge ID and sequence `0`; because it omits dialog/grouping fields, the parser deletes their prior values too. Ordinary `loadConversationForResume()` returns bridge ID, sequence, and dialog kinds but omits the parsed `bridgeSessionGroupingId`. Its non-fork CLI restore therefore does not rehydrate grouping through this path, while a CLI fork explicitly clears the returned ID, sequence, and dialog kinds. The fork does not write a grouping tombstone to the original transcript.
+
+### `relocated` record and `.ccr-tip.json` sidecar
+
+`relocateSessionTranscript()` best-effort appends this metadata after moving the main file, and metadata checkpointing can repeat it near the tail:
+
+| Field | Meaning |
+|---|---|
+| `type: "relocated"` | Record discriminator. |
+| `sessionId` | Local session whose transcript path changed. |
+| `relocatedCwd` | Original/current cwd retained for later discovery and resume. |
+
+The record says which cwd the active store selected; it is not a transaction marker proving that the sibling session directory or task-output symlinks moved successfully.
+
+CCR v2 uses a separate mode-`0600` sibling sidecar:
+
+| Field | Meaning |
+|---|---|
+| `eventId` | Latest foreground internal-event anchor selected after hydration, or the UUID of the latest foreground synced payload in an acknowledged outgoing batch. |
+| `updatedAt` | ISO timestamp of the sidecar update. |
+
+The writer uses a temporary file plus rename with a copy fallback, but failure is logged and ignored. Delta hydration validates `eventId` against UUIDs visible in the local transcript's last 64 KiB; missing/stale/incoherent state falls back instead of trusting the sidecar. JSONL and sidecar updates are not atomic together, and subagent hydration does not maintain one sidecar per agent.
 
 ## Stream and control frame families
 
@@ -127,26 +152,31 @@ Remote Control frame detail remains feature-gate and transport dependent. Consum
 
 ### Sequence and reconnect notes
 
-- Remote Control worker SSE sends both `from_sequence_num` and `Last-Event-ID`, advances a monotonic local cursor for numeric IDs, and suppresses recently seen duplicate sequence numbers. That cursor is the value persisted in `bridge-session`.
+- Remote Control worker SSE sends both `from_sequence_num` and `Last-Event-ID`. It parses the SSE `id` with base-10 `parseInt`, ignores wholly nonnumeric IDs, and advances a monotonic cursor for a larger parsed value before JSON parsing, attestation filtering, or application handling. `seenSequenceNums` logs repeats but does not suppress dispatch; after its size exceeds 1,000 it prunes values below `lastSequenceNum - 200`, which is a heuristic retention rule rather than a strict capacity bound.
+- Separate fixed-capacity UUID rings suppress echoes of envelopes recorded at send attempt, duplicate outbound SDK events, and redelivered inbound `user` envelopes recorded once their type is accepted. These insertions do not prove upload acknowledgement or successful completion of the inbound callback. After the upstream event/attestation filter drops worker-sourced `control_request` frames, eligible `control_request` and `control_response` payloads route before the main-envelope UUID checks; other non-user ingress is ignored. This is message-type-specific application filtering, not numeric transport deduplication.
+- `bridge-session` stores a lifecycle snapshot of the transport cursor rather than a per-frame commit log. The visible background-job state path snapshots `bridgeSessionSeq` during rendezvous shutdown and reuses it on respawn; it does not durably update the job after every SSE frame.
 - Hosted `--remote` uses a separate `SessionsV2Client`. It also resumes by sequence, stops after five reconnect attempts, and surfaces `catch_up_truncated` when the server cannot provide a complete catch-up range.
 - Direct Connect and the Chrome browser-tool `BridgeClient` do not share this persisted transcript cursor. Direct Connect has no source-visible reconnect loop.
 - These fields and client rules do not prove server-side exactly-once delivery, replay retention length, or compatibility across versions.
 
 ### Persistence ordering note
 
-The main store serializes queued drains in-process and preserves record order for one target file. Each chunk is appended locally before mirror callbacks run; a failed append logs/telemeters the failure, resolves the remaining batch waiters, and does not emit that chunk to mirrors. External SDK storage is a later batched/retried stage and cannot roll back local JSONL. No cross-process lock or atomic multi-line transaction is visible.
+The main store serializes queued drains in-process and preserves record/removal order for one target file. Its timer is normally 100 ms and becomes 10 ms after legacy remote ingress or an internal CCR writer is registered; clearing the writer does not reset it. `MAX_CHUNK_BYTES = 104857600` is checked against accumulated serialized JavaScript string length before adding the next entry, so it is a flush threshold rather than a byte-accurate cap and one record can exceed it. Each append chunk is written locally before SDK mirror callbacks run; a failed append logs/telemeters the failure, resolves the remaining batch waiters, and does not emit that chunk to mirrors. The process-local UUID cache is updated at enqueue time, so a same-UUID retry can still be suppressed after such a failure. UUID removal can truncate/rewrite local JSONL and emits no corresponding mirror deletion or UUID-cache eviction. Remote Control internal-CCR persistence is a separate path invoked after enqueue rather than after successful local append. External SDK storage is a later batched/retried stage and cannot roll back local JSONL. No cross-process lock or atomic multi-line transaction is visible.
+
+After 32,768 bytes of successful UTF-8 appends to the active main file, the drain best-effort re-appends cached metadata and mirrors those records. This checkpoint uses cached bridge fields; it is not evidence that `lastSequenceNum` was sampled after every worker-SSE frame.
 
 ## Remote/session storage areas
 
 | Storage area | Evidence | What is stored |
 |---|---|---|
-| Project/session transcripts | `projects`, `` `${sessionId}.jsonl` ``, `recordTranscript` | Append-only JSONL transcript and session records. |
+| Project/session transcripts | `projects`, `` `${sessionId}.jsonl` ``, `recordTranscript` | Append-oriented JSONL transcript and session records, with queued UUID-removal rewrites. |
 | Session metadata/index | `listSessions`, `getSessionInfo`, alias/metadata restore helpers | Picker/latest-session metadata. |
 | File history/checkpoints | `recordFileHistorySnapshot`, checkpoint/rewind surfaces | Snapshots used for rewind and restore. |
 | Context-collapse data | `recordContextCollapseSnapshot`, collapse commit/replacement records | Compaction metadata and summary replacement records. |
 | Sidechain/subagent transcripts | sidechain/subagent transcript loaders | Subagent/task history separate from the main transcript view. |
 | Lifecycle pointers | `ended-by-model`, `observer-ref`, `readLastObserverRef` | Durable termination state and observer reattachment metadata. |
 | Remote metadata | remote-agent and bridge-session metadata helpers | Remote/bridge/agent metadata linked to a local session. |
+| CCR delta anchor | `.ccr-tip.json` beside the main JSONL | Best-effort foreground internal-event resume anchor plus update timestamp. |
 | Queues | queue operation records and task message handling | Pending task/control messages. |
 | Debug/ops logs | debug log env vars and `latest` symlink | Operational logs outside the transcript. |
 

@@ -26,6 +26,8 @@ It complements [Agents, tasks, and subagents](agents-tasks-and-subagents.md), [S
 | TaskListTool | `TaskList` | Task listing tool constant. |
 | TaskUpdateTool | `TaskUpdate` | Task update tool constant/request family. |
 | TaskUpdateWaiter | `_waitForTaskUpdate` | Blocking wait path used by `TaskGet`. |
+| TaskPollInterval | `task.pollInterval ?? defaultTaskPollInterval ?? 1000` | Task-result waits poll every 1 second by default; a task-level interval can override it. |
+| TaskQueueCleanup | `_clearTaskQueue`, `Task cancelled or completed` | Terminal-result and cancellation paths start asynchronous cleanup of residual messages and queued request resolvers. |
 | TaskTerminalStatusPredicate | `function R5H(H){return H==="completed"||H==="failed"||H==="cancelled"}` | SDK/task protocol terminal-status predicate. |
 | TerminalTaskCancelGuard | `Cannot cancel task in terminal status` | Cancellation is rejected for terminal tasks. |
 | TaskStartedFrame | `task_started` | Runtime task registration stream frame. |
@@ -99,10 +101,11 @@ sequenceDiagram
     TaskTool->>Queue: drain queued messages
     TaskTool->>Store: read task status
     alt non-terminal
-        TaskTool->>Store: _waitForTaskUpdate
-        Store-->>TaskTool: wake on update
+        TaskTool->>TaskTool: _waitForTaskUpdate poll delay
+        TaskTool->>Store: read task status again
     else terminal
         TaskTool->>Store: getTaskResult
+        TaskTool-->>Queue: start _clearTaskQueue (not awaited)
         TaskTool-->>Model: result + taskId metadata
     end
 ```
@@ -112,8 +115,8 @@ sequenceDiagram
 | `TaskCreate` | Creates a structured task with `pending` status and metadata; source prompt says to use it for complex multi-step work and plan mode. |
 | `TaskUpdate` | Updates status/description/owner/dependencies/metadata; runtime emits patch-style `task_updated` frames. |
 | `TaskList` | Lists current tasks with cursor support. |
-| `TaskGet` | Retrieves a task; if non-terminal, drains queued messages and waits for updates until terminal. |
-| Task message queue | Carries response/error/progress messages related to a task, then clears when the terminal result is returned. |
+| `TaskGet` | Retrieves a task; if non-terminal, drains queued messages and polls for updates until terminal. The default poll interval is 1 second, overridden by the task's `pollInterval` when present. |
+| Task message queue | Carries response/error/progress messages related to a task. Terminal result retrieval and cancellation both invoke asynchronous cleanup without awaiting it before returning; cleanup drains residual messages and rejects queued request resolvers with `Task cancelled or completed`. |
 | Stream frames | `task_started`, `task_updated`, `task_progress`, `task_notification` let UIs/SDK hosts display progress without polling raw files. |
 | Hooks | `TaskCreated` and `TaskCompleted` are hook events; `SubagentStart`/`SubagentStop` are separate context lifecycle events. |
 
@@ -133,6 +136,8 @@ There are several completion signals, depending on the layer.
 | Scheduled recurring task | `lastFiredAt` persisted; task expires if aged out | `isRecurringTaskAged`, `tengu_scheduled_task_expired`. |
 
 The hidden footgun is that **task completion and subagent completion are not identical**. A subagent can stop, a task record can complete, and a remote/host command can acknowledge completion through different frames.
+
+Terminal status is not, by itself, the internal registry's eviction signal. A task must also have produced its terminal notification, after which retention/grace checks apply. Active keepalive ownership defers eviction, and workflows may supply their own `evictAfter` deadline. This lets the runtime preserve a completed task long enough to deliver its result without treating terminal work as permanently live.
 
 ## Scheduling patterns
 

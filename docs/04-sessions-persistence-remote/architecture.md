@@ -38,8 +38,12 @@ A local session is a **two-layer object**: a durable transcript layer (`local-js
 | TranscriptMirrorFrame | `transcript_mirror` | Carries entries to SDK/host mirror listeners only after the corresponding local append succeeds. |
 | SessionStateFrame | `session_state_changed` | Idle/running/requires_action frame attached to the envelope. |
 | RemotePermissionBridge | `createCanUseTool` | Permission bridge wired into remote/SDK transports. |
-| OrderedTranscriptStore | `class ROd`, `drainQueuesOnce` | Per-file append queues serialize batches and emit mirrors only after a successful local append. |
-| BridgeResumeMetadata | `saveBridgeSession`, `lastSequenceNum` | Persists the hosted bridge ID and replay cursor in the local transcript. |
+| OrderedTranscriptStore | `class ROd`, `drainQueuesOnce` | Per-file queues serialize append batches and UUID removals; SDK mirrors are emitted only after a successful local append. |
+| MetadataCheckpoint | `bytesSinceMetadataReAppend`, `LITE_READ_BUF_SIZE / 2` | Re-appends cached current-session metadata after approximately 32 KiB of successful UTF-8 main-transcript writes. |
+| TranscriptRelocation | `relocateSessionTranscript`, `beginTranscriptRelocation`, `mOd`, `cOd` | Globally buffers `ROd` entries and buffers auxiliary appends addressed to the exact old main JSONL while moving the main transcript and associated session directory. |
+| RemoteHydration | `hydrateRemoteSession`, `hydrateFromCCRv2InternalEvents`, `.ccr-tip.json` | Reconciles server internal events into local JSONL by guarded replacement or an anchored delta. |
+| PersistenceBackfill | `Epf`, `bpf`, `onTransportPersistenceReady` | Compares server UUIDs with local foreground/subagent suffixes and starts queuing missing local records before installing the live CCR writer. |
+| BridgeResumeMetadata | `saveBridgeSession`, `lastSequenceNum` | Caches the hosted bridge ID and highest received numeric worker-SSE ID in memory; when the current transcript is materialized, queues a `bridge-session` append. |
 | TranscriptRetentionSweep | `cleanupPeriodDays`, `async function kIp()` | Setting plus executable `mtime`-based cleanup sweep. |
 | RetentionHousekeeping | `startBackgroundHousekeeping`, `.last-cleanup` | Process-local startup scheduler for transcript heartbeats and deferred retention work. |
 
@@ -131,7 +135,7 @@ flowchart TD
 ## Design decisions
 
 1. **The local UUID is canonical for local state, not every remote object.** `${sessionId}.jsonl` addresses the local transcript. Remote Control additionally persists a bridge-session ID and last sequence number; hosted sessions have service IDs that may later be teleported into a local session.
-2. **Durable layer is ordered JSONL, not a database.** `ROd` maintains per-file queues, drains them through a serialized chain, and batches records up to a large chunk cap. This establishes order within one process/file queue; the artifact exposes no cross-process file lock or transaction protocol.
+2. **Durable layer is append-oriented ordered JSONL, not a database.** `ROd` maintains per-file queues and drains them through a serialized chain. Its 100 MiB constant is a flush threshold over accumulated serialized JavaScript string length, not a byte-accurate record cap: an individual serialized record can exceed it and is still written whole. Most operations append, but queued UUID removal can truncate and rewrite a transcript in place. This establishes order within one process/file queue; the artifact exposes no cross-process file lock or transaction protocol.
 3. **Restore reconstructs the *envelope*, not just history.** `SessionRestore` also re-applies permission mode, model, agents, and deferred tools so the resumed session behaves like its prior self.
 4. **Fork is a first-class operation.** `--fork-session` separates "I want to continue" from "I want a divergent copy" so transcripts are not silently overwritten.
 5. **Rewind is its own subcommand-like flag.** `--rewind-files` is a file-restore-only path that cannot run a turn; this prevents accidental model runs against an inconsistent file tree.
@@ -147,13 +151,33 @@ flowchart TD
 For the main transcript store, ordering is:
 
 1. `appendEntry` routes the record according to `ENTRY_APPEND_POLICY` and enqueues it for one target file.
-2. A default 100 ms timer schedules a drain; all drains are chained, and records for each file are processed in queue order.
+2. A default 100 ms timer schedules a drain; enabling legacy remote ingress or registering the CCR internal-event writer changes that store instance to 10 ms. Clearing the writer does not restore 100 ms. All drains are chained, and records for each file are processed in queue order.
 3. The drain appends the JSONL batch locally.
 4. Only after that append succeeds does `fireMirror` publish the same entries to SDK/external-store listeners.
-5. On append failure, the runtime logs/telemeters the error and resolves the queued waiters so the model loop does not remain blocked. The failed records are not mirrored by that drain.
+5. On append failure, the runtime logs/telemeters the error and resolves the queued waiters so the model loop does not remain blocked. The failed records are not mirrored by that drain. Transcript UUIDs enter the process-local dedup cache when they are enqueued, however, so retrying the same UUID can remain suppressed until that cache is cleared or rebuilt even when the disk append failed.
 6. Shutdown calls `flushSessionStorageAtExit()`, waits for the store and auxiliary append queues, and then re-appends cached metadata. This is a best-effort flush, not an `fsync` durability guarantee.
 
+Within a drain, `MAX_CHUNK_BYTES = 104857600` is tested against `.length` on accumulated serialized strings before the next record is added. Crossing the threshold flushes the already-accumulated string; it does not reject, split, or cap the next record, and JavaScript string units are not UTF-8 bytes. Separately, successful appends to the current main transcript add `Buffer.byteLength(..., "utf8")` to a counter. At 32,768 bytes, the drain best-effort appends the cached last-prompt/title/tag/agent/mode/permission/worktree/PR/bridge metadata again and mirrors those records. This is a snapshot of fields already cached by local lifecycle calls—not a per-frame poll of live bridge state.
+
 SDK `sessionStore` persistence is a second stage after the local mirror frame. It has its own batching, timeout, and retry behavior; an external-store failure does not roll back an already-successful local JSONL append.
+
+That append-before-mirror statement is specific to SDK/session-mirror callbacks. Remote Control's internal CCR event writer is invoked after a local write is enqueued, not after that append has completed, and its uploader has an independent acknowledgement/retry/drop lifecycle. Transcript UUID removal emits neither an SDK mirror frame nor an internal-CCR deletion event in this path, and removal does not evict the UUID from the same process-local dedup cache.
+
+## Relocation and remote reconciliation
+
+Changing the persisted project/cwd can physically relocate a materialized transcript. `relocateSessionTranscript()` first enables `ROd`'s relocation buffer, which holds every `appendEntry()` routed through that store, and a separate auxiliary buffer that intercepts only `appendEntryToFileAsync(oldMainJsonl, ...)`. It flushes work already admitted to those two executors and then moves the main JSONL and the `${sessionId}/` associated-state directory separately. The move prefers `rename`; selected target-conflict errors remove the target and retry, while `EXDEV` falls back to copy-then-delete. It then updates the active path/cwd, appends a `relocated` metadata record when the main file moved, repoints task-output symlinks after a successful associated-directory move, and replays buffered records in `finally`.
+
+That scope is narrower than pausing all session-state writers. Direct writers to associated-tree files such as agent `.meta.json` and remote-agent metadata do not join either buffer, nor does the sibling `.ccr-tip.json`; they can race the directory move or resolve their path on either side of the active-path switch. The CCR tip is not one of the two moved objects, so an old-project tip can remain orphaned while later hydration or direct/headless acknowledgement creates a new-project tip. The retention sweep recognizes orphan tips and eventually removes them by their own `mtime`.
+
+The buffers protect cooperating transcript appends, but they do not form one filesystem transaction. The main file and associated directory can move independently; copy/delete, target replacement, relocation stamping, direct associated-state writes, sidecar updates, and symlink repointing can fail or race at different points. There is no rollback or cross-process lock.
+
+Remote transcript recovery is also reconciliation rather than ordinary local replay:
+
+- Legacy `hydrateRemoteSession()` fetches the server log set and normally rewrites local JSONL. It refuses to replace a content-bearing local transcript when the fetched set contains no `user` or `assistant` record, but otherwise the rewrite is direct and non-transactional. Its later live ingress writes are serialized per session, send a `Last-Uuid`, retry an entry up to ten times, and can adopt the server's last UUID after a 409.
+- CCR v2 validates a best-effort `.ccr-tip.json` anchor against UUIDs in the local transcript's last 64 KiB. A coherent anchored response can append only payloads whose UUIDs are absent from that tail; rejected, missing, included, or incoherent anchors lead to a server-selected/full-refetch replacement path. The same zero-content guard protects content-bearing foreground and subagent files. Foreground and subagent rewrites are separate, and subagents are replaced per returned `session_agent_id` rather than as one transaction. Each internal-event endpoint requests 1,000 records per page and follows `next_cursor` without a client page/event cap; every page gets up to ten 30-second attempts, and exhaustion on any later page discards the accumulated client result.
+- When an interactive bridge reports persistence ready, it fetches server foreground and subagent events, unions their payload UUIDs, scans local files backward to the latest compaction boundary, and starts queuing UUID-bearing local records absent from that server set. Subagent backfill considers at most the 20 newest files no larger than 5 MiB. Individual enqueue promises are not awaited before the live writer is installed, so this is scheduled backfill rather than an acknowledgement barrier. The backward reader snapshots file size when it opens: a local append after that file's scan boundary but before live-writer installation is neither selected by that pass nor sent through the not-yet-installed writer, and must wait for a later reconciliation opportunity. A transport-generation check prevents stale writer installation; teardown can drop pending old-uploader work while an in-flight request can still settle.
+
+The `.ccr-tip.json` anchor is separate from JSONL. Successful foreground hydration writes update it in either CCR-capable path. The acknowledged-outgoing-batch updater is installed by the direct remote/headless CCR runtime; the interactive `Qms()` bridge transport does not install that callback in this artifact, so its backfill/live acknowledgements do not by themselves advance the sidecar. Hydration stores the returned server `event_id` when present, whereas outgoing acknowledgement stores the payload UUID; validation always searches transcript payload UUIDs. If a server event ID differs from its payload UUID, the hydrated tip fails the next local-tail validation and safely falls back rather than serving as a delta anchor. JSONL and sidecar updates are not atomic together, and relocation does not move the sidecar.
 
 ## State plane
 
@@ -163,7 +187,7 @@ SDK `sessionStore` persistence is a second stage after the local mirror frame. I
 | Settings (user/project/local/managed) | User/process | Settings module |
 | Live envelope (session ID, permissions, agents, tools, hooks, model) | Process | This module |
 | Durable JSONL transcript | Across process restarts; subject to retention or explicit deletion | This module |
-| Remote Control bridge state | Connection plus persisted bridge ID/last sequence | This module + Remote Control transport |
+| Remote Control bridge state | Connection plus persisted bridge ID/highest received numeric SSE ID | This module + Remote Control transport |
 | Hosted `--remote` state | Hosted session lifetime | Sessions API/SSE client |
 | Telemetry/log files | Configured window | Ops module |
 
@@ -178,10 +202,12 @@ This separation is what lets resume, fork, and rewind operate without touching o
 | `--rewind-files` combined with a prompt | Rejected; rewind is a standalone operation. |
 | Permission mode mismatch on resume | Warning is surfaced before the loop starts. |
 | Disk full / JSONL write error | The drain logs the error and emits `tengu_transcript_write_failed`; queued callers are released and execution can continue, but those records may be absent from disk and mirrors. There is no source-visible automatic switch that disables all later writes. |
-| Remote Control bridge disconnect | The worker SSE transport resumes from the last sequence, deduplicates replayed IDs, refreshes/rebuilds selected credential failures, and exposes bridge-state changes. |
+| Remote Control bridge disconnect | The worker SSE transport resumes after its highest received numeric ID, logs but still dispatches duplicate sequence IDs, refreshes/rebuilds selected credential failures, and exposes bridge-state changes. Separate bounded UUID rings suppress send-attempt echoes and type-accepted inbound `user` redelivery; eligible control frames route before that UUID check. |
 | `--remote` disconnect | `SessionsV2Client` resumes by sequence but stops after five reconnect attempts; a `catch_up_truncated` event explicitly reports an unrecoverable transcript gap. |
 | Managed policy changes | Static source proves activation gates. It does not prove that an already-running bridge is synchronously revoked when policy changes elsewhere. |
 | Concurrent writers to the same session file | In-process queues serialize their own writes, but the artifact exposes no cross-process lock. Cross-process ordering and atomic multi-record semantics remain unspecified. |
+| Transcript relocation failure | Buffered transcript writes replay in `finally`, but the auxiliary buffer covers only the exact old main JSONL; direct associated-tree and CCR-tip writers remain outside it. Main-file move, associated-directory move, relocation metadata, sidecar placement, and symlink repointing are independent. Partial relocation, split associated state, orphan tips, and duplicate copy/delete artifacts are not rolled back. |
+| Remote hydration mismatch | Content-bearing local history is retained when the fetched foreground/subagent set has no `user` or `assistant` content. Other accepted full-hydration paths directly rewrite JSONL; delta mode depends on a locally validated tail anchor and falls back when coherence cannot be established. |
 | Retention ambiguity | Cleanup is skipped when settings errors or disabled sources make `cleanupPeriodDays` unsafe to determine, favoring retention over accidental deletion. |
 
 ## Extension points
@@ -198,6 +224,7 @@ This separation is what lets resume, fork, and rewind operate without touching o
 
 - The exact set of fields restored by `SessionRestore` is implementation-defined; this page documents observable categories. Saved permission/model/agent values are transitioned through current availability and policy checks rather than copied unconditionally.
 - Server-side replay retention, bridge-session retention, compatibility across versions, and hosted transaction guarantees are not established by the static client artifact.
+- A persisted worker-SSE cursor is receipt state, not proof that the corresponding payload parsed, passed attestation filtering, or reached the application callback. `saveBridgeSession()` updates the in-memory bridge cache immediately but queues a transcript record only when a session file is materialized; metadata re-append can persist that cache later. The visible background-job snapshot is written during rendezvous shutdown rather than after every frame.
 - Remote Control, hosted Sessions V2, teleport, and the Chrome browser-tool bridge share some vocabulary but have distinct lifecycles; their differences are documented in the implementation page.
 - The Anthropic SDK bundle contributes many `session_id`/`/v1/sessions/...` strings that are unrelated to Claude Code's local session module; this page only describes the local module.
 

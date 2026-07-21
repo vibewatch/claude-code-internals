@@ -93,7 +93,9 @@ The separate session-wide `Agent` cap defaults to 200 and is controlled by `CLAU
 
 ## Background lifecycle and progress
 
-A valid call registers a `local_workflow` task, returns `async_launched` immediately, and continues in the background. The result includes a task ID, workflow run ID, transcript directory, and persisted script path. `/workflows` renders phase/agent progress and can stop an active run; completion or failure arrives through the normal task-notification queue.
+A successfully compiled call registers a `local_workflow` task, returns `async_launched` immediately, and continues in the background. The result includes a task ID, workflow run ID, transcript directory, and persisted script path. `/workflows` renders phase/agent progress and can stop an active run; completion or failure arrives through the normal task-notification queue.
+
+One failure result has a misleading shape: after metadata/input validation, a later JavaScript compile failure can return `status: "async_launched"` together with allocated task/run IDs and an `error`. That branch returns before the runtime registers or starts the `local_workflow`; no agents run, and the renderer explicitly says the workflow “was not launched.” Callers must therefore treat the `error` field—not the status label alone—as authoritative for this branch.
 
 Each workflow agent contributes token/tool/duration state to the workflow task. Completion records include status, result/error, agent count, failures, log preview, token/tool totals, duration, phase progress, and the script/run identity. Workflow-spawned telemetry carries `workflow.run_id` and optional `workflow.name` so a run can be reconstructed across agent events.
 
@@ -120,7 +122,7 @@ Resume is same-session and content-pinned. A still-running prior task must be st
 
 | Failure | Runtime behavior |
 |---|---|
-| Invalid metadata or JavaScript | Call is rejected or returns an `async_launched` result carrying the compile error; no agents run. |
+| Invalid metadata or JavaScript | Metadata/input validation can reject the call. A later compile failure can return an error-bearing `async_launched`-shaped result, but it returns before task registration or launch; no agents run. |
 | Nondeterministic API use | Validation rejects the script before launch. |
 | Agent failure/skip | `agent` returns `null`; `parallel`/`pipeline` preserve a `null` slot so the script can filter or handle it. |
 | Token/agent/item cap | Further fan-out throws an explicit limit error rather than silently truncating coverage. |

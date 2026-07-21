@@ -162,7 +162,7 @@ flowchart TD
 | Auto-mode hits denial limit | `tengu_auto_mode_denial_limit_exceeded` is emitted; behavior falls back to ask. |
 | Hosted review preflight rejection | UX surfaces the reason; no hosted run begins. |
 | Slash command resolves to nothing | Dispatcher reports the unknown command without invoking model. |
-| Managed policy disables skills' shell execution | Inline shell in skills/custom slash commands becomes a placeholder; no covert escalation. |
+| Managed policy disables skills' shell execution | Eligible user/project/plugin shell forms become a placeholder. Policy-sourced skills retain permission-checked local expansion; MCP prompts perform no local shell expansion. |
 
 ## Extension points
 

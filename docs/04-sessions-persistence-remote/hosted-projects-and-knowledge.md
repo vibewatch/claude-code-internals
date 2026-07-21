@@ -15,6 +15,7 @@ The `Projects` tool in Claude Code `2.1.215` connects one session to one claude.
 | ProjectsToolPrompt | [~411,950](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L411950) | `Read and write the claude.ai Project attached to this session` | Defines the one-project/no-discovery contract. |
 | ProjectsOperations | [~412,100-412,550](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L412100) | `project_info`, `project_read`, `project_search`, `project_write`, `project_delete` | Implements project knowledge operations. |
 | ProjectReadSpill | [~412,260](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L412260) | `project-doc-${r(e)}.txt`, `tool-results` | Stores large reads in the current local session's tool-result directory. |
+| ProjectUploadIdentityGuard | [~412,170-412,255](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L412170) | `O_NOFOLLOW`, `/proc/self/fd/${c.fd}`, `f.dev`, `f.ino` | Combines an optional opened-descriptor containment check with mandatory path/device and, when nonzero, inode comparisons. |
 | ProjectsDescriptor | [~412,606](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L412606) | `ProjectsTool = Ai({...})` | Tool schema, availability, classification, validation, and execution. |
 
 ## Attachment and availability
@@ -69,7 +70,9 @@ flowchart TD
 
 Text whose UTF-8 encoding is at or below 256 KiB is returned inline. Larger text is written to the current local session's `tool-results` directory and returned as `local_file`, allowing the normal `Read` tool to page it into context. The deterministic filename is `project-doc-<sanitized remote document-or-file UUID>.txt`; another large read of the same remote object overwrites that spill path rather than creating a per-call file. Image and other non-document uploads are identified but not decoded by this path.
 
-The write requests mode `0o600` when creating the spill file, but does not chmod a pre-existing path. The Projects call does not unlink the file after returning. The normal retention sweep later removes stale files in session `tool-results` directories by filesystem `mtime`, subject to `cleanupPeriodDays` and its settings-safety gates. A spill-write failure propagates as a tool error rather than falling back to an oversized inline response.
+The filename sanitizer preserves ASCII letters, digits, and hyphens and replaces every other character with `_`. That mapping is not injective: distinct remote identifiers that differ only in replaced punctuation can resolve to the same spill path and overwrite one another, in addition to the intended same-object overwrite.
+
+The write requests mode `0o600` when creating the spill file, but does not chmod a pre-existing path. It uses ordinary `writeFile()` at that deterministic name rather than `O_NOFOLLOW` or an opened-descriptor identity check: a pre-existing symlink can redirect the write, and a later colliding large read can replace the returned path before its consumer opens it. There is no per-path serialization around overlapping spill writes, so concurrent reads that map to one path can race to truncate/replace the same file. The `local_file` value is therefore a mutable locator, not an immutable per-call snapshot. The Projects call does not unlink the file after returning. The normal retention sweep later removes stale files in session `tool-results` directories by filesystem `mtime`, subject to `cleanupPeriodDays` and its settings-safety gates. A spill-write failure propagates as a tool error rather than falling back to an oversized inline response.
 
 ### Write namespacing and replacement
 
@@ -82,17 +85,18 @@ Project documents are whole-document values: the edit pattern is read → modify
 `project_write` accepts exactly one of `content` or `local_path`. For `local_path`, the runtime:
 
 1. resolves it under the original working directory;
-2. rejects lexical and realpath escapes;
-3. opens with `O_NOFOLLOW` (and nonblocking where available);
-4. compares the opened file with a fresh path/stat result to catch replacement races;
-5. requires a regular readable file;
-6. rejects files over 25 MiB.
+2. rejects lexical and realpath escapes (an in-tree symlink to an in-tree target can pass because the path is realpath-resolved first);
+3. opens that resolved target with `O_NOFOLLOW` (and nonblocking where available);
+4. best-effort resolves `/proc/self/fd/<fd>` and rejects a successfully resolved descriptor target outside the working directory;
+5. always re-resolves the caller's path and compares its canonical path and device with the opened descriptor, plus inode when the opened inode is nonzero;
+6. requires a regular readable file;
+7. rejects files over 25 MiB.
 
-The file is uploaded directly by the tool path, so its body does not have to be copied into the model conversation.
+The `/proc/self/fd` resolution is an additive Linux-style check rather than a mandatory dependency: failure to resolve it is ignored, after which the fresh path/device/inode comparisons still run. On a filesystem that reports an opened inode of zero, the inode comparison is skipped, leaving canonical-path and device equality as the replacement checks. The file is uploaded directly by the tool path, so its body does not have to be copied into the model conversation. None of these checks detects mutation of the same opened inode: another writer can truncate, extend, or change the file after the pre-read `fstat()`, and there is no post-read size check or content snapshot. The 25 MiB guard is therefore a checked pre-read size, not a lock-backed upload-body cap.
 
 ### Knowledge budget
 
-Before a write, the runtime estimates tokens as roughly `ceil(UTF-8 bytes / 4)` and refuses a write that would exceed `max_knowledge_size`. The error directs the caller to delete unused docs or split content rather than relying on a server-side overflow.
+Before a write, the runtime estimates tokens as roughly `ceil(UTF-8 bytes / 4)` and refuses a write that would exceed `max_knowledge_size`. This client check is conservative for replacement: it adds the full new payload estimate to the reported current size and does not subtract the document being replaced. It is also based on the preceding detail response rather than an atomic server reservation. The error directs the caller to delete unused docs or split content rather than relying on a server-side overflow.
 
 ## Transport split
 

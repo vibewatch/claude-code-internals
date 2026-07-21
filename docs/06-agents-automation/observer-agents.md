@@ -83,6 +83,8 @@ Individual text/input fields are truncated at approximately 2,000 characters. Th
 
 The first digest spawns the observer with a framing prompt. Later digests resume/deliver to the same task. If resumable state is lost, the runtime allocates a fresh observer ID and adds a recovery note; if the observer was stopped by the user, the pairing becomes terminal instead.
 
+Delivery is best-effort and batch-oriented. Before a send, the runtime splices the entire current buffer into one batch. A delivery-time permission denial marks the pairing denied and clears the buffer; a gate error or delivery exception also drops that batch rather than requeueing it. Only the specific `ResumeAgentStateError` path starts a fresh observer and retries the assembled digest with the recovery note. These failures do not pause or roll back the observed agent.
+
 ## `ObserverReport` contract
 
 The tool takes one required string field, `report`. It is always present in the observer's restricted tool set, but execution validates the pairing:

@@ -1,6 +1,6 @@
 # Team memory
 
-Team memory is a multi-store shared-knowledge subsystem alongside personal `CLAUDE.md`, rules, and auto-memory. In Claude Code `2.1.215`, the client either parses explicit store descriptors from `CLAUDE_MEMORY_STORES` or conditionally discovers organization-provided mounts. It then exposes each store through a per-mount local mirror, synchronizes that mirror with a memory-service backend, and can add a bounded store index to the model prompt.
+Team memory is a multi-store shared-knowledge subsystem alongside personal `CLAUDE.md`, rules, and auto-memory. In Claude Code `2.1.215`, the client either parses explicit store descriptors from `CLAUDE_MEMORY_STORES` or conditionally discovers organization-provided mounts. It then exposes each store through a per-mount local mirror, synchronizes that mirror with a memory-service backend, and can add a normalized and truncated store index to the model prompt.
 
 This is not one canonical `<config>/team/` directory behind a single feature flag. Configuration, service I/O, local synchronization, prompt exposure, and path safety are separate planes with different failure behavior.
 
@@ -21,7 +21,9 @@ Use this page alongside:
 | SyncManifest | `.memory-sync` | Per-mount synchronization metadata used to reconcile local and remote state. |
 | MemoryKeyValidator | `yji()` | Rejects unsafe service keys before they are mapped into a mirror. |
 | MirrorContainmentValidator | `o4c()` | Checks local containment, including symlink escape. |
-| PromptIndexFetch | `promptIndex`, `<memory>` | Fetches bounded index content and treats it as untrusted reference data. |
+| PromptIndexFetch | `PUc()`, `TXh()`, `promptIndex`, `<memory>` | Fetches index content with a five-second default timeout, then treats normalized content as untrusted reference data. |
+| PromptIndexNormalizer | `N4r()` | Applies the shared 200-line and 25,000-unit prompt splice limits and emits a truncation warning. |
+| PromptIndexSizeFeedback | `LYu()`, `PYu()`, `promptIndexMaxBytes` | Uses the configured threshold for post-write proximity/over-limit feedback rather than as a service-read argument. |
 
 The principal implementation is near [`cli.renamed.js` lines 190175–194000](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L190175); synchronization and watcher paths are near [lines 436000–439214](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L436000). Minified aliases are version-specific; exact strings and descriptor fields are the more durable anchors.
 
@@ -43,8 +45,9 @@ flowchart TD
     Sync <--> Mirrors
     Mirrors --> Tools[Generic file tools, subject to normal permissions]
     Stores --> Prompt[Private / writable-team / read-only-team prompt sections]
-    Service --> Index[Optional bounded prompt index]
-    Index --> Prompt
+    Service --> Index[Optional prompt index fetch]
+    Index --> Normalize[Shared prompt normalization and escaping]
+    Normalize --> Prompt
 ```
 
 The two configuration lanes converge on the same descriptor and mirror machinery, but they do not have the same authority. Explicit environment configuration suppresses organization discovery. Discovered organization stores are normalized conservatively and remain read-only unless the negotiated access state grants writing.
@@ -64,7 +67,7 @@ Personal `CLAUDE.md`, project rules, and auto-memory do not become team stores. 
 | `scope` | `"team"` or `"user"`; defaults to `"team"`. |
 | `mount` | Local mount name used to select the mirror directory. Duplicate mounts are rejected. |
 | `promptIndex` | Optional backend path for prompt-ready index content. |
-| `promptIndexMaxBytes` | Optional positive byte limit for that index. Invalid non-positive values are rejected. |
+| `promptIndexMaxBytes` | Optional positive configured size threshold retained for prompt-index write/edit feedback. Invalid non-positive values are rejected; the value is not passed into prompt-index service reads. |
 
 At most one explicit descriptor may use `scope:"user"`. That store is a private memory-store lane, not an alias for the regular user `CLAUDE.md` hierarchy.
 
@@ -117,7 +120,9 @@ Prompt construction distinguishes three store roles:
 - writable team stores;
 - read-only team stores.
 
-The corresponding prompt variants tell the model where the local mounts live and whether saving is allowed. Team memory is therefore not merely a filename list. A descriptor may also supply `promptIndex`; the client fetches that index, applies `promptIndexMaxBytes`, escapes it, wraps it in a `<memory>` reference-data block, and adds it to the relevant prompt section.
+The corresponding prompt variants tell the model where the local mounts live and whether saving is allowed. Team memory is therefore not merely a filename list. A descriptor may also supply `promptIndex`. `PUc()` gives all configured index fetches a five-second default timeout, and `TXh()` calls the backend's `readByPath(promptIndex)` without a byte-limit argument. Prompt construction then runs the returned content through `N4r()`, which applies the shared 200-line and 25,000-unit splice limits, escapes closing `</memory` text, wraps the result in a `<memory>` reference-data block, and adds it to the relevant prompt section.
+
+`promptIndexMaxBytes` participates elsewhere: `LYu()` and `PYu()` compare index size after write/edit activity and can tell the model that the index is approaching or exceeds its configured read/size policy. That feedback threshold does not directly truncate the service fetch.
 
 The index is explicitly treated as reference data rather than trusted instructions. If no index is configured or fetched, the model can still inspect mirrored files through available tools. Whether a particular tool call is allowed remains a normal tool/permission decision, and a read-only backend remains non-writable even if prompt text is ignored.
 
@@ -144,7 +149,7 @@ The retained source confirms client-side cleanup and watcher ownership, not serv
 - The client proves explicit and discovered multi-store lanes; it does not reveal the memory service's storage implementation.
 - Organization eligibility and grant negotiation are visible, but the server-side policy decision is not.
 - Specialized key and mirror validation is source-confirmed; universal mediation of generic file tools is not.
-- Prompt indexes can contain more than filenames, but their exact content is store-controlled and runtime-dependent.
+- Prompt indexes can contain more than filenames, but their exact content is store-controlled and runtime-dependent. `promptIndexMaxBytes` is not a direct fetch cap in this build; prompt exposure instead uses the shared `N4r()` limits.
 - Minified aliases such as `L4i`, `N7h`, `ER`, `yji`, and `o4c` are anchors for `2.1.215`, not public APIs.
 
 ## Related docs

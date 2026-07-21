@@ -25,6 +25,10 @@ This page reverse-engineers the authentication and provider-selection paths that
 | FallbackModelFlag | `--fallback-model <model>` | Print-mode fallback model flag. |
 | EmbeddedModelCatalog | `display_name: "Sonnet 5"`, `display_name: "Opus 4.8"`, `display_name: "Fable 5"` | Hand-maintained runtime catalog with provider IDs, context, output, capability, pricing, and alias metadata. |
 | ManagedModelPolicy | `availableModels`, `enforceAvailableModels` | Organization policy can restrict aliases, explicit model picks, subagents, and the resolved Default model. |
+| OAuthAuthorizeBuilder | `buildAuthUrl()` | Selects the authorize URL and the custom-client, inference-only, or all-scope branch. |
+| OAuthTokenExchange | `exchangeCodeForTokens()`, `refreshOAuthToken()` | Exchanges or refreshes OAuth tokens with JSON token requests. |
+| OAuthLoginCompletion | `H$t()` | Persists OAuth state, fetches account roles, and mints an API key only for non-inference completion. |
+| SetupTokenFlow | `LONG_LIVED_OAUTH_TOKEN_TTL_SECONDS`, `CLAUDE_CODE_OAUTH_TOKEN` | Displays a one-year inference-only OAuth access token without running normal login completion. |
 | XaaEnableGate | `CLAUDE_CODE_ENABLE_XAA` | Cross-app access OAuth flow is gated when server config requests `oauth.xaa`. |
 | XaaTokenExchangeError | `XaaTokenExchangeError`, `shouldClearIdToken` | Failed XAA token exchange can carry cache-clearing guidance. |
 | McpOAuthStore | `mcpOAuth` | MCP OAuth credentials are stored by server-derived key. |
@@ -35,7 +39,10 @@ This page reverse-engineers the authentication and provider-selection paths that
 |---:|---|---|
 | [~119000–120999](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L119000) | `getAPIProvider`, `getSecondaryProvider`, `ListInferenceProfiles` | Provider classification, secondary routing, and Bedrock discovery. |
 | [~129279](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L129279) | `getAuthHeadersAsync` | Provider/request header assembly. |
+| [~183700–185699](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L183700) | `buildAuthUrl`, `exchangeCodeForTokens`, `refreshOAuthToken`, `createAndStoreApiKey` | OAuth scope selection, token lifecycle, and separate API-key minting. |
 | [~184900–188899](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L184900) | `shouldUseWIFAuth`, `getAuthTokenSource`, `getAnthropicApiKeyWithSource`, refresh helpers | Credential lanes, exclusions, provenance, and recovery. |
+| [~632890](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L632890) | `H$t()` | Normal login completion and OAuth-versus-API-key branch. |
+| [~650900–651300](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L650900) | `setup-token`, `LONG_LIVED_OAUTH_TOKEN_TTL_SECONDS` | Long-lived inference-only token presentation. |
 
 The [bundle module map](../99-research-atlas/module-map-from-renamed-cli.md#auth-multi-cloud) remains useful for loader discovery, but semantic function names and exact environment strings are the stronger behavioral anchors for this build.
 
@@ -175,7 +182,7 @@ The bundle contains model/provider error strings that point users toward `--mode
 
 ## OAuth scope model and token lifecycle
 
-The `OAuthClient` module (`cli.renamed.js:47791`, `109942`-`110200`) owns Claude Code's OAuth handshake against `claude.ai` and the Console. It supports two scope flavors and a long-lived token mode used by `claude setup-token`.
+The OAuth client near [`cli.renamed.js` lines 183700–185699](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L183700) owns Claude Code's authorize URL, PKCE token exchange, refresh, and separate API-key creation request. Normal login completion is in `H$t()` near [line 632890](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L632890); `claude setup-token` takes a deliberately different completion path.
 
 ### Scope sets
 
@@ -183,12 +190,12 @@ The `OAuthClient` module (`cli.renamed.js:47791`, `109942`-`110200`) owns Claude
 |---|---|
 | `CLAUDE_AI_INFERENCE_SCOPE` | Required to call inference endpoints with a claude.ai-issued token. |
 | `CLAUDE_AI_PROFILE_SCOPE` | Required for profile/organization metadata reads; gates Remote Control entitlement (see [Feature gates reference](../05-hosted-agent-ops/feature-gates-reference.md)). |
-| `CLAUDE_AI_OAUTH_SCOPES` | Full default scope set used by `claude auth login`. |
-| `CONSOLE_OAUTH_SCOPES` | Console-flavor scope set used when the redirect targets the Console UI. |
-| `LONG_LIVED_OAUTH_TOKEN_TTL_SECONDS` | TTL applied to tokens minted by `claude setup-token`. The exchange request adds `expires_in: <LONG_LIVED_OAUTH_TOKEN_TTL_SECONDS>`. |
-| `OAUTH_BETA_HEADER` | Beta opt-in header attached to OAuth flows. |
+| `CLAUDE_AI_OAUTH_SCOPES` | Profile, inference, Claude Code session, MCP-server, and file-upload scopes; also the default scope list for refresh when the caller supplies none. |
+| `ALL_OAUTH_SCOPES` | Unique union of the API-key-creation/profile scopes and `CLAUDE_AI_OAUTH_SCOPES`; the ordinary built-in authorize request uses this set when it is not inference-only. |
+| `LONG_LIVED_OAUTH_TOKEN_TTL_SECONDS` | `31,536,000` seconds; passed as `expires_in` by `claude setup-token`. |
+| `OAUTH_BETA_HEADER` | `oauth-2025-04-20`; used by many ordinary authenticated API/header paths, but not attached by the local token-exchange or refresh POST implementations. |
 
-`shouldUseClaudeAIAuth(scopes)` is the predicate used elsewhere in the runtime: it returns true exactly when `scopes` contains `CLAUDE_AI_INFERENCE_SCOPE`. `parseScopes(scopeString)` splits the server's space-delimited `scope` field back into an array.
+There is no `CONSOLE_OAUTH_SCOPES` constant in this build. `shouldUseClaudeAIAuth(scopes)` returns true exactly when the resulting scope list contains `CLAUDE_AI_INFERENCE_SCOPE`; `parseScopes(scopeString)` splits the server's space-delimited `scope` field back into an array.
 
 ### `buildAuthUrl(...)`
 
@@ -196,20 +203,24 @@ Builds the authorize URL the browser/manual-paste flow opens:
 
 - Picks `CLAUDE_AI_AUTHORIZE_URL` (`loginWithClaudeAi: true`) or `CONSOLE_AUTHORIZE_URL` otherwise (both from `getOauthConfig()`).
 - Appends `code=true`, `client_id`, `response_type=code`, `redirect_uri` (loopback `http://localhost:<port>/callback` or `MANUAL_REDIRECT_URL` for `isManual`), `code_challenge`, `code_challenge_method=S256`, `state`.
-- Scope = `CLAUDE_AI_INFERENCE_SCOPE` only when `inferenceOnly: true`; otherwise the full `CLAUDE_AI_OAUTH_SCOPES` (or `CONSOLE_OAUTH_SCOPES`).
+- Scope selection is independent of the chosen authorize UI: a custom OAuth client uses its declared `oauthClient.scopes`; otherwise `inferenceOnly:true` uses only `[CLAUDE_AI_INFERENCE_SCOPE]`; otherwise the request uses `ALL_OAUTH_SCOPES`.
 - Optional `orgUUID`, `login_hint`, `login_method` query params for pre-selecting an organization or routing to a specific provider login.
+
+`loginWithClaudeAi` selects `CLAUDE_AI_AUTHORIZE_URL` versus `CONSOLE_AUTHORIZE_URL`; it does not select a separate scope constant.
 
 ### `exchangeCodeForTokens(code, state, verifier, port, isManual?, expiresIn?)`
 
-POSTs `grant_type=authorization_code` to `getOauthConfig().TOKEN_URL` with PKCE verifier, the matching redirect URI, and (optionally) `expires_in` for long-lived tokens. On 200 it returns the raw token payload and emits `tengu_oauth_token_exchange_success`. On 401 it tags `oauth_exchange_invalid_code`; on anything else `oauth_exchange_http_error`. 30 s axios timeout.
+POSTs `grant_type=authorization_code` to `getOauthConfig().TOKEN_URL` with PKCE verifier, the matching redirect URI, and (optionally) `expires_in` for long-lived tokens. On 200 it returns the raw token payload and emits `tengu_oauth_token_exchange_success`. On 401 it tags `oauth_exchange_invalid_code`; on anything else `oauth_exchange_http_error`. The local request declares `Content-Type: application/json` and uses a 30-second axios timeout; it does not attach `OAUTH_BETA_HEADER` here.
 
 ### `refreshOAuthToken(refreshToken, {scopes?, expiresIn?, clientId?})`
 
-- POSTs `grant_type=refresh_token` with scope = caller-supplied OR `CLAUDE_AI_OAUTH_SCOPES`.
+- POSTs `grant_type=refresh_token` with scope = a non-empty caller-supplied list or `CLAUDE_AI_OAUTH_SCOPES`.
 - Always preserves the refresh token (server returns one, but falls back to the input if missing).
 - After success, when the current `oauthAccount` is missing billing/subscription/profile fields, fetches `/profile` and atomically updates `oauthAccount.displayName`, `hasExtraUsageEnabled`, `billingType`, `accountCreatedAt`, `subscriptionCreatedAt`, `ccOnboardingFlags`, `claudeCodeTrialEndsAt`, `claudeCodeTrialDurationDays`, `seatTier`.
 - On `invalid_grant` errors, tags `oauth_refresh_invalid_grant` so the auth shutdown path can prompt re-login.
 - Returns `{accessToken, refreshToken, expiresAt, scopes, clientId, subscriptionType, rateLimitTier, profile?, tokenAccount?}`.
+
+Like exchange, the local refresh POST declares `Content-Type: application/json` rather than `OAUTH_BETA_HEADER`.
 
 ### `fetchAndStoreUserRoles(accessToken)`
 
@@ -217,7 +228,19 @@ GETs `ROLES_URL` with `Authorization: Bearer <token>`, then atomically updates `
 
 ### `createAndStoreApiKey(accessToken)`
 
-POSTs to `API_KEY_URL` with the OAuth access token to mint a long-lived API key, then writes it through `saveApiKey(...)`. This is the path that `claude setup-token` uses for sessionless agent installs. On any failure tags `oauth_create_api_key` / `oauth_api_key_request_failed`.
+POSTs to `API_KEY_URL` with the OAuth access token to mint a long-lived API key, then writes it through `saveApiKey(...)`. On any failure it tags `oauth_create_api_key` / `oauth_api_key_request_failed`. This is a separate normal-login completion branch; it is not the `claude setup-token` output path.
+
+### Normal login completion versus `claude setup-token`
+
+After an ordinary OAuth flow succeeds, the caller passes the token result to `H$t()`:
+
+1. it clears prior Anthropic login state while preserving selected in-process/non-Anthropic sources;
+2. records profile/account metadata when available;
+3. persists OAuth tokens with `saveOAuthTokensIfNeeded()` and clears the in-memory cache;
+4. fetches and stores user roles; and
+5. if the scopes contain `CLAUDE_AI_INFERENCE_SCOPE`, keeps inference on the stored OAuth lane; otherwise it calls `createAndStoreApiKey()` and requires a returned API key.
+
+`claude setup-token`, by contrast, starts a Claude.ai authorize flow with `inferenceOnly:true` and `expiresIn:LONG_LIVED_OAUTH_TOKEN_TTL_SECONDS`. On success it displays the returned `accessToken` directly as “valid for 1 year” and instructs the user to set `CLAUDE_CODE_OAUTH_TOKEN`. It does not call `H$t()` or `createAndStoreApiKey()` in that branch.
 
 ### `isOAuthTokenExpired(expiresAt)`
 

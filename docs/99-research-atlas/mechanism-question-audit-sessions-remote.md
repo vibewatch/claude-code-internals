@@ -16,7 +16,7 @@ Audited pages:
 8. `session-resume-and-transcripts.md`
 9. `team-onboarding-and-share-flows.md`
 
-The audit asked mechanism questions in seven dimensions: **identity, ordering, persistence, reconnect/recovery, failure, cleanup, and edge cases**. It did not edit section/index navigation, `README.md` files, source artifacts, or other research ledgers. `data-models-and-frame-schemas.md` was limited to append/mirror lifecycle, `bridge-session` persistence fields, and sequence/reconnect notes.
+The audit asked mechanism questions in seven dimensions: **identity, ordering, persistence, reconnect/recovery, failure, cleanup, and edge cases**. The mechanism-page pass did not edit section `README.md` files, source artifacts, or other research ledgers. Shared research navigation was connected only after all six domain ledgers converged. `data-models-and-frame-schemas.md` was limited to append/mirror lifecycle, `bridge-session` persistence fields, and sequence/reconnect notes.
 
 ## Artifact identity and provenance
 
@@ -83,7 +83,11 @@ For each page:
 
 Replaced the universal-ID/universal-remote model; added write/mirror/shutdown ordering, best-effort failure, active cleanup, cross-process caveat, and current-policy restore framing.
 
-**Round 2 status:** pending final convergence pass.
+**Round 2 result**
+
+A full reread found no new source-answerable mechanism question for this page. The final wording consistently separates local/hosted/bridge identity, SDK mirror ordering from CCR persistence, the two relocation buffers from unbuffered associated-state writers, and worker-SSE receipt state from persistence acknowledgement.
+
+**Status:** converged.
 
 ### `hosted-projects-and-knowledge.md`
 
@@ -109,7 +113,25 @@ Added timeout/failure boundaries, the sole search fallback, non-atomic CCR repla
 
 Server versioning, conflict detection, consistency, and retention are not exposed.
 
-**Round 2 status:** pending final convergence pass.
+**Round 2 questions**
+
+- Can two different remote object IDs map to the same large-read spill path?
+- Is successful `/proc/self/fd/<fd>` resolution mandatory for a local-file upload to proceed?
+
+**Answers and anchors**
+
+- `Ety()` replaces every character outside `[a-zA-Z0-9-]` with `_`, so the filename mapping is not injective; distinct IDs can collide at `project-doc-<sanitized-id>.txt` [~412,260](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L412260).
+- `bty()` treats `/proc/self/fd/<fd>` realpath failure as `null` and continues. It still requires a fresh canonical-path and device match, and compares inode when the opened inode is nonzero [~412,170-412,255](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L412170).
+
+**Documentation result**
+
+Added spill-name collision behavior and made the upload guard's optional descriptor-containment check versus mandatory path/device/conditional-inode checks explicit.
+
+**Round 3 result**
+
+The post-edit reread produced zero new source-answerable mechanism questions.
+
+**Status:** converged.
 
 ### `remote-control-and-teleport.md`
 
@@ -137,7 +159,23 @@ Separated all transport families; added persisted sequence identity, replay/dedu
 
 Server replay retention, archive erasure/retention, short-code expiry, and cross-version compatibility.
 
-**Round 2 status:** pending final convergence pass.
+**Round 2 question**
+
+- How does hosted `SessionsV2Client` bound the request IDs it uses to reject forged/non-worker responses to its own control requests?
+
+**Answer and anchors**
+
+`sendControlRequest()` inserts each generated ID before the asynchronous POST completes. Worker responses delete matching IDs; once the insertion-ordered set exceeds `Rqb = 500`, the oldest retained unanswered ID is evicted. No immediate removal is wired to POST failure or the manager's request timeout in this class [~853,420-853,755](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L853420).
+
+**Documentation result**
+
+Documented the 500-entry provenance-filter boundary, insertion/removal ordering, and why eviction weakens recognition of a sufficiently late non-worker response without making the set a complete pending-request ledger.
+
+**Round 3 result**
+
+The post-edit reread produced zero new source-answerable mechanism questions.
+
+**Status:** converged.
 
 ### `sdk-query-and-session-api.md`
 
@@ -169,7 +207,11 @@ Corrected no-disk and Unix-socket claims; documented local staging, batching/ret
 
 Direct Connect server lifetime/auth/storage and exactly-once behavior for ambiguous adapter calls.
 
-**Round 2 status:** pending final convergence pass.
+**Round 2 result**
+
+A full reread found no new source-answerable mechanism question. It confirmed the external-store local-staging requirement, batch thresholds and timeout-specific retry behavior, non-transactional import ordering, Direct Connect fragment/close behavior, and best-effort deletion boundary.
+
+**Status:** converged.
 
 ### `session-api-events-and-storage.md`
 
@@ -187,7 +229,11 @@ The cross-cutting answers above apply: `ROd` [~579,533](../../claude-code-pkg/sr
 
 Changed the mental model to queue → local append → mirror → replay, made retention executable, separated identities/transports, and added cross-process/server-guarantee limits.
 
-**Round 2 status:** pending final convergence pass.
+**Round 2 result**
+
+A full reread found no new source-answerable mechanism question. The synthesis remains consistent with the focused pages without importing transport-specific guarantees into the common session model.
+
+**Status:** converged.
 
 ### `session-recording.md`
 
@@ -216,7 +262,23 @@ Reframed the page as a source-visible helper, added resize/disposal/retention an
 
 Activation, initial path, filename timestamp clock/meaning, and abrupt-termination behavior.
 
-**Round 2 status:** pending final convergence pass.
+**Round 2 question**
+
+- Does rename recompute the active recording source and target after awaiting the recorder flush?
+
+**Answer and anchors**
+
+No. `renameRecordingForSession()` snapshots the current source path and computes the target from the then-current cwd/session ID before `await Hvn?.flush()`. It renames those snapshots and, on success, unconditionally stores the snapshotted target as the global path [~859,987-860,012](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L859987).
+
+**Documentation result**
+
+Added the stale-identity race across the awaited flush while retaining the already-documented late-buffer append race and unknown activation boundary.
+
+**Round 3 result**
+
+The post-edit reread produced zero new source-answerable mechanism questions.
+
+**Status:** converged.
 
 ### `session-resume-and-transcripts.md`
 
@@ -243,7 +305,11 @@ Added exact latest/picker filtering, branch reconstruction and partial-chain beh
 
 Cross-process write order, durable-sync semantics, and server replay compatibility.
 
-**Round 2 status:** pending final convergence pass.
+**Round 2 result**
+
+A full reread found no new source-answerable mechanism question. Direct inspection reconfirmed that missing/cyclic parents invoke the same-sidechain, closest-earlier, five-second timestamp fallback inside `buildConversationChain`; it is not an unexplained enclosing-loader behavior.
+
+**Status:** converged.
 
 ### `team-onboarding-and-share-flows.md`
 
@@ -269,7 +335,11 @@ Corrected descriptor semantics, documented selection/ordering/no-retry/concurren
 
 Expiry, visibility/access propagation, delete retention, and server conflict handling.
 
-**Round 2 status:** pending final convergence pass.
+**Round 2 result**
+
+A full reread found no new source-answerable mechanism question. The scanner's stat/read and symlink boundaries, descriptor cap/selection, share-file race, exact/latest guide selection, and non-atomic update/create behavior are all explicit.
+
+**Status:** converged.
 
 ### `data-models-and-frame-schemas.md`
 
@@ -289,7 +359,11 @@ Expiry, visibility/access propagation, delete retention, and server conflict han
 
 Added only the permitted lifecycle/schema material: bridge fields and tombstone behavior, append-before-mirror semantics, and transport-specific replay/reconnect notes.
 
-**Round 2 status:** pending final convergence pass.
+**Round 2 result**
+
+A full reread found no new source-answerable mechanism question within this schema-focused page's scope. Bridge tombstones/grouping, append-before-mirror ordering, metadata checkpoints, and transport-specific cursor/reconnect semantics remain consistent with the focused implementation pages.
+
+**Status:** converged.
 
 ## Artifact-limited questions retained explicitly
 
@@ -304,16 +378,43 @@ These remain unknown because answering them requires unavailable server implemen
 
 ## Final convergence and validation
 
-The post-edit page pass, link/build checks, diagnostics, and final status are recorded here after validation.
+The first post-edit pass exposed three narrow residual mechanisms: non-injective Projects spill filenames plus the optional `/proc` guard, hosted request-ID filter eviction, and recording rename identity captured before an awaited flush. Those answers were added to their owning pages. A subsequent complete pass over all nine pages produced **zero new source-answerable mechanism questions**.
 
 | Page | Final pass: new source-answerable questions | Status |
 |---|---:|---|
-| `architecture.md` | pending | pending |
-| `hosted-projects-and-knowledge.md` | pending | pending |
-| `remote-control-and-teleport.md` | pending | pending |
-| `sdk-query-and-session-api.md` | pending | pending |
-| `session-api-events-and-storage.md` | pending | pending |
-| `session-recording.md` | pending | pending |
-| `session-resume-and-transcripts.md` | pending | pending |
-| `team-onboarding-and-share-flows.md` | pending | pending |
-| `data-models-and-frame-schemas.md` | pending | pending |
+| `architecture.md` | 0 | Converged |
+| `hosted-projects-and-knowledge.md` | 0 | Converged |
+| `remote-control-and-teleport.md` | 0 | Converged |
+| `sdk-query-and-session-api.md` | 0 | Converged |
+| `session-api-events-and-storage.md` | 0 | Converged |
+| `session-recording.md` | 0 | Converged |
+| `session-resume-and-transcripts.md` | 0 | Converged |
+| `team-onboarding-and-share-flows.md` | 0 | Converged |
+| `data-models-and-frame-schemas.md` | 0 | Converged |
+
+Cross-page terminology now consistently preserves these boundaries:
+
+- local JSONL identity versus Remote Control bridge identity versus hosted-session identity;
+- local append/SDK mirror ordering versus independently acknowledged CCR persistence;
+- numeric SSE receipt cursors versus bounded UUID/request-ID application filters;
+- cooperating transcript relocation buffers versus unbuffered associated-state and sidecar writers;
+- hydration replacement/delta policy versus local-to-server scheduled backfill;
+- external session-store mirroring versus mandatory local subprocess staging;
+- source-visible recording helpers versus the absent activation/initializer path;
+- client-side file/path guards versus server consistency, retention, and conflict guarantees.
+
+Final repository-wide validation produced these results:
+
+| Check | Result |
+|---|---|
+| Exact mechanism-page coverage | All 53 classified mechanism pages were assigned exactly once across the six domain ledgers: 10 runtime, 8 context/model, 10 tools/security, 9 sessions/remote, 9 operations/native, and 7 agents/automation. |
+| Per-round question limit | 112 page/round records were checked; the largest round contained 10 questions, so every page stayed within the requested maximum. |
+| Final convergence markers | All six ledgers state a zero-new-question final pass; no unresolved convergence placeholder or pending final-table cell remains. |
+| Shared navigation | All six ledgers are linked from the research-atlas index, `docs/SUMMARY.md`, and the Astro/Starlight sidebar. |
+| Relative Markdown targets | 2,911 relative file targets were checked across `docs/`; hand-authored documentation had zero unresolved targets. Two unresolved references occur only inside excluded extracted prompt prose and point to upstream files not retained in this repository. |
+| Editor diagnostics | No errors were reported for the final edited documentation and navigation files. |
+| Whitespace | Repository-wide `git diff --check` passed. |
+| Documentation build | Astro loaded 88 documentation sources and generated 89 static pages, including all six audit routes. Pagefind and sitemap generation completed. The only warning was Vite's non-fatal existing advisory for chunks larger than 500 kB after minification. |
+| File accounting | The final working tree contains 26 tracked modified paths and two new ledger files. No path under `claude-code-pkg/` or `source-atlas/` changed. |
+
+**Audit status: complete, validated, and converged for all 53 mechanism pages against Claude Code `2.1.215` and the inspected retained artifacts.**

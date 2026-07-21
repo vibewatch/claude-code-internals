@@ -19,6 +19,8 @@ This page reverse-engineers the task and subagent paths that show how Claude Cod
 | AgentTool | `Agents run in the background by default` | Delegated agents launch asynchronously unless `run_in_background: false` is explicit. |
 | ListAgentsTool | `ListAgents`, `Names are the address`, ` [ref]` | Lists addressable agents/sessions and explains reference-based disambiguation. |
 | SendMessagePinGuard | `send_message_pin_guard`, `now resolves to a different agent` | Prevents a reused display name from silently rebinding an established conversation recipient. |
+| SendMessageResumeGuard | `AgentStoppedByUserError`, `ResumeAgentStateError` | User-stopped agents stay stopped; other stopped or evicted agents can be resumed from retained state/transcript. |
+| AgentCleanupStages | `nonShellMonitors`, `shellTasks`, `keepaliveGated` | Agent-owned monitors and shell tasks can survive the completed turn while keepalive ownership remains active. |
 | ObserverDeclaration | `observer`, `observerMessage`, `ObserverReport` | Experimental auto-spawned observer and its one-way report channel. |
 | SessionSpawnCap | `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | Session-wide spawn budget (default 200); `/clear` resets it. |
 | ImplicitTeamContract | `team_name: "Deprecated; ignored. The session has a single implicit team."` | Explicit team setup is no longer required. |
@@ -113,6 +115,8 @@ Callers copy the printed name into `SendMessage({to: "<name>", ...})`. A row's b
 
 After a recipient resolves, the runtime can pin that identity. If the same display name later points to a different agent/session, `send_message_pin_guard` refuses the send and asks for an explicit reference instead of silently redirecting the message. This name-plus-ref contract also appears in the fully implemented `SendFile` body, but `SendFile.isEnabled()` is hard-coded false in this build and must not be treated as an available peer capability.
 
+Delivery also distinguishes an explicit user stop from ordinary lifecycle cleanup. `SendMessage` refuses to resurrect an agent carrying the stopped-by-user marker. An otherwise stopped or evicted agent can be resumed, including by rebuilding resumable state from its transcript; failure to recover that state is reported instead of silently starting an unrelated recipient. The established name pin still applies after resumption.
+
 Observers are intentionally excluded from ordinary messaging: `SendMessage` rejects observer callers/targets, and observers report only through `ObserverReport`. See [Observer agents](observer-agents.md) for pairing, repeated permission checks, digest framing, and resume behavior.
 
 ## Hosted review
@@ -168,6 +172,8 @@ The runtime has an async-local context classifier `agentType === "subagent"`. Re
 | `TaskCompleted` | `task_id`, `task_subject`, optional description/team fields | A task completed. |
 
 `SubagentStop` carrying `agent_transcript_path` and `last_assistant_message` indicates that subagent execution is transcript-backed and can surface a concise final message without parsing the full transcript.
+
+Agent-turn completion is staged cleanup rather than an unconditional kill of every descendant resource. Cleanup stages for agent-owned non-shell monitors and shell tasks are `keepaliveGated`: active ownership can preserve those background resources beyond the agent's completed turn, after which the normal task cleanup/eviction path can retire them. This is separate from worktree cleanup: an unchanged native Git worktree is removed, while a changed worktree is unlocked and retained so its path and branch can be returned.
 
 ### Background and scheduled task mechanics
 

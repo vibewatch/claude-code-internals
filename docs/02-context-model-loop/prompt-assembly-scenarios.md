@@ -14,20 +14,22 @@ For exact provider-facing prompt text for one live session, instrument or captur
 | PromptPartsFetcher | `fetchSystemPromptParts()` | Returns `{defaultSystemPrompt,userContext,systemContext}` and redirects dynamic sections when requested. |
 | WebFetchApplyPrompt | `web_fetch_apply` | Helper model call for applying fetched web content to a user task. |
 | WebSearchHelperPrompt | `web_search_tool` | Web-search helper call with a dedicated short system prompt and web-search tool schema. |
-| SubagentPromptBuilder | `Cq5` / `jX$` | Subagent prompt construction from `getSystemPrompt()` plus subagent runtime notes. |
-| CompactionPromptBuilder | `compact` | Compaction helper call with summarization-oriented system prompt. |
+| SubagentRunner | `UV()` | Builds subagent context, prompt, tools, messages, hooks, and cleanup. |
+| SubagentPromptBuilder | `uqg()` → `y8r()`, then `pqg()` | Starts with `getSystemPrompt()`, appends current subagent/environment notes, and optionally adds scratchpad guidance. |
+| SubagentPromptAppend | `CLAUDE_CODE_ENABLE_APPEND_SUBAGENT_PROMPT`, `appendSubagentSystemPrompt` | Feature-gated final fragment appended to the same subagent system-prompt array. |
+| CompactionPromptBuilder | `querySource:"compact"` | Forked and direct compaction helper calls, including the direct short summarizer system prompt. |
 | ApiSystemReminderWrapper | `N2`, `kf5`, `api_system` | Wraps system reminders and creates mid-conversation provider `system` blocks. |
 | IssueTitleHelperPrompt | issue-title helper | Small helper model call for GitHub issue title generation. |
 | SessionNameHelperPrompt | kebab-case session name helper | Small helper model call that returns a JSON name. |
 | SessionSearchPrompt | `session_search` | Agentic transcript search helper with a specialized system prompt. |
 | StopConditionEvaluatorPrompt | stop-condition hook evaluator | Hook-condition model call that judges transcript/condition satisfaction. |
-| InteractiveAgentBasePrompt | `iB5`, `rB5`, `oB5`, `$p5` | Main interactive-agent base instructions and behavior-rule fragments. |
-| DynamicEnvironmentPrompt | `_p5`, `jX$` | Dynamic environment/model/cwd/additional-directory and subagent notes. |
+| InteractiveAgentBasePrompt | Default fragments selected by `M2()` | Main interactive-agent base instructions and behavior-rule fragments. |
+| DynamicEnvironmentPrompt | `W6y()`, `y8r()` | Current subagent environment/model/cwd/additional-directory and launch-boundary notes. |
 | ProviderRequestAssembler | `callModel()` → `Ead()`, `qSy()`, `asSystemPrompt()`, `KSy()`, `messages.create(...)` | Main/helper request assembly, message normalization, provider system blocks, cache metadata, and final dispatch. |
 | MainLoopPromptInputs | `customSystemPrompt`, `appendSystemPrompt`, `mainThreadAgentDefinition` | Current main-loop inputs passed to `vne()`. |
 | PromptOverrideFlags | `--system-prompt`, `--append-system-prompt`, files, `--exclude-dynamic-system-prompt-sections` | CLI override/append/dynamic-section controls and file loading. |
 
-Current implementation anchors are [`vne()` near line 333575](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L333575), [`fetchSystemPromptParts()` near line 563486](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L563486), and the default builder/dynamic boundary near [lines 568000–569300](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L568000). The older aliases previously listed on this page are not used as behavioral anchors for `2.1.215`.
+Current implementation anchors are [`vne()` near line 333575](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L333575), compact helper calls near [lines 347472–348021](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L347472), subagent assembly near [lines 352713–353500](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L352713), [`fetchSystemPromptParts()` near line 563486](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L563486), and the default/environment builders near [lines 568000–569300](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L568000). The older `Cq5`/`jX$` aliases are not used as behavioral anchors for `2.1.215`.
 
 ## Notation
 
@@ -201,24 +203,36 @@ The coordinator branch builds its own prompt based in part on whether a comms-ro
 
 ## Scenario 7: subagent / fork / teammate prompt
 
-Subagents start from the selected agent definition's `getSystemPrompt()`, then `Cq5`/`jX$` add runtime notes and context such as tool availability, cwd/worktree behavior, and parent/fork context. Forked agents can inherit the parent prompt or an override prompt; worktree isolation can add a worktree reminder.
+`UV()` builds a subagent request from separate prompt, context, message, and tool planes. Unless the caller supplies `override.systemPrompt`, `uqg()` calls the selected agent definition's `getSystemPrompt({toolUseContext})` and passes that fragment through `y8r()`. `y8r()` appends the launcher-message trust boundary, subagent operating notes, current environment/model/cwd/additional-directory text, and an optional model-specific fragment. If that path throws, `uqg()` uses the built-in generic agent prompt before applying the same notes.
+
+`pqg()` can append scratchpad guidance when exact-tools mode is not active. Finally, when `CLAUDE_CODE_ENABLE_APPEND_SUBAGENT_PROMPT` is true and `appendSubagentSystemPrompt` is present, `UV()` appends that text to the same system-prompt array. The implementation does not promise a distinct `SYSTEM[1]` block for “runtime notes”; normalization and cache decoration happen later.
 
 ```text
-SYSTEM[0] subagent base prompt
+SYSTEM PROMPT ARRAY
   - agent-specific role/task rules from getSystemPrompt()
-
-SYSTEM[1] subagent runtime notes
-  - caller/fork relationship
-  - available tools and deferred tools
-  - cwd/worktree or isolation notes
+  - launcher-message trust boundary and operating notes
+  - model, cwd, git/platform, and additional-directory environment
   - final-report expectations
-  - optional append-subagent prompt
+  - optional model-specific note
+  - optional scratchpad guidance
+  - optional feature-gated appendSubagentSystemPrompt
+
+USER CONTEXT / SYSTEM CONTEXT
+  - caller overrides, or the normal Jw()/ux() context maps
+  - Explore/Plan omit selected CLAUDE.md or git-status material
 
 MESSAGES
   - task prompt supplied by the caller
-  - optional parent conversation excerpts or fork context
+  - optional filtered parent conversation/fork context prepended before it
+  - hook and preloaded-skill context when applicable
   - tool results local to the subagent thread
+
+STRUCTURED TOOLS
+  - resolved built-in and agent MCP tools after allow/disallow filtering
+  - deferred-tool attachments when applicable
 ```
+
+Worktree paths affect the subagent permission context, additional working directories, and recorded metadata. They are not evidence that tool availability or fork history is embedded as one dedicated system-text block.
 
 Built-in examples visible in `cli.renamed.js` include:
 
@@ -257,7 +271,7 @@ This explains why a “full prompt” dump must include both the text system blo
 
 ## Scenario 9: WebSearch helper
 
-The built-in web-search tool uses a small helper model path instead of relying only on the main turn. At line ~3628, the code creates a user message equivalent to “perform a web search for this query,” uses a short web-search assistant system prompt, passes an extra web-search tool schema, and sets `querySource:"web_search_tool"`.
+The built-in web-search tool uses a small helper model path instead of relying only on the main turn. Near [`cli.renamed.js` line 401521](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L401521), the code creates a user message equivalent to “perform a web search for this query,” uses a short web-search assistant system prompt, passes an extra web-search tool schema, and sets `querySource:"web_search_tool"`.
 
 ```text
 SYSTEM
@@ -278,7 +292,7 @@ The helper result is then converted back into model-visible search-result conten
 
 ## Scenario 10: WebFetch apply helper
 
-For fetched page content, the helper path truncates very large content, builds a user prompt from the page content plus the original task, and invokes the shared model-call wrapper with an empty system prompt array.
+For fetched page content, the helper path near [`cli.renamed.js` line 372379](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L372379) truncates very large content, builds a user prompt from the page content plus the original task, and invokes the shared model-call wrapper with an empty system prompt array.
 
 ```text
 SYSTEM
@@ -297,7 +311,7 @@ So WebFetch prompt assembly is mostly user-message construction, not a large ded
 
 ## Scenario 11: compaction and continuation summaries
 
-Compaction has multiple prompt surfaces. The common main summarization helper uses a short summarizer system prompt and passes the conversation to summarize. Reactive compaction builds compact instructions and calls the main-loop runner with `querySource:"compact"`, usually with tools disabled or tightly controlled.
+Compaction has multiple prompt surfaces. The direct fallback helper uses a short summarizer system prompt and passes the conversation to summarize. The preferred forked path and reactive compaction use compact-specific messages and call the agent loop with `querySource:"compact"`, with tools denied on the inspected calls.
 
 ```text
 SYSTEM
@@ -314,7 +328,9 @@ OUTPUT
   - compact summary message, marked as compact summary in transcript state
 ```
 
-The prompt catalog contains several related entries around lines ~2067, ~2146, ~2251, and the model call at line ~4961 confirms the helper path.
+The current call sites near [`cli.renamed.js` lines 347472–348021](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L347472) first try `runForkedAgent()` with `querySource:"compact"`, `forkLabel:"compact"`, one turn, and tools denied. The direct fallback calls `callModel()` with `querySource:"compact"`, prompt caching disabled, and the short system fragment `You are a helpful AI assistant tasked with summarizing conversations.` Reactive compaction also uses a forked request with `querySource:"compact"` and `forkLabel:"reactive-compact"`. Catalog entries remain supporting template evidence rather than the behavioral call-path anchor.
+
+The short line numbers retained in Scenarios 12–14 below are legacy catalog/minified-view discovery coordinates, not current `cli.renamed.js` semantic line anchors. Their exact prompt strings are useful leads, but enclosing current control flow is required before extending those lifecycle claims.
 
 ## Scenario 12: hook condition evaluator
 
@@ -335,7 +351,7 @@ OUTPUT
   - JSON decision, reason, and optional impossible/error fields
 ```
 
-The main anchors are line ~8903 for stop-condition evaluation and line ~8918 for broader hook evaluation with tool access and transcript-path context.
+The catalog discovery anchors are line ~8903 for stop-condition evaluation and line ~8918 for broader hook evaluation with tool access and transcript-path context.
 
 ## Scenario 13: small helper prompts
 

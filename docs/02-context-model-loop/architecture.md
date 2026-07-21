@@ -47,7 +47,8 @@ This separation lets the runtime support interactive TUI and scripted/SDK transp
 | HeadlessRunner | `async function runHeadless` | Headless runner; validates print/SDK constraints. |
 | HeadlessFrameMultiplexer | `function runHeadlessStreamingForTesting` | Headless streaming/control multiplexer. |
 | ControlCorrelation | `control_request`, `control_response`, `control_cancel_request`, `request_id` | Correlated host/runtime request, response, and cancellation envelopes. |
-| ResultDrain | final `result` holdback | Terminal result is emitted after queued outbound producers drain. |
+| ConditionalResultHoldback | `S8f()`, `mei()`, `j7a()`, `G7a()` | A logical `result` is buffered only after input closes while qualifying tasks or notification waits remain; otherwise it is enqueued immediately. |
+| FinalOutboundClose | `W.done()` | Marks the stronger transport boundary after input-side work and loop-owned producers have been settled or cleaned up. |
 | SdkCleanup | `performCleanup()` | Rejects pending controls and closes SDK resources/transports. |
 | RateLimitStreamFrame | `rate_limit_event` | Rate-limit changes projected to SDK consumers. |
 | PromptSuggestionFrame | `prompt_suggestion` | Predicted next-prompt frame emitted after a turn. |
@@ -99,8 +100,15 @@ flowchart TD
     Mux --> State[session_state_changed]
     Mux --> Mirror[transcript_mirror]
     Mux --> Bridge[bridge_state]
-    Mux --> Drain[Drain queued producers]
-    Drain --> Result[terminal result frame]
+    Mux --> Result[Logical result frame]
+    Result --> Hold{Input closed and qualifying work or waits remain?}
+    Hold -->|no| Emit[Enqueue result immediately]
+    Hold -->|yes| Held[Buffer result]
+    Held --> Drain[Drain commands, tasks, and notification waits]
+    Drain --> Flush[Flush held result]
+    Emit --> Open[Outbound stream can remain open]
+    Flush --> Open
+    Open --> Close[Final loop cleanup and W.done]
 ```
 
 The module composes five cooperating sub-components:
@@ -111,9 +119,9 @@ The module composes five cooperating sub-components:
 | Compaction router | Monitors the effective model window and selects full, reactive, or precomputed-result application. Partial compaction is exposed through message selection. Successful materialization refreshes bounded current attachments. |
 | Provider/model router | Applies model aliases/policy and selects the first matching primary route: gateway, Bedrock, Foundry, Anthropic AWS, Anthropic Google Cloud, Mantle, Vertex, then first party. Bedrock can additionally receive a Mantle secondary route. |
 | Authentication/header matrix | Separates bearer/OAuth, API-key, WIF, host-managed cloud credentials, provider-specific headers, and refresh/recovery. |
-| Headless stream/control loop | Multiplexes model and non-model frames, correlates host requests by `request_id`, holds back the terminal result while queued producers drain, and hands off to SDK/transport cleanup. |
+| Headless stream/control loop | Multiplexes model and non-model frames, correlates host requests by `request_id`, conditionally buffers a logical result after input closes while qualifying work remains, and eventually closes the outbound stream before SDK/transport cleanup completes. |
 
-The headless stream/control loop wraps the same model loop used by interactive execution, but its completion contract is stronger than “model iteration ended”: outbound task, notification, mirror, suggestion, and control state must be resolved or drained before the terminal result closes the stream.
+The headless stream/control loop wraps the same model loop used by interactive execution, but it exposes several completion boundaries. A model turn can produce a `result`; that frame may be emitted immediately or held while closed-input background work drains; other frames, including a prompt suggestion, can follow a result; and only final outbound closure establishes that the loop will emit no more frames. SDK query cleanup and subprocess shutdown are later ownership layers.
 
 ## Public interface
 
@@ -158,7 +166,7 @@ The headless stream/control loop wraps the same model loop used by interactive e
 3. **Primary provider routing is ordered.** Gateway state wins before environment-selected cloud adapters; first party is the final fallback. The separate Bedrock-to-Mantle secondary route is model-specific and does not change the primary identity.
 4. **Authentication is a branch matrix.** Bearer/OAuth provenance, API-key provenance, WIF eligibility, cloud SDK/host credentials, header shaping, and refresh/recovery are separate decisions. Each lane has internal precedence, but there is no universal credential list spanning every provider.
 5. **Headless mode is a different projection, not a different agent.** The headless runner reuses the same context/model loop, then adds correlated controls and non-model frames. SDK and subprocess cleanup remain separate from print-loop draining.
-6. **Terminal result is an ordering boundary.** The loop holds `result` until queued notifications, task state, suggestions, transcript mirrors, and other active producers are drained, so consumers can treat it as terminal without dropping earlier work.
+6. **Result and stream completion are different boundaries.** With open input, `shouldQuery:false`, or no qualifying closed-input work, the loop can enqueue `result` immediately. When input is closed and `S8f()` or `mei()` reports qualifying work, `j7a()` buffers the result until the command/background loop drains, then `G7a()` flushes it. Prompt suggestions and other frames can still follow a result, so consumers that need transport completion must wait for outbound stream closure rather than treating every `result` as end-of-stream.
 7. **Compaction is a family of runtime paths.** Full, partial, reactive, and precomputed flows share boundary/materialization concepts but differ in trigger, hook timing, preserved suffix, retries, and persistence. A version-1 `.precompact.json` sidecar can rehydrate an eligible ready main-session result after validation.
 8. **Fallback has multiple meanings.** Startup third-party availability probes can assign provider-usable family defaults; the ordered `--fallback-model` chain handles overload in print/headless mode; internal helper/compaction requests also have availability fallback chains. These must not be collapsed into one feature.
 
@@ -173,7 +181,7 @@ The headless stream/control loop wraps the same model loop used by interactive e
 | Context pressure or withheld prompt-too-long result | Threshold routing can use full compaction or a reactive/precomputed swap. Hooks can block; grouped retry can preserve more recent groups; repeated automatic failures open a circuit breaker. |
 | Stale precomputed compaction | Missing boundary, session/model mismatch, age, token-delta, or missing preserved UUID rejects reuse and schedules sidecar cleanup; normal compaction remains available. |
 | Unknown/malformed control or cancellation | Rejected or converted to a correlated error when possible; it is not fed to the model as user input. |
-| Logical turn completes with active producers | Final `result` is held back while queued outbound work drains. |
+| Logical turn completes after input closes with qualifying tasks or notification waits | The `result` is buffered, then flushed after the command/background drain. Without that predicate it is emitted immediately, and later non-result frames remain possible until stream closure. |
 | SDK transport closes | `performCleanup()` rejects unresolved control promises and closes resources; subprocess transport then escalates from stdin close to `SIGTERM` and, after five seconds, `SIGKILL` if required. |
 
 ## Extension points
@@ -183,7 +191,7 @@ The headless stream/control loop wraps the same model loop used by interactive e
 | Add a context source | Choose its request plane deliberately: base prompt fragment, `userContext`, `systemContext`, attachment/message, or structured tool. Do not assume all sources belong in system text. |
 | Add a provider | Extend ordered primary/secondary routing, model-ID mapping, credential/refresh contract, endpoint/header shaping, and availability probes together. |
 | Add a new control subtype | Define request/response schemas, preserve `request_id` correlation and cancellation, and reject pending promises during cleanup. |
-| Add a new outbound frame type | Define its schema, producer lifetime, result-ordering/drain behavior, and explicit SDK adapter handling. |
+| Add a new outbound frame type | Define its schema, producer lifetime, interaction with conditional result holdback and final stream closure, and explicit SDK adapter handling. |
 | Customize compaction | Subscribe to `PreCompact`/`PostCompact`; account for precompute hook timing and the fact that `PostCompact` runs only when a result is materialized. |
 | Change dynamic prompt placement | Update `M2()`/boundary exclusion and `rxo()` relocation as one contract, then verify the `userContext`/`systemContext` partition. |
 

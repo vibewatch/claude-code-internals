@@ -232,6 +232,12 @@ export default defineConfig({
           items: [
             { label: 'Overview', link: '/99-research-atlas/' },
             { label: 'Bundle module map', link: '/99-research-atlas/module-map-from-renamed-cli/' },
+            { label: 'Runtime mechanism audit', link: '/99-research-atlas/mechanism-question-audit-runtime/' },
+            { label: 'Context/model mechanism audit', link: '/99-research-atlas/mechanism-question-audit-context-model/' },
+            { label: 'Tools/security mechanism audit', link: '/99-research-atlas/mechanism-question-audit-tools-security/' },
+            { label: 'Sessions/remote mechanism audit', link: '/99-research-atlas/mechanism-question-audit-sessions-remote/' },
+            { label: 'Operations/native mechanism audit', link: '/99-research-atlas/mechanism-question-audit-operations-native/' },
+            { label: 'Agents/automation mechanism audit', link: '/99-research-atlas/mechanism-question-audit-agents-automation/' },
           ],
         },
       ],

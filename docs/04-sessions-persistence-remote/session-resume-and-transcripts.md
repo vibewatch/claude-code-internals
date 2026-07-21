@@ -16,6 +16,11 @@ This page reverse-engineers the local session and transcript paths that explain 
 | SessionRestore | [~860,505](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L860505) `async function f7o(e,t,r)` | Applies compatible saved state to the current runtime. |
 | OrderedTranscriptStore | [~579,533](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L579533) `class ROd` | Queues writes per target file and serializes drain batches. |
 | SessionStorageShutdown | [~579,483](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L579483) `flushSessionStorageAtExit` | Flushes transcript queues and re-appends metadata during coordinated shutdown. |
+| MetadataCheckpoint | [~579,650](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L579650) `bytesSinceMetadataReAppend`, `LITE_READ_BUF_SIZE / 2` | Re-appends cached metadata after approximately 32 KiB of successful UTF-8 current-session writes. |
+| TranscriptRelocation | [~580,520](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L580520) `relocateSessionTranscript`, `cOd` | Flushes and buffers in-process writers while moving transcript state between project directories. |
+| LegacyRemoteHydration | [~580,700](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L580700) `hydrateRemoteSession` | Fetches legacy ingress logs and performs a guarded local replacement. |
+| CcrV2Hydration | [~580,840](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L580840) `hydrateFromCCRv2InternalEvents`, `.ccr-tip.json` | Chooses anchored delta append or guarded full replacement for foreground and subagent transcripts. |
+| CcrPersistenceBackfill | [~833,666](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L833666) `Epf`, `bpf` | Starts uploading local UUID-bearing suffix records absent from the server event set. |
 | ContinueFlag | `-c, --continue` | Continue most recent conversation. |
 | ResumeFlag | `-r, --resume [value]` | Resume by ID or picker/search term. |
 | ForkSessionFlag | `--fork-session` | Resume into a new session ID. |
@@ -76,19 +81,29 @@ Background sessions participate in `/resume`; from the agent view, `/resume` ope
 
 ## Persistence interpretation
 
-The `local-jsonl` and `${sessionId}.jsonl` anchors show that local sessions are durable JSONL transcript files. `SessionDiscovery` and `SessionRestore` then form the semantic pair for session discovery and restore. The root action routes `--continue`, `--resume`, PR resume, teleport, and picker fallback into these restoration surfaces before entering `InteractiveSessionLoop` or `HeadlessRunner`; hosted `--remote` has its own runtime rather than first becoming a local resume.
+The `local-jsonl` and `${sessionId}.jsonl` anchors show that local sessions are durable, append-oriented JSONL transcript files. They are not strictly append-only: queued UUID removal can truncate and rewrite a file. `SessionDiscovery` and `SessionRestore` then form the semantic pair for session discovery and restore. The root action routes `--continue`, `--resume`, PR resume, teleport, and picker fallback into these restoration surfaces before entering `InteractiveSessionLoop` or `HeadlessRunner`; hosted `--remote` has its own runtime rather than first becoming a local resume.
 
 ### Append and mirror ordering
 
-Main transcript writes are not independent `appendFile` calls. `ROd` routes records by `ENTRY_APPEND_POLICY`, queues them per file, schedules a default 100 ms drain, and chains drains so one process preserves queue order. A drain can combine records into chunks below 100 MiB. For each chunk the order is:
+Main transcript writes are not independent `appendFile` calls. `ROd` routes records by `ENTRY_APPEND_POLICY`, queues them per file, schedules a default 100 ms drain, and chains drains so one process preserves queue order. Legacy remote ingress or a registered CCR internal-event writer lowers that store instance's interval to 10 ms; clearing the writer does not restore 100 ms. For each append chunk the order is:
 
 1. append JSONL to the local target (creating its directory on the first failure path);
 2. after that append succeeds, invoke session-mirror callbacks with the corresponding records;
 3. resolve the queued writers.
 
-Removal operations split append chunks and run in sequence with them. On drain failure, the runtime debug-logs/reports `tengu_transcript_write_failed` and resolves all remaining waiters in that drained batch so a model turn is not permanently blocked. Those failed records are not mirrored by that drain, and the source does not switch all subsequent persistence off.
+The 100 MiB constant is a flush trigger, not a hard chunk or record limit. Before adding a record, the drain compares the accumulated serialized JavaScript strings' `.length` with `104857600`; if the threshold would be reached, it flushes what was already accumulated and then adds the next record. A single serialized record can therefore exceed the threshold and is still written whole. The check counts JavaScript string units rather than `Buffer.byteLength` or on-disk bytes.
+
+Removal operations split append chunks and run in sequence with them. `performRemoveByUuid()` first searches the last 64 KiB for the final exact `"uuid":"<target>"` substring. When both line boundaries are available, it truncates at that line's start and writes the bytes after the line back, removing one physical tail match without parsing the record. Because this is substring matching rather than top-level JSON inspection, the fast path can remove a line where that text occurs in a nested object or array; spacing such as `"uuid": "..."` misses the fast path. If the fast path cannot act, files at or below 50 MiB are read and rewritten after filtering every parseable line whose top-level UUID matches; for larger files the fallback is skipped.
+
+Neither removal route uses a temp-file/rename transaction, `O_NOFOLLOW`, or an opened-path identity recheck. A transcript-path symlink is followed; a failure after truncate/write begins can leave a partially changed target and is swallowed, while an out-of-process writer or path replacement can race the rewrite despite the in-process queue. Removals emit neither an SDK mirror deletion nor an internal-CCR deletion event. They also do not evict the UUID from the process-local `Gut` cache, so the same UUID can still be treated as present until that cache is cleared or rebuilt.
+
+On append-drain failure, the runtime debug-logs/reports `tengu_transcript_write_failed` and resolves all remaining waiters in that drained batch so a model turn is not permanently blocked. Those failed records are not mirrored by that drain, and the source does not switch all subsequent persistence off. Because a transcript UUID is added to `Gut` when its write is enqueued, however, an identical-UUID retry can be suppressed in the same process even though the record never reached disk; cache invalidation/reload is what reconciles that case.
 
 Auxiliary `appendEntryToFileAsync` writers use a separate per-file serial executor and likewise mirror only after successful append. Their rejection is logged and remains observable to a caller that awaits the returned Promise. `flushSessionStorageAtExit()` waits for both families and then re-appends cached metadata best-effort. This establishes in-process order, not cross-process locking, atomic multi-line transactions, or `fsync` durability.
+
+Successful appends to the active main transcript are counted separately in UTF-8 bytes. Once `bytesSinceMetadataReAppend` reaches `LITE_READ_BUF_SIZE / 2` (32,768 bytes), the current drain best-effort re-appends cached metadata and mirrors those records. The checkpoint can include last prompt/leaf, titles, tag, relocated cwd, agent identity/settings, mode/permission/isolation, worktree, PR, and bridge linkage. It resets the counter and snapshots only values already cached in `ROd`; in particular, it does not continuously query a live bridge for a newer sequence number.
+
+The Remote Control internal-event writer is a distinct persistence path. For transcript records, the local write is enqueued and then `persistToRemote()` invokes the CCR writer without waiting for that local append to finish; its server acknowledgement/retry behavior therefore does not inherit SDK mirror ordering. Bridge metadata helpers also update in-memory state immediately while their transcript append is asynchronous/best-effort when a session file exists.
 
 ### Lifecycle records beyond message replay
 
@@ -107,6 +122,8 @@ These records illustrate why resume is broader than rebuilding the model-visible
 - Resuming may warn when permission mode differs from the saved session.
 - A transcript marked `ended-by-model` restores as ended; resume does not silently clear the marker.
 - A stale/missing `observer-ref` target falls back to a fresh observer rather than failing the observed session.
+- Remote full hydration preserves content-bearing local history only against a candidate set with zero `user`/`assistant` content; it does not merge two independently content-bearing histories.
+- Transcript relocation buffers cooperating in-process writers but provides no cross-process exclusion or all-files rollback.
 
 ## Restore internals
 
@@ -207,6 +224,48 @@ Worktree continuity has two persistence surfaces. `persistWorktreeSession()` upd
 The normalized transcript record stores the original cwd, optional pre-entry cwd, worktree path/name/branch, original branch/head, session ID, optional tmux session, and hook/existing-worktree flags. A `null` `worktreeSession` is a persisted clear rather than an absent record.
 
 Attaching to an existing worktree is stricter than checking whether a path exists. `enterExistingWorktreeForSession` resolves the current canonical git root, rejects paths that are the main worktree or current cwd, runs `git -C <root> worktree list --porcelain`, and only persists `enteredExisting: true` after the real path matches a registered worktree. This keeps resume/worktree continuity tied to git's registered worktree set.
+
+### Physical transcript relocation
+
+Persisting a changed cwd/worktree can move the active transcript rather than merely recording a new path. If the current JSONL target changes, `relocateSessionTranscript()` enables one buffer in `ROd` and another around auxiliary `appendEntryToFileAsync` calls for the old main path, flushes both writer families, creates the destination project directory, and moves two objects independently:
+
+1. `${sessionId}.jsonl`;
+2. the sibling `${sessionId}/` directory containing associated session state.
+
+`cOd()` first tries `rename`. On `EEXIST`, `EPERM`, `EBUSY`, or `ENOTEMPTY`, it recursively removes the destination and retries; on `EXDEV`, it copies and then recursively removes the source. After the main move, the runtime switches the active transcript path/cwd and best-effort appends `{type:"relocated", sessionId, relocatedCwd}`. After an associated-directory move it separately repoints task-output symlinks. In `finally`, auxiliary operations replay to the path the store currently owns and main-store entries are re-routed through normal append policy.
+
+This is in-process coordination, not an atomic relocation transaction. The main file can move while the associated directory, relocation stamp, or symlink repoint fails; copy/delete can leave source or target artifacts when an intermediate operation fails; target-conflict recovery can delete a pre-existing destination. No rollback or cross-process lock is visible. If persistence is disabled or the transcript was never materialized, only the in-memory/current-project state changes and there is no file to move.
+
+## Remote hydration and persistence reconciliation
+
+Remote recovery does not use the ordinary `SessionDiscovery` branch alone. Two source-visible hydrators can materialize server state into local JSONL before normal restore.
+
+### Legacy session-ingress hydration
+
+`hydrateRemoteSession()` switches to the requested local session ID, fetches the server log set, and normally rewrites the local transcript directly with `writeEntriesToJsonlFile()`. Before replacement, it scans the existing file for a parseable top-level `user` or `assistant` record. If local content exists but the fetched set contains no such content-bearing record, replacement is skipped. Otherwise even an empty fetched set can truncate a metadata-only local file. The rewrite uses a direct `"w"` stream rather than temp-file/rename, so an I/O failure can leave a partial file.
+
+The legacy live writer is installed in `finally`, including after a fetch failure or zero-content skip. It serializes writes per session, sends the cached server predecessor as `Last-Uuid`, retries each entry up to ten times with exponential backoff, and handles 409 by accepting an already-present current UUID or adopting/refetching the server's last UUID before retrying. This does not make the initial file rewrite and later ingress stream one transaction.
+
+### CCR v2 anchored hydration
+
+CCR v2 keeps a sibling `.ccr-tip.json` containing `{eventId, updatedAt}`. The sidecar is written best-effort via temp-file replacement after a successful foreground hydration write and after an acknowledged outgoing foreground internal-event batch. Delta mode is client-gated and accepts the sidecar only when its `eventId` also appears among UUIDs in the local transcript's last 64 KiB. The JSONL and sidecar are separate files with no joint commit.
+
+The foreground hydrator requests events after that anchor and then checks both response and local-tail coherence:
+
+- If the response does not include the anchor, reports no anchor fallback, and the local tail still contains the anchor and ends with a newline, it appends returned payloads whose UUIDs are absent from the tail UUID set.
+- If that tail is incoherent, it refetches without an anchor.
+- If the server rejects/cannot find the anchor, returns the anchor in its response, or no valid sidecar exists, the path uses the returned/full event set as a replacement candidate.
+- Before any full replacement, the same content guard preserves a local file containing `user`/`assistant` records when the candidate set has none.
+
+Delta deduplication is limited to UUIDs visible in the 64 KiB tail, so it is not a whole-file uniqueness proof. Full foreground replacement is a direct JSONL rewrite. Subagent events are fetched separately, grouped by `session_agent_id`, and each returned agent file is fully rewritten under the same zero-content guard; local agent files absent from the response are not deleted by this loop. Foreground and subagent writes can therefore succeed or fail independently.
+
+### Local-to-server backfill
+
+The interactive bridge's persistence-ready callback reconciles in the other direction before installing its live CCR writer. `Epf()` reads server foreground and subagent events, builds one union of their payload UUIDs, and scans local transcripts backward. It keeps UUID-bearing `user`, `assistant`, `attachment`, and `system` records absent from that set, stops each scan after the newest compaction record, reverses the result back into local file order, and starts queuing those records as internal events.
+
+Main history has no file-size admission check in this scan. Subagent backfill first keeps files at most 5 MiB, sorts by modification time, and selects at most the 20 newest; live writes are unaffected by those startup caps. Because foreground and subagent server UUIDs share one comparison set, an identical UUID already present in either scope suppresses backfill from the other scope.
+
+The loop attaches `.catch()` handlers but does not await each writer Promise, so its reported counts are records selected/scheduled, not server acknowledgements. Once `Epf()` returns, a transport-generation check installs the live writer/readers only if that persistence transport is still current. Teardown prevents stale installation, but already-started writes use the old writer and are not converted into a transactional initialization barrier.
 
 ### Failure behavior
 
