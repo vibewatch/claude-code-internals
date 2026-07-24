@@ -96,16 +96,26 @@ Zero new retained-artifact-answerable mechanism questions. **Status: edited and 
 |---|---|---|
 | Is memory-file selection a transcript-compression pass? | No. `Izy()` is a separate default-Sonnet structured selector with the normal system prefix skipped. | Existing page already answered this; unchanged. |
 | Which compaction shapes exist? | Full, partial, reactive, and precomputed paths differ in trigger, preserved suffix, retry, hook timing, and persistence. | Existing variant table and call paths were retained. |
-| When do compaction hooks run for precompute? | `PreCompact` runs when the background precompute is armed; `PostCompact` runs only when a ready result is materialized. | Existing lifecycle explanation was complete. |
+| When do compaction hooks run for precompute? | `PreCompact` runs when the background precompute is armed; `PostCompact` runs only when a ready result is materialized. | Correct for automatic consumption; Round 3 later distinguishes the additional manual hook pass before `/compact` reuse. |
 | How does reactive prompt-too-long recovery progress? | It preserves progressively more trailing groups, using a token gap when available; media has one placeholder retry. | Existing retry explanation was complete. |
 | Which sidecar checks reject reuse? | Schema/size, session/model, age, boundary, context growth/shrinkage, and preserved UUID checks reject; CLI-version mismatch is telemetry only. | Existing version-1 sidecar rules were retained. |
 | What context is rebuilt after compaction? | Transient state is cleared and a bounded current attachment set is reconstructed, including up to five recent files with per-file and aggregate limits. | Existing attachment restoration section was retained. |
 | How are preserved messages restored on resume? | Explicit UUID metadata is preferred; the legacy contiguous segment is validated; broken chains are logged rather than guessed. | Existing reconstruction section was retained. |
-| Are compaction, context collapse, and file rewind one checkpoint system? | No. They are distinct transcript, collapse-state, and filesystem loops; no general source-confirmed `undo` command was found. | Existing checkpoint/rewind separation was retained. |
+| Are compaction, context collapse, and file rewind one checkpoint system? | No. They are distinct transcript, collapse-state, and filesystem loops. A later complete command-registry pass confirmed `/undo` as an alias of `/rewind`, not a fourth system or a general inverse-operation engine. | Follow-up corrected the stale absence claim while retaining the checkpoint-family separation. |
 
 #### Round 2 — convergence
 
-Zero new retained-artifact-answerable mechanism questions. The page was intentionally not churned. **Status: unchanged and converged.**
+Zero new retained-artifact-answerable mechanism questions in the original pass, so the page was not churned then. The later command follow-up corrected `/undo` and added command controls. **Status: edited in follow-up and converged.**
+
+#### Round 3 — manual `/compact` call-path correction
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Does manual `/compact` call the full `rlo()` summarizer? | No in `2.1.215`. `YTy()`/`XTy()` run the manual hooks and route either through `JTy()` to a compatible ready precompute or through `Bas()` → `ilo()`; `hlo()` materializes both. The only `rlo()` callers are the automatic path and in-process teammate history compaction. | Corrected the source-anchor and variant tables and added the exact manual call path. |
+| Is precompute hook timing identical for automatic and manual consumption? | No. `Ras()` runs an auto `PreCompact` when arming. Automatic `Das()`/`flo()` reuse does not rerun it, while `/compact` always runs a fresh manual `PreCompact`; custom or hook-added instructions disable reuse. | Split automatic swap semantics from manual reuse semantics. |
+| How does the compacted result replace the live chain? | The local command returns `{type:"compact"}`. Dispatch appends the command/display records to the retained suffix, then `jVe()` emits boundary, summary, preserved messages, rebuilt attachments, and hook results with `shouldQuery:false`. | Added the transcript splice and no-second-ordinary-turn boundary. |
+
+The focused reread found no further source-answerable gap in the current compaction path. **Status: corrected and converged.**
 
 ### `headless-streaming-and-resilience.md`
 
@@ -124,6 +134,16 @@ Zero new retained-artifact-answerable mechanism questions. The page was intentio
 #### Round 2 — convergence
 
 Zero new retained-artifact-answerable mechanism questions. **Status: edited and converged.**
+
+#### Round 3 — interruption and queue steering follow-up
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Does an SDK `interrupt` clear queued prompts? | No. It aborts the active turn and eligible turn-owned task work, then returns `still_queued` containing UUID-stamped main-thread queue entries plus the already-dequeued imminent batch. | Added interrupt receipt and survival semantics. |
+| Are a turn interrupt, queued-message cancellation, and control-operation cancellation the same request? | No. `interrupt` targets the turn, `cancel_async_message` targets a queued message UUID, and `control_cancel_request` targets a pending request ID. | Added the four-operation scope table. |
+| When can a queued prompt affect an ongoing task? | `now` aborts the active headless/SDK turn; eligible `next` input can fold as a `queued_command` attachment between tool batches; `later` waits for a subsequent top-level drain. | Added priority, mid-turn steering, and cancellation-race behavior. |
+
+The focused reread found no further source-answerable queue/control gap. **Status: edited and converged.**
 
 ### `model-selection-usage-quota-billing.md`
 
@@ -144,6 +164,31 @@ Zero new retained-artifact-answerable mechanism questions. **Status: edited and 
 
 Zero new retained-artifact-answerable mechanism questions. **Status: edited and converged.**
 
+#### Round 3 — task-to-model selection follow-up
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Does the client generally classify task difficulty to select a model? | No. Selection follows startup/session configuration, mode-dependent aliases, Agent/Workflow definition or call overrides, helper-specific roles, and error fallback. The main model may choose to delegate, but the runtime does not independently promote arbitrary task prose. | Added the explicit non-classifier boundary and role matrix. |
+| What model does an ordinary Agent call use? | `CLAUDE_CODE_SUBAGENT_MODEL` → one-call `model` → definition/frontmatter → current parent runtime model. Forks always inherit; disallowed overrides fall back to the parent runtime model. | Added subagent and Workflow resolution precedence. |
+| How is a model restored on resume? | `Q4t()` declines under stronger env/current/provider choices; `JAf()` scans the newest eligible assistant model and rejects unknown/disallowed/retired or temporary mode-dependent picks; `Z4t()` restores it with refusal-fallback handling. | Replaced stale aliases with current resume anchors and behavior. |
+
+The focused reread found no additional source-answerable task/model-selection gap. **Status: edited and converged.**
+
+#### Round 4 — Fable support lifecycle follow-up
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Is Fable support only a new alias and catalog row? | No. Catalog/provider metadata feeds model resolution, picker visibility, prompt selection, adaptive-thinking/effort request fields, credit consent and feedback, and refusal fallback. | Added the end-to-end Fable architecture and source-anchor map. |
+| Does `isFableAvailable()` decide whether every provider adapter supports Fable? | No. It primarily consumes first-party/gateway advertisement or an explicit pin. Third-party and Claude Platform picker/routing paths can use non-null catalog mappings independently. | Separated dynamic advertisement from adapter routing and deployment entitlement. |
+| Is usage-credit consent required for every Fable request? | No. The local gate is restricted to an eligible first-party Claude.ai subscriber lane and excludes non-first-party, non-subscriber, Enterprise PAYG, zero/default-tier, and separately handled credits-only cases. | Added the exact predicate boundary and avoided a universal billing claim. |
+| What happens when consent is declined or credits cannot be enabled? | The resolver tries allowed Opus, Sonnet, then Haiku defaults; the main loop changes live model state, can rewrite an eligible saved Fable default only on explicit choice, and emits `model_consent_fallback`. No allowed substitute or `CLAUDE_CODE_NO_MODEL_FALLBACK` fails closed. | Added consent state, fallback ordering, persistence, and no-fallback behavior. |
+| How does the request body differ for Fable? | The client selects the lean prompt, adds Fable identity and rollout-gated guidance, uses adaptive thinking, omits explicit disabled thinking, treats that omission as thinking-active for tool choice, sends effort in `output_config`, and provides a Fable-only cache disable env. | Added prompt/request shaping and corrected effort support through `max`. |
+| Is a Fable credit fallback the same as refusal or overload fallback? | No. Credit fallback is pre-request; refusal fallback reacts to `stop_reason:"refusal"`, retracts the refused leg, retries Opus, and can latch the session; overload/configured fallback advances a separate candidate chain. | Added a three-mechanism comparison and transcript semantics. |
+| Does refusal fallback survive resume? | A `model_refusal_fallback` system record lets resume reconstruct the model latch; forks neutralize inherited markers, explicit model changes clear the latch, and rewind can unwind it when the marker is sliced away. | Added resume, fork, model-switch, and rewind behavior. |
+| Does bundled Fable migration guidance prove a local 30-day/ZDR or thinking-replay gate? | No connected client control flow was found for such a gate. Bundled SDK/API prose remains guidance rather than proof of Claude Code enforcement. | Added an explicit evidence boundary. |
+
+The focused reread produced zero additional retained-artifact-answerable Fable lifecycle questions. **Status: edited and converged.**
+
 ### `models-providers-auth.md`
 
 #### Round 1
@@ -162,6 +207,17 @@ Zero new retained-artifact-answerable mechanism questions. **Status: edited and 
 #### Round 2 — convergence
 
 Zero new retained-artifact-answerable mechanism questions. **Status: edited and converged.**
+
+#### Round 3 — Fable provider lifecycle follow-up
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Which provider adapters have catalog Fable IDs? | First party, Bedrock, Vertex, Foundry, Anthropic AWS, Anthropic Google Cloud, Mantle, and gateway all have non-null Fable 5 IDs in `2.1.215`. | Added the exact provider-ID matrix without claiming deployment entitlement. |
+| How is a custom Fable deployment declared? | `ANTHROPIC_DEFAULT_FABLE_MODEL` supplies the ID; name/description env vars supply picker metadata; a matching third-party pin can declare a comma-separated supported-capability list. | Added the custom-pin environment contract and its provider boundary. |
+| Is `fallback_3p` an automatic provider fallback? | No. `cwy()`/`uwy()` use it for a not-found suggestion. Bedrock/Vertex startup probes still enumerate Sonnet, Opus, and Haiku tiers only. | Removed the ambiguity among suggestion metadata, startup probes, overload fallback, and refusal fallback. |
+| Does Fable introduce another authentication lane? | No. It reuses the selected provider's existing credential adapter. Usage-credit consent is a separate first-party subscriber billing decision. | Added the auth-versus-billing boundary and a cross-link to the lifecycle section. |
+
+The provider-focused reread produced zero additional retained-artifact-answerable Fable questions. **Status: edited and converged.**
 
 ### `prompt-assembly-scenarios.md`
 
@@ -229,7 +285,7 @@ The subsequent complete pass produced **zero new questions answerable from retai
 | Page | Documentation decision | Final pass: new retained-artifact-answerable questions | Status |
 |---|---|---:|---|
 | `architecture.md` | Edited | 0 | Converged |
-| `context-memory-compaction-checkpoints.md` | Unchanged | 0 | Converged |
+| `context-memory-compaction-checkpoints.md` | Edited in command follow-up | 0 | Converged |
 | `headless-streaming-and-resilience.md` | Edited | 0 | Converged |
 | `model-selection-usage-quota-billing.md` | Edited | 0 | Converged |
 | `models-providers-auth.md` | Edited | 0 | Converged |
@@ -245,6 +301,9 @@ Cross-page terminology now consistently preserves these boundaries:
 - OAuth access-token state versus API-key state;
 - setup-token versus normal login completion;
 - startup third-party fallback versus stale-pin migration versus overload fallback;
+- Fable dynamic advertisement versus provider catalog mapping versus explicit custom pinning;
+- Fable usage-credit consent fallback versus refusal fallback versus ordinary overload fallback;
+- executable Fable client behavior versus bundled SDK/API migration guidance;
 - logical result production versus conditional holdback versus stream closure;
 - print-loop draining versus SDK cleanup versus subprocess shutdown;
 - current subagent call paths versus catalog-only aliases;
@@ -268,8 +327,31 @@ Validation after convergence produced these results:
 - A targeted relative-link check resolved 127 Markdown file targets across the nine-file audit scope.
 - Scoped `git diff --check` passed.
 - The Astro/Starlight production build loaded 88 documentation sources and generated 89 static pages, including `/99-research-atlas/mechanism-question-audit-context-model/`. The only warning was the existing Vite advisory for chunks larger than 500 kB after minification.
-- Scoped Git accounting identified exactly six modified target pages plus this new ledger. `context-memory-compaction-checkpoints.md` and `prompt-context-memory.md` remained unchanged from `HEAD`.
+- Original scoped Git accounting identified six modified target pages plus this ledger; at that time `context-memory-compaction-checkpoints.md` and `prompt-context-memory.md` were unchanged. The later command follow-up edits the former only and is accounted separately below.
 - Concurrent changes under `docs/06-agents-automation` and their separate ledger remained outside this audit and were neither modified nor reverted.
 - No shared index, README, website configuration, extracted source artifact, generated prompt file, or source-atlas file was changed by this audit.
 
 **Audit status: complete, validated, and converged for Claude Code `2.1.215` on the inspected retained artifacts.**
+
+## Built-in command follow-up — 2026-07-24
+
+The cross-domain command audit traced the concrete local/TUI registrations around `cli.renamed.js:499350-499740`, `502648-502722`, and `560096`. Two context/model pages were updated:
+
+- `context-memory-compaction-checkpoints.md` now separates `/context` measurement, `/compact` execution, `/autocompact` setting/env/model precedence, the disabled `/pause-memory` registration, and the interactive `/rewind` selector. It explicitly records `aliases: ["checkpoint", "undo"]` and limits the meaning of “undo” to that shared selector.
+- `model-selection-usage-quota-billing.md` now traces `/model`, `/effort`, `/fast`, `/usage`, and `/usage-credits`, including persistence versus session-only state, model/account/policy probes, local attribution heuristics, and the hidden `/extra-usage` rename shim.
+
+The follow-up reread produced zero new retained-artifact-answerable questions in these command families. The old Round 1 absence claim for `/undo` is superseded by the corrected row above. **Follow-up status: edited and converged.**
+
+## Fable support follow-up validation
+
+The focused Fable lifecycle/provider pass added no new page and left navigation unchanged. Validation of the resulting working tree produced these results:
+
+- Editor diagnostics reported no errors in `model-selection-usage-quota-billing.md`, `models-providers-auth.md`, or this ledger.
+- A separate source-to-document reread found no material mismatch in the catalog, provider, consent, request-shaping, credit, refusal, resume, or evidence-boundary claims.
+- The relative-link check resolved 708 Markdown file targets across the current 31 changed Markdown files.
+- `git diff --check` passed.
+- The Astro/Starlight production build loaded 88 documentation sources and generated 89 pages. Pagefind indexed all 89 HTML files and sitemap generation succeeded. The only warning was the existing Vite advisory for chunks larger than 500 kB after minification.
+- Generated HTML contains the linked `how-fable-5-is-supported-end-to-end`, `usage-credit-consent-is-a-pre-request-gate`, and `fable-provider-routing-and-custom-pins` fragment IDs.
+- No extracted package artifact or `source-atlas/` file changed; the readable retained bundle was sufficient, so atlas regeneration was intentionally skipped.
+
+**Fable follow-up status: complete, validated, and converged for Claude Code `2.1.215`.**

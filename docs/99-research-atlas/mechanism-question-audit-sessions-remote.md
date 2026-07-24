@@ -418,3 +418,24 @@ Final repository-wide validation produced these results:
 | File accounting | The final working tree contains 26 tracked modified paths and two new ledger files. No path under `claude-code-pkg/` or `source-atlas/` changed. |
 
 **Audit status: complete, validated, and converged for all 53 mechanism pages against Claude Code `2.1.215` and the inspected retained artifacts.**
+
+## Built-in command follow-up — 2026-07-24
+
+The complete command audit added a focused lifecycle round to `session-resume-and-transcripts.md`:
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Does `/clear` delete the old transcript? | No. It runs `SessionEnd(clear)`, separates retained background work from foreground tasks, clears transient state, emits `conversation_reset`, resets costs/metadata, regenerates the session ID with a parent link, and starts the new transcript. The old file remains resumable. | Added ordering, task, title, cwd, and budget-reset behavior. |
+| Is `/branch` just `--fork-session` under another name? | No. It physically selects UUID records from the current JSONL, rewrites session/parent/fork provenance, copies replacement/relocation records, picks a collision-free branch title, and can immediately resume the new file. | Added the branch writer lifecycle. |
+| How does argumentless `/rename` choose a name? | It uses a one-turn no-tool helper: a warm-cache fork when eligible, otherwise a structured request over a bounded conversation tail. Explicit names persist directly and add a model-visible naming reminder. | Added generation, persistence, teammate, and bridge boundaries. |
+| Does `/recap` compact or persist a summary? | No. It runs a disposable one-turn no-tool fork with cache writes/transcript disabled and returns a one- or two-sentence recap. It can rebuild reduced cache-safe parameters when needed. | Added the explicit/away-summary and error branches. |
+
+A final remote-command round distinguished three superficially similar UI entries:
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Is `/remote-env` only a picker? | No. It lists first-party environments, derives the effective setting by source precedence, clears an existing local override, writes the user default ID, and warns when a higher-precedence source still wins. | Added API, persistence, precedence, and failure behavior. |
+| Does `/web-setup` only open an OAuth page? | No. When `gh` is authenticated, it wraps the local token against accidental string/JSON inspection, warns before replacing GitHub App OAuth, explicitly confirms, imports the token to the hosted endpoint, and best-effort creates a first default environment. | Added credential-transfer, consent, error, cancellation, and environment-bootstrap boundaries. |
+| Does `/session` mutate or attach the hosted session? | No. It reads `remoteSessionUrl`, renders a text URL and optional QR code, suppresses QR rendering for screen readers, and logs/omits failed QR generation. | Classified it as a read-only remote-mode display. |
+
+The follow-up reread found no additional session-lifecycle command with an undocumented persistence transition; `/copy`, `/export`, and the remaining UI-only selectors stay cataloged without being misrepresented as transcript storage mechanisms. **Follow-up status: edited and converged.**

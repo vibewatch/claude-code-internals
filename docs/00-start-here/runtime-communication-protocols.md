@@ -46,7 +46,7 @@ The short answer is that there is no single universal protocol. Inside the bundl
 | MCP servers | JSON-RPC 2.0-style requests, responses, notifications | `method`, `params`, `id`, `jsonrpc`, `result`/`error` | Confirmed by `tools/list`, `tools/call`, `prompts/list`, `prompts/get`, `resources/list`, task methods, and JSON-RPC error codes. |
 | Local background daemon | Newline-delimited JSON over a local Unix/domain socket | `{ proto, op, ... }` request and `{ ok, op, ... }` response/event objects | One-shot clients consume the first response line; leases/subscriptions keep the connection open. Protocol version, request size, peer identity where available, and control-key checks constrain the boundary. |
 | Agents/tasks/subagents | Built-in task/message tools, task store, hooks, typed notifications | Tool inputs plus task records/events | `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate` and `SendMessage` are the model-facing protocol surface; hooks expose lifecycle events. |
-| Team inbox | Structured message queue with type routing and sender/role checks | Team messages, permission responses, mode changes, unrouted frames | The inbox is not a general authority channel: `team_permission_update` is always dropped, and accepted control-like messages undergo sender/role validation. |
+| Agent Teams inbox | Locked, atomically rewritten per-recipient JSON-array file | Outer `{from,text,timestamp,...}` envelopes; structured frames serialized inside `text` | Lives at `~/.claude/teams/<team>/inboxes/<agent>.json`. It is not JSONL or a general authority channel: `team_permission_update` is always dropped, and accepted control-like messages undergo sender/role validation. |
 | IDE bridge | WebSocket or HTTP SSE endpoint | JSON frames | Endpoint detection accepts `ws://...` and `http://.../sse`; bridge frames use explicit `type` fields. |
 | Chrome/browser bridge | WebSocket-style bridge | JSON frames (`connect`, `tool_call`, `tool_result`, `permission_request`, `permission_response`, pairing messages) | The bridge has pairing, routing, tool call, result, permission, ping/pong, and device-selection messages. |
 | SDK/headless output | Stream-JSON/event projection | Typed frames | `control_request`, `permission_denied`, `session_state_changed`, `transcript_mirror`, `bridge_state`, `task_notification`, and final `result` frames share a projection channel. |
@@ -115,12 +115,12 @@ Health/lifecycle operations include `ping`, `nudge`, `yield`, `lease`, `leases`,
 
 ## Agent and subagent communication
 
-Agents do not appear to use a separate free-form chat protocol between each other. The visible coordination surface is composed from:
+Agents do not use one universal peer-chat protocol. The visible coordination surface is composed from:
 
 1. **Tools/actions**: `SendMessage`, `TaskCreate`, `TaskGet`, `TaskList`, `TaskUpdate`.
 2. **Task store methods**: `tasks/get`, `tasks/result`, `tasks/list`, `tasks/cancel`.
 3. **Hooks and events**: `SubagentStart`, `SubagentStop`, `TaskCreated`, `TaskCompleted`, `TeammateIdle`.
-4. **Team/inbox envelopes**: routed team messages, validated permission responses/mode changes, plan-approval frames, and mailbox/team-context system reminders.
+4. **Agent Teams inbox envelopes**: locked per-recipient files carrying routed messages, validated permission responses/mode changes, plan-approval frames, and mailbox/team-context reminders.
 
 ```mermaid
 sequenceDiagram
@@ -140,7 +140,7 @@ sequenceDiagram
     Sub->>Hooks: SubagentStop / TaskCompleted
 ```
 
-The implication is that “agent-to-agent communication” is tool/state/event mediated. A subagent is not just a peer socket; it is a runtime context with transcript-backed state, task metadata, and hook-visible lifecycle.
+The implication is that “agent-to-agent communication” is tool/state/event mediated. Ordinary live subagents receive process-local pending-message attachments. Experimental teammates receive locked file-mailbox entries and share separate task JSON files. Main uses the priority queue. The dispatcher also retains local/cloud peer transport cases, although their candidate providers return empty lists in this exact artifact. Neither Agent path is just a peer socket; each worker is a runtime context with transcript-backed state, task metadata, and hook-visible lifecycle. [Agent messaging and communication](../06-agents-automation/agent-messaging.md) follows the complete resolve → transport → receive → reply lifecycle and records that exact-build caveat.
 
 The inbox is also a trust boundary. Its poller unconditionally drops `team_permission_update` with the explicit reason that permission rules are never accepted from the inbox. Other control-like messages, including permission responses and mode changes, are routed only after sender/role checks; unknown or unrouted protocol frames are dropped. Therefore the existence of a serialized team message type does not prove that the receiver treats it as an authorized state mutation.
 
@@ -181,3 +181,5 @@ Remote Control is bidirectional: it can observe output frames, send permission r
 - [Built-in tools and permissions](../03-tools-integrations-security/built-in-tools-and-permissions.md)
 - [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md)
 - [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md)
+- [Agent messaging and communication](../06-agents-automation/agent-messaging.md)
+- [Agent Teams](../06-agents-automation/agent-teams.md)

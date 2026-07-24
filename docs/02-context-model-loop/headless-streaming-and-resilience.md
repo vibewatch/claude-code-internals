@@ -19,6 +19,10 @@ This page documents the non-interactive execution path used by `claude -p`, SDK 
 | ControlRequestEnvelope | `type:"control_request"`, `request_id`, `request` | Correlated request from the runtime to a host or from a host into the runtime. |
 | ControlResponseEnvelope | `type:"control_response"`, `response:{subtype,request_id,...}` | Correlated success/error response. |
 | ControlCancelEnvelope | `type:"control_cancel_request"`, `request_id` | Cancels the pending operation with the same request ID. |
+| InterruptRequest | `request.subtype:"interrupt"`, `still_queued` | Aborts the active turn and returns UUID-stamped main-thread work that survives [~943,331–943,350, ~953,700](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L943331). |
+| AsyncMessageCancel | `request.subtype:"cancel_async_message"` | Removes a message still present in the prompt queue; it does not mean “interrupt the turn” [~954,118](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L954118). |
+| PromptPriorityQueue | `OQn={now:0,next:1,later:2}`, `CSg()` | Orders main-thread prompts and notifications; ordinary enqueue defaults to `next`, pending notifications to `later` [~256,890–257,215](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L256890). |
+| MidTurnQueueFold | `getCommandsByMaxPriority("next")`, `queued_command` | Eligible `now`/`next` messages can steer the next recursive model call between tool batches [~462,520–462,610](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L462520). |
 | SdkCleanup | `performCleanup()` | Rejects unresolved control promises and closes registered transports/resources. |
 | SubprocessTermination | `SIGTERM`, `SIGKILL`, `5000` | Closes stdin, terminates, then force-kills a surviving SDK subprocess after five seconds. |
 
@@ -96,6 +100,23 @@ control_cancel_request = {
 Permission prompts and user-dialog requests can remain pending while ordinary model/system frames continue. Success/error responses preserve enough pending-request information for replay/reconnection paths to reconstruct unresolved permission or dialog interactions instead of silently treating them as approved. The exact subtype payload varies; the invariant is envelope correlation, not one universal response body.
 
 The frame schemas and pending-response machinery are near [`cli.renamed.js` lines 943000–944999](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L943000), with the print/control loop near [lines 952700–955800](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L952700).
+
+## Interrupts, queued messages, and steering
+
+The headless/SDK input stream separates four operations that clients should not conflate:
+
+| Operation | Scope | Result |
+|---|---|---|
+| Submit user message | Enqueue prompt at explicit/default priority | Defaults to `next`; may be folded between tool batches or drained as a later top-level turn. |
+| `interrupt` control request | Active conversation turn plus eligible turn-owned task cleanup | Aborts the active controller and returns `still_queued`; surviving queue entries are not deleted. |
+| `cancel_async_message` | One UUID that is still queued | Returns `cancelled:true` only when removed from the queue. A narrow pending-cancel set covers cancellation racing just before dispatch. |
+| `control_cancel_request` | One pending correlated control operation | Uses `request_id`; does not target a prompt UUID or the whole model turn. |
+
+Queue priority is `now` before `next` before `later`, FIFO within a tier. While a main turn is active, insertion of `now` causes the print/control queue watcher to abort that turn. The common recursive model loop can absorb eligible `now` and `next` prompts as `queued_command` attachments after a tool batch, before the next provider call; `later` is excluded. This is cooperative steering at a turn boundary, not mutation of an in-flight HTTP model request.
+
+`still_queued` is a synchronous interrupt receipt. It includes UUIDs from the already-dequeued imminent batch plus UUID-stamped main-thread entries remaining in the queue. It can also contain internally generated IDs (cron/continuations), and an unstamped entry can still execute without appearing, so an empty array is not proof that no work remains. On a clean interrupt the receipt precedes the interrupted result, but a hard failure can write its result first.
+
+Cancellation granularity narrows after dequeue. A message already folded into an active turn cannot be individually removed; compatible top-level prompts may already have been coalesced into one batch. `cancelled:false` therefore means “not found in the queue,” not “its content definitely did not or will not execute.” Consumers that need to replace queued work should cancel before dispatch, inspect `still_queued`, and treat unknown/internal UUIDs as forward-compatible.
 
 ## Control-loop internals
 

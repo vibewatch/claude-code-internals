@@ -47,6 +47,9 @@ Use [Hooks and events reference](hooks-and-events-reference.md) for the canonica
 | MarketplaceRemoval | `DDt` | Removes one declaration or, on final removal, state/cache/plugin records. |
 | MarketplaceTargetedBulkUpdate | `marketplaceUpdateHandler`, `tengu_marketplace_updated_all` | Marketplace update has targeted and all-marketplace branches. |
 | HookEventSchema | `PreToolUse`, `PostToolUse`, `SessionStart`, `SessionEnd` | Hook event schema. |
+| ReloadPluginsCommand | `reload-plugins`, `wId()`, `Dze()` | Computes MCP cache impact, rebuilds plugin contributions, and can repair missing dependencies [~559,800–560,050](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L559800). |
+| ReloadSkillsCommand | `reload-skills`, `getSkillToolCommands`, `clearCommandsCache` | Re-enumerates filesystem skills and reports name-set changes [~560,050–560,085](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L560050). |
+| SkillDoctorCommand | `skill-doctor`, `LMt()`, `Fqy()` | Reports unused loaded user skills and stale user-installed plugins [~563,760–563,930](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L563760). |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -322,6 +325,42 @@ The `PluginHotReload` module (`cli.renamed.js:288518`-`288560`) keeps plugin-con
 ### Background install (`kickOffBackgroundPluginInstall`)
 
 `kickOffBackgroundPluginInstall(missing)` schedules `installSelectedPlugins(missing, {...})` to run in the background after the current turn settles. It is the path used during session startup when `enabledPlugins` references a plugin that is not yet installed: the runtime announces the install in the UI but does not block the session on the download. Failures surface as task notifications.
+
+## Interactive reload and skill health commands
+
+Settings hot reload keeps plugin hooks synchronized, but it does not make every plugin or skill contribution instantly materialize in every already-running subsystem. Three explicit commands own that boundary.
+
+### `/reload-plugins [--force]`
+
+Before mutating runtime state, the local command computes which plugin MCP server names would be added or removed. If those names change after the conversation has produced output, Tool Search is not protecting the prompt cache, and `--force` was not supplied, the command stops and explains that the next message would need to re-read the whole conversation. This is a cache-cost guard, not an assertion that the new plugin config is invalid.
+
+On apply, `Dze()`:
+
+1. clears plugin, skill, and related command caches;
+2. reloads enabled/disabled plugins plus errors/warnings;
+3. recomputes plugin commands and all agent definitions;
+4. materializes plugin MCP and LSP server descriptors;
+5. increments the plugin-MCP reconnect key in app state;
+6. reloads plugin hooks and emits the global plugin-change signal; and
+7. reports enabled plugins, commands/skills, agents, hooks, MCP servers, LSP servers, and errors.
+
+If the first reload finds missing plugin dependencies, `Lze()` may install only dependencies whose marketplace exists, passes enterprise source policy, and is same-marketplace or explicitly allowed as a cross-marketplace dependency. It chooses a persistable scope inherited from an enabled dependent when possible, then runs one second full reload so the newly installed closure becomes active. The command does not silently bypass blocked/unknown marketplace dependencies.
+
+Remote Control does not run this local cache sequence directly. It sends a `reload_plugins` control request and renders the remote process's resulting plugin/command/agent/MCP counts.
+
+### `/reload-skills`
+
+This command snapshots the current `getSkillToolCommands()` names, clears command memoization and the sent-skill-name cache, re-enumerates the same project root, emits the skill-change signal, and reports total/added/removed counts. It compares names rather than file hashes, so an in-place body edit can correctly produce `no changes` in the name summary even though the reloaded content is new. In safe mode the result reminds the user that custom skills remain disabled.
+
+The reload includes filesystem skill discovery and command collision/scoping again; it does not reload plugin binaries, hooks, MCP/LSP descriptors, or agent definitions. Those belong to `/reload-plugins`.
+
+### `/skill-doctor`
+
+`/skill-doctor` is an inspection command, not the broader repair-capable `/doctor` workflow. It considers loaded `prompt` commands but excludes bundled, built-in, managed-policy, and plugin sources from the user-skill table. For each remaining user/project/local skill it reads the usage counter plus days since use, sorts oldest/never-used first, and warns when a loaded skill has never been invoked because every listing entry consumes system-prompt budget.
+
+A second section can report stale **user-installed plugins** only when the runtime already has a cache-only plugin view. A plugin qualifies after at least 14 days and 10 session startups without use. Theme, output-style, monitor, and workflow plugins are excluded from this heuristic because they can provide passive value without command invocation. Seed-managed, non-user-installed, and currently active records are excluded as well.
+
+The command does not disable anything. It points the user to `/skills`, `.claude/skills`, or `/plugin`; durable changes still cross the normal settings/plugin permission paths.
 
 ## Related docs
 

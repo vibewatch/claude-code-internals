@@ -216,3 +216,12 @@ The remaining unknowns are deliberate and non-source-answerable from this eviden
 - updater guarantees under filesystem failures not represented by the traced recovery branches.
 
 **Audit status: complete and converged for Claude Code `2.1.215` on the inspected Linux-x64 artifacts.**
+
+## Built-in command follow-up — 2026-07-24
+
+The broad command inventory found two diagnostics mechanisms that the original flag/writer audit did not describe:
+
+- `/debug` is a user-only bundled skill. It turns logging on at invocation time, flushes the current writer, embeds only a bounded tail plus bounded daemon lock/status/log evidence, and states explicitly when pre-invocation events were never captured. Its model prompt pre-authorizes only Read/Grep/Glob.
+- `/heapdump` is a hidden support command. It writes an owner-only V8 `.heapsnapshot` and a diagnostics JSON file to the Desktop when available or the home directory otherwise. The JSON separates JS heap from external/unaccounted native memory and includes V8 spaces, resource usage, active handles/requests, file descriptors, optional `/proc` data, JSC counts, and heuristic leak indicators.
+
+`diagnostics-and-debug-logs.md` now owns both paths. Neither command is described as an external upload, automatic cleanup, or universal crash dump; those guarantees are absent from the retained client. The follow-up reread produced zero new source-answerable diagnostics-command questions. **Follow-up status: edited and converged.**

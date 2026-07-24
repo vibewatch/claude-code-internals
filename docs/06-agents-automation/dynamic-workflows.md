@@ -17,6 +17,9 @@ A workflow is not a second model loop. It reuses the normal agent registry, mode
 | WorkflowView | `/workflows` | Live/history UI and stop surface for workflow runs. |
 | WorkflowPersistence | `journal.jsonl`, `resumeFromRunId`, `scriptSha256` | Persisted execution journal and content-pinned resume contract. |
 | WorkflowTelemetry | `workflow.run_id`, `workflow.name`, `tengu_workflow_launched`, `tengu_workflow_completed` | Correlation attributes and lifecycle signals. |
+| WorkflowConcurrencyLimiter | `_Yg(os.cpus().length)`, `MN(limit, V)` | FIFO local-agent limiter uses `min(16, max(2, CPU cores - 2))` [~386,650–386,780](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L386650). |
+| WorkflowAgentModel | `oue()`, `agent(..., {model, effort})` | Applies the ordinary subagent model precedence plus a separate effort override [~387,000–387,150](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L387000). |
+| WorkflowAbortRelay | `workflow-abort`, `AbortController` | Parent workflow abort is relayed into each active child agent controller [~387,150–387,300](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L387150). |
 
 ## Explicit opt-in
 
@@ -81,7 +84,7 @@ The body is plain JavaScript, not TypeScript. It runs in a restricted `vm` conte
 
 The workflow runtime bounds fan-out independently of the session-wide `Agent` budget:
 
-- Concurrent workflow agents: `min(16, CPU cores - 2)`; excess calls queue.
+- Concurrent local workflow agents: `min(16, max(2, CPU cores - 2))`; excess calls queue.
 - Lifetime agent backstop per workflow: 1,000.
 - Maximum items accepted by one `parallel`/`pipeline`: 4,096.
 - Nested child workflows: one level.
@@ -90,6 +93,14 @@ The workflow runtime bounds fan-out independently of the session-wide `Agent` bu
 `workflowSizeGuideline` is advisory rather than enforcement: `small` aims below 5 agents, `medium` below 15, and `large` below 50; `unrestricted` removes the hint. A user's prompt can override the guideline. `CLAUDE_CODE_WORKFLOW_SIZE_WARNING_AGENTS` and `CLAUDE_CODE_WORKFLOW_SIZE_WARNING_TOKENS` tune warning thresholds.
 
 The separate session-wide `Agent` cap defaults to 200 and is controlled by `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION`.
+
+The local cap is implemented by `MN(limit, V)`, a FIFO semaphore: a call takes a slot immediately when one is free, otherwise appends a resolver; release wakes the oldest waiter. Both `parallel()` and `pipeline()` create all logical Promises with `Promise.allSettled`, but every nested `agent()` still passes through this limiter. Consequently:
+
+- `parallel()` is a result barrier over concurrently eligible thunks;
+- `pipeline()` serializes stages for one item but runs different item chains concurrently; and
+- neither primitive bypasses the agent slot limit.
+
+Workflow model selection uses the same `oue()` resolver as ordinary Agent calls: `CLAUDE_CODE_SUBAGENT_MODEL` → `agent({model})` → selected agent definition → inherited parent runtime model. `agent({effort})` is normalized separately onto that definition. A workflow-level abort is relayed to every active local child as `workflow-abort`; queued calls observe the shared aborted signal before launching. Hitting the token budget prevents additional calls but, by contract, lets already in-flight agents complete so their results remain available.
 
 ## Background lifecycle and progress
 

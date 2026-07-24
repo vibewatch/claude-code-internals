@@ -249,6 +249,13 @@ No new source-answerable mechanism question was found. Detailed headless and ses
 
 No new source-answerable mechanism question was found. OS service-manager behavior outside the generated integration and unavailable host state remains platform-dependent.
 
+#### Command follow-up
+
+1. **What does `/background` transfer before the foreground exits?**
+   Answer: it validates fleet/persistence/seed state, classifies transferable versus stopped work, serializes/checkpoints adoptable task state, attempts a bounded transcript flush, propagates model/effort/permissions/directories/agent settings, handles worktree ownership, dispatches a daemon worker, and exits only after successful handoff. Only the keep-parent fork makes its longer leaf-checkpoint/flush failure fatal.
+2. **Does `/stop` delete the background session?**
+   Answer: no. It persists a terminal `stopped` state, clears active job fields, emits detach framing when attached, and gracefully exits while retaining the transcript and worktree.
+
 ### `docs/01-runtime-lifecycle/accessibility-and-screen-reader-mode.md`
 
 #### Round 1
@@ -366,3 +373,18 @@ The pass also verified that false root server/ACP modes and universal child-esca
    - isolated `git diff --check` passed;
    - the Astro/Starlight production build completed successfully with 86 generated pages; its only warning was the existing large-bundle chunk advisory;
    - final Git accounting showed exactly ten modified target pages plus this new ledger, while concurrent changes outside that set remained excluded.
+
+## Built-in command catalog follow-up — 2026-07-24
+
+The original audit excluded pure command inventories. A later user request required a complete static built-in command audit, so the previously table-first `command-line-reference.md` became the canonical catalog without changing the original ten-page convergence result above.
+
+Source tracing followed `Hur()`/`getBuiltinCommands()`, `_xo()`/`getCommands()`, `Lu()`/`fhs()`, surface filters, and `findCommand()`. The resulting reference now records:
+
+- 105 distinct core names statically referenced by `Hur()` across its conditional branches;
+- 32 expanded bundled-skill names from 29 registration sites;
+- the duplicate `/design` name, producing 136 distinct core-plus-bundled candidates;
+- TUI/text/prompt kinds and headless/remote/bridge/thin-client filters;
+- aliases, account/provider/policy/platform/feature gates, disabled registrations, hidden support objects, compatibility shims, and non-advertised internal definitions; and
+- links from every mechanism-bearing family to its existing domain owner.
+
+`docs/01-runtime-lifecycle/README.md` now describes the reference as the complete core/bundled interactive catalog. Dynamic user, nested-workflow, plugin, and MCP names remain intentionally outside the static count because they are generated from runtime configuration. The post-edit reread found no unclassified static core or bundled name. **Follow-up status: edited and converged.**

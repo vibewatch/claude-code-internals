@@ -1,22 +1,22 @@
 # Agent and automation architecture
 
-This page is the architecture analysis for the agents/automation module. It complements the implementation pages by focusing on **how custom agents, subagents, tasks, slash commands, `auto-mode`, and hosted review compose without owning a different runtime** rather than re-listing each constant.
+This page is the architecture analysis for the agents/automation module. It complements the implementation pages by focusing on **how custom agents, subagents, experimental Agent Teams, tasks, slash commands, `auto-mode`, and hosted review compose without owning a different runtime** rather than re-listing each constant.
 
-Scope: custom agents from `--agents`, background agents (`claude agents`), task tools (`TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`), task scheduling/completion, subagent lifecycle hooks, slash-command automation, `auto-mode`, `ultrareview` hosted review, and cron/timed tasks. Implementation specifics live in [Agents, tasks, and subagents](agents-tasks-and-subagents.md), [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md), and [Slash commands and automation](slash-commands-and-automation.md).
+Scope: custom agents from `--agents`, the model-visible `Agent` tool, background agents (`claude agents`), [Agent messaging](agent-messaging.md), [Agent Teams](agent-teams.md), task tools (`TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`), tool/Workflow concurrency, task scheduling/completion, interruption and queued steering, subagent lifecycle hooks, slash-command automation, `auto-mode`, `ultrareview` hosted review, and cron/timed tasks. Implementation specifics live in the linked focused pages.
 
 ## Module purpose
 
 This module owns **delegation and scheduled automation around the main session**. It does not own model turns or tool execution; it composes them by:
 
 1. Letting users define agents (inline JSON or `claude agents`).
-2. Letting the model delegate work via task tools.
+2. Letting the model launch ordinary workers through `Agent`, or gated named teammates through the same tool, and coordinate shared planning state through task tools.
 3. Letting plugins/keybindings/skills trigger slash-command automation.
 4. Letting `auto-mode` classify and consent to common actions.
 5. Letting hosted `ultrareview` invoke multi-agent code review.
 
 ## Architecture thesis
 
-Agents and automation are **orchestration over the existing runtime**, not parallel runtimes. The same composition root, context loop, tool/permission boundary, and session envelope are reused; this module adds (a) a task store as shared state, (b) lifecycle hooks distinct from tool hooks, (c) a slash-command/keybinding/skill triggering surface, and (d) optional hosted backends.
+Agents and automation are **orchestration over the existing runtime**, not parallel runtimes. The same composition root, context loop, tool/permission boundary, and session envelope are reused; this module adds (a) task stores as shared state, (b) an experimental team roster/mailbox layer, (c) lifecycle hooks distinct from tool hooks, (d) a slash-command/keybinding/skill triggering surface, and (e) optional hosted backends.
 
 ## Source anchors
 
@@ -28,6 +28,13 @@ Agents and automation are **orchestration over the existing runtime**, not paral
 | TaskGetTool | `var DQ="TaskGet"` | Task status/result retrieval constant. |
 | TaskListTool | `var UZ="TaskList"` | Task listing constant. |
 | TaskUpdateTool | `var J0="TaskUpdate"` | Task update constant. |
+| AgentTool | `Agent`, `run_in_background`, `isConcurrencySafe()` | Launches a subagent synchronously or, by default, as a registered background task. |
+| AgentMessageRouter | `SendMessage`, `vfo()`, `y6e()`, `writeToMailbox()` | Resolves a recipient, preserves identity pins, and dispatches through the target's queue, mailbox, socket, or remote-events transport. |
+| AgentTeamsGate | `isAgentSwarmsEnabled()`, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`, `tengu_amber_flint` | Enables the session's implicit team and named-teammate branch. |
+| TeamCoordinationStore | `config.json`, `inboxes/<agent>.json`, `~/.claude/tasks/<team>/` | Coordinates roster identity, locked mailbox delivery, and shared task records. |
+| ToolUseConcurrency | `Y3g()`, `J3g()`, `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY` | Groups consecutive concurrency-safe calls and runs up to 10 by default. |
+| PromptPriorityQueue | `OQn={now:0,next:1,later:2}`, `queued_command` | Separates immediate aborting input, cooperative mid-turn steering, and deferred work. |
+| WorkflowLimiter | `MN()`, `_Yg(os.cpus().length)` | FIFO workflow-agent concurrency limiter. |
 | SubagentContextClassifier | `agentType==="subagent"` | Runtime classifier distinguishing subagent context. |
 | SubagentLifecycleHooks | `SubagentStart`, `SubagentStop` | Subagent lifecycle hook events. |
 | TaskLifecycleHooks | `TaskCreated`, `TaskCompleted` | Task lifecycle hook events. |
@@ -54,13 +61,24 @@ flowchart TD
     Root --> Slash[Slash command registry]
 
     Session[Active session] --> Tasks[Task store]
+    Session --> AgentTool[Agent tool]
+    Session --> Team[Implicit team context]
     Session --> Hooks[Subagent + task hooks]
     Session --> Slash
     Session --> AutoConsent[Auto-mode consent classifier]
 
     Tasks --> TaskTools[TaskCreate / TaskGet / TaskList / TaskUpdate]
-    TaskTools --> Subagent[Subagent runtime context]
+    AgentTool --> ToolScheduler[concurrency-safe tool scheduler]
+    AgentTool --> Team
+    Team --> Teammates[in-process / tmux / iTerm2 teammates]
+    Team --> TeamIpc[roster + inbox files]
+    Teammates --> Tasks
+    ToolScheduler --> Subagent[Subagent runtime context]
+    TaskTools --> Tasks
     Subagent --> SubLoop[Context/model loop with agentType=subagent]
+    Subagent --> Notifications[task notifications]
+    Notifications --> PriorityQueue[now / next / later queue]
+    PriorityQueue --> SubLoop
 
     Hooks --> SubStart[SubagentStart / SubagentStop]
     Hooks --> TaskLife[TaskCreated / TaskCompleted]
@@ -83,6 +101,10 @@ flowchart TD
 | Custom agent injection | Parses `--agents` JSON and merges with plugin/marketplace agents. |
 | Background agents command | Manages long-running agent jobs; reuses session/MCP/plugin/permission defaults. |
 | Task store | Shared state holding task records; addressed by `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`. |
+| Agent launcher | Resolves the agent definition/model/permissions, then runs synchronously or registers a background worker. Consecutive Agent tool uses are concurrency-safe. |
+| Agent Teams layer | Under the explicit experimental gate, turns eligible named Agent calls into asynchronous teammates and coordinates identity/messages/tasks through a session-local roster plus locked files. |
+| Priority/steering queue | Delivers user, peer, completion, cron, and control-originated work at `now`, `next`, or `later`; eligible `next` work can fold in between tool batches. |
+| Workflow scheduler | Adds deterministic `parallel`/`pipeline` control with a FIFO agent-slot limiter and shared abort/token budgets. |
 | Subagent runtime context | A session-loop projection where `agentType==="subagent"` changes prompt boundaries and hook routing. |
 | Lifecycle hooks | `SubagentStart`/`SubagentStop` for subagents, `TaskCreated`/`TaskCompleted` for task records. |
 | Slash command dispatcher | Resolves plugin command files, skill metadata, keybindings into commands. |
@@ -97,6 +119,7 @@ flowchart TD
 | Surface | Effect |
 |---|---|
 | `--agents <json>` | Inline custom agent definitions for the current session. |
+| `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` or raw argv `--agent-teams`; `teammateMode` / hidden `--teammate-mode` | Enables Agent Teams and selects `in-process`, `tmux`, `iterm2`, or `auto` execution. |
 | `claude agents ...` (with `--setting-sources`, `--add-dir`, `--plugin-dir`, `--settings`, `--mcp-config`, `--strict-mcp-config`, `--permission-mode`, `--dangerously-skip-permissions`, `--model`) | Background-agent dispatch with session defaults. |
 | `ultrareview [target]` | Hosted multi-agent code-review entry. |
 | `auto-mode` subcommands | Inspect classifier defaults and critique custom rules. |
@@ -123,14 +146,14 @@ flowchart TD
 | Runtime lifecycle | Registers `agents`, `ultrareview`, `auto-mode`, and slash-command surfaces on the root command. |
 | Context/model loop | Runs subagent and task contexts as projections; emits `prompt_suggestion` after each turn. |
 | Tool/permission runtime | Receives auto-mode consent decisions; runs task tools through the same boundary as built-ins. |
-| Sessions module | Stores agent/task state; resume re-applies custom agents and any task records. |
+| Sessions module | Stores agent/transcript state; Agent Teams adds separate roster, mailbox, and shared-task files but does not establish durable whole-team restoration after clean exit. |
 | MCP/plugins/hooks | Plugins contribute agents, skills, slash commands, and hooks; hosted review may coordinate with MCP. |
 | Ops module | Receives auto-mode/task/subagent telemetry; surfaces hosted-review failures via doctor. |
 | Remote bridge | Long-running tasks and hosted review interoperate with remote variants via the same envelope. |
 
 ## Design decisions
 
-1. **Tasks are constants, not classes.** Task identity is conveyed through string constants (`TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`), so the same task store works for any orchestrator producing those constants.
+1. **Tasks are shared state, not the worker launcher.** `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate` coordinate status, owners, and dependencies. `Agent` or `Workflow` starts model execution; updating a task does not itself preempt a provider call.
 2. **Subagent is a context flag, not a separate loop.** `agentType==="subagent"` changes prompt boundaries and hook routing within the existing context/model loop; this avoids forking the runtime.
 3. **Lifecycle hooks are split.** `SubagentStart/Stop` describe runtime context; `TaskCreated/Completed` describe persistent records. Splitting them lets hook scripts react to either dimension without conflation.
 4. **Slash commands are a dispatcher, not a parser.** Slash inputs flow from multiple sources (plugin files, skill metadata, keybindings) into one dispatcher, which routes through the existing runtime; this keeps the model's view stable regardless of trigger.
@@ -139,6 +162,9 @@ flowchart TD
 7. **Notification monitor is well-scoped.** The long-running process documented at byte `0x112031` runs for the session lifetime and emits one `<task_notification>` per stdout line — a narrow, predictable contract.
 8. **Background agents reuse session flags.** `claude agents` accepts the same `--setting-sources`, `--add-dir`, `--plugin-dir`, `--settings`, `--mcp-config`, `--permission-mode`, `--model` so deploys do not invent a parallel configuration surface.
 9. **Auto-mode telemetry classifies decisions.** `tengu_auto_mode_decision`, `_denial_limit_exceeded`, `_fallback_to_ask`, `_malformed_tool_input`, `_opt_in` cover the visible state machine so operators can audit behavior.
+10. **Concurrency and backgrounding are different layers.** The tool scheduler limits simultaneously executing concurrency-safe handlers; an asynchronously launched Agent can remain alive after its handler releases that slot. Workflow agents have an additional FIFO limiter.
+11. **Insertion is boundary-based.** `next` messages can steer a recursive model loop after a tool batch, while `now` can abort the active headless/SDK turn and `later` waits. Agent mailbox messages likewise wait for the next agent boundary rather than mutating an in-flight request.
+12. **Agent Teams is a session-local overlay, not a durable team service.** The lead registers its generated team for clean-exit pane/worktree/team-directory cleanup. Narrow transcript-backed teammate respawn exists inside an active team, but teammate cron is rejected and whole-team startup restore is not present.
 
 ## Orchestration patterns
 
@@ -147,6 +173,7 @@ flowchart TD
 | Inline custom agent (`--agents`) | Lightweight, session-only agent set; common in scripted runs. |
 | Background agents | Long-running or repeated work that should outlive a single session command. |
 | Subagent via Task tools | Model-driven delegation inside a turn; subagent runs in the same process. |
+| Agent Teams | Experimental flat-roster collaboration: named teammates share task records and mailboxes and may run in-process or in terminal panes. |
 | Slash command + skill | Human-/keybinding-/plugin-triggered automation that is not model-initiated. |
 | Auto-mode | Reduce per-action approval prompts when consent is established; explicit opt-in path. |
 | `ultrareview` | Hosted multi-agent code review with preflight checks; opt-in and explicit. |
@@ -159,6 +186,7 @@ flowchart TD
 | Task tool input malformed | Boundary rejection with structured error; auto-mode logs `tengu_auto_mode_malformed_tool_input` if applicable. |
 | Subagent runs over a turn/budget cap | Result frame uses the same error subtypes as the main loop. |
 | Subagent hook deny | The deny path propagates with the standard `PermissionDenied` semantics. |
+| Agent Teams gate or pane backend unavailable | With the gate off, named Agents remain ordinary Agents. Explicit tmux/iTerm2 failures reject teammate spawn; only `auto` can fall back in-process. |
 | Auto-mode hits denial limit | `tengu_auto_mode_denial_limit_exceeded` is emitted; behavior falls back to ask. |
 | Hosted review preflight rejection | UX surfaces the reason; no hosted run begins. |
 | Slash command resolves to nothing | Dispatcher reports the unknown command without invoking model. |
@@ -176,13 +204,15 @@ flowchart TD
 
 ## Caveats
 
-- The exact task-store data shape is implementation-defined; this page documents responsibilities and interaction surfaces, not record layouts.
+- Multiple task protocols coexist. The local Agent Teams record layout is documented in [Agent Teams](agent-teams.md#shared-task-files); SDK/MCP task waiting and stream frames are separate mechanisms.
 - `task_notification` is a system-frame subtype; consumers should treat unknown task-notification fields as forward-compatible.
 - `ultrareview` references both local UX (`/ultrareview`, `/review`) and a hosted preflight route; behavior here is bounded by hosted availability and policy.
 
 ## Related docs
 
 - [Agents, tasks, and subagents](agents-tasks-and-subagents.md)
+- [Agent messaging and communication](agent-messaging.md)
+- [Agent Teams](agent-teams.md)
 - [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md)
 - [Slash commands and automation](slash-commands-and-automation.md)
 - [System architecture](../00-start-here/system-architecture.md)

@@ -32,7 +32,7 @@ flowchart TD
 
 | Order | Page | Ops question answered |
 |---:|---|---|
-| 1 | [Diagnostics and debug logs](diagnostics-and-debug-logs.md) | Which debug flags, log files, startup marks, stall diagnostics, and crash/error reporting surfaces exist? |
+| 1 | [Diagnostics and debug logs](diagnostics-and-debug-logs.md) | Which debug flags/writers, user-triggered `/debug` evidence flow, hidden `/heapdump`, startup marks, stall diagnostics, and crash/error surfaces exist? |
 | 2 | [Telemetry and tracing](telemetry-and-tracing.md) | Which traffic gates, telemetry sinks, `tengu_*` signal families, OTEL config, and trace export paths exist? |
 | 3 | [Feature gates reference](feature-gates-reference.md) | Which GrowthBook, `tengu_*`, env, policy, settings, and CLI gates switch runtime behavior? |
 | 4 | [Updater and doctor](updater-and-doctor.md) | How do `doctor`, `update`/`upgrade`, `install`, native auto-updater state, and hosted preflights work? |
@@ -46,6 +46,7 @@ flowchart TD
 
 ## Handoffs
 
+- Custom prompt and agent-row status-line execution is documented in [Status line runtime and command protocol](../03-tools-integrations-security/status-line.md).
 - Remote Control/session tokens are documented in [Sessions, persistence, and remote](../04-sessions-persistence-remote/README.md).
 - Agents and hosted review command surfaces are documented in [Agents and automation](../06-agents-automation/README.md).
 - Terminal accessibility rendering is documented in [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md).

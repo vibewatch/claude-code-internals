@@ -37,7 +37,7 @@ Ops is a **mixed control and observation plane**: it surfaces structured events,
 | StartupProfilingMarks | `import_time`, `cli_entry`, `main_tsx_imports_loaded`, `cli_before_main_import` | Startup profiling event groups. |
 | ProviderAndErrorGates | `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`, `CLAUDE_CODE_USE_ANTHROPIC_AWS`, `CLAUDE_CODE_USE_MANTLE`, `DISABLE_ERROR_REPORTING` | Provider/error-reporting gates evaluated up front. |
 | TranscriptMirrorFrame | `transcript_mirror` | Ops-friendly local mirror of remote transcripts. |
-| SubagentStatusLineSchema | `subagentStatusLine` | Status-line schema for subagent UX. |
+| StatusLineRuntimes | `executeStatusLineCommand`, `pNb`, `fNb`, `Gyf`, `SBa` | Main prompt-line and separate subagent-row command protocols; see [Status line runtime and command protocol](../03-tools-integrations-security/status-line.md). |
 | OpsNotificationStateFlags | `markFirstTeleportMessageLogged`, `isSessionPersistenceDisabled`, `isUserActiveForNotifications` | Cross-cutting state flags observed by ops/notifications. |
 | MediaNativeJsShims | `require("/$bunfs/root/*.node")` | JS shims for embedded native helpers; the extraction script also recovers the gitignored `.node` payloads for inspection. |
 
@@ -75,7 +75,7 @@ flowchart TD
 | Doctor | User-facing diagnostics surface for environment, permissions, model selection, integrations. |
 | Native auto updater | Version lookup, download, checksum, locking, staged install, launcher activation, and old-version cleanup. Foreground commands await this work; periodic checks invoke it outside a model turn. |
 | Hosted review signals | `ultrareview`-adjacent preflight and result hooks; gated by hosted settings/policy. |
-| Status line / subagent status line | Optional command-derived status line rendered around the loop. |
+| Status line / subagent status line | Optional command-derived prompt line and JSONL task-row decorations. The focused lifecycle belongs to [Status line runtime and command protocol](../03-tools-integrations-security/status-line.md). |
 | Native helpers | Original payload includes `image-processor.node` and `audio-capture.node` loaded via JS shims; local extraction retains gitignored copies of both binaries. |
 
 ## Public interface
@@ -149,7 +149,7 @@ flowchart TD
 | Auto-update permission insufficient | Doctor preflight reports the fix-up message instead of silently failing. |
 | Third-party telemetry is absent or initialization fails | Pending OTel events are discarded with `not_configured` or `init_failed`; configured providers still receive bounded best-effort flushes on shutdown. |
 | Native helper missing or fails to load | JS call sites either choose a recorder fallback, preserve an already-safe image, or surface a media-specific error. There is no universal native-failure fallback. |
-| Status-line command errors | Status line is suppressed; loop continues. |
+| Main status-line command errors | The custom line is suppressed; the loop continues. Subagent-decoration errors instead fall back to built-in task rows. |
 | Event-loop stall detector triggers | Diagnostic events emitted; runtime continues. |
 | Hosted review preflight rejects | UX surfaces the result; local workflow is not blocked. |
 
@@ -160,7 +160,7 @@ flowchart TD
 | Additional telemetry sink | Register through the analytics-sink interface and rely on `flushAnalyticsSinks`. |
 | Additional debug log channel | Use existing logger; do not invent a new file format. |
 | New diagnostic check | Add to the `doctor` command rather than scattering checks across the runtime. |
-| Status line customization | Use the `statusLine` / `subagentStatusLine` settings; treat as commands, not inline code. |
+| Status line customization | Use the `statusLine` / `subagentStatusLine` settings; treat them as two command protocols with different input/output contracts, not inline model output. |
 | Custom updater channel | Add to the `auto-update` settings enum; updater logic should not branch on out-of-band sources. |
 | Native attachment type | Add a JS shim and a `.node` addon; attach via the existing attachment surface in the context module. |
 
@@ -172,6 +172,7 @@ flowchart TD
 
 ## Related docs
 
+- [Status line runtime and command protocol](../03-tools-integrations-security/status-line.md)
 - [Diagnostics and debug logs](diagnostics-and-debug-logs.md)
 - [Telemetry and tracing](telemetry-and-tracing.md)
 - [Feature gates reference](feature-gates-reference.md)

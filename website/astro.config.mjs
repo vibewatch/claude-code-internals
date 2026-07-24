@@ -177,6 +177,7 @@ export default defineConfig({
             { label: 'MCP, plugins, hooks', link: '/03-tools-integrations-security/mcp-plugins-hooks/' },
             { label: 'Skills system', link: '/03-tools-integrations-security/skills-system/' },
             { label: 'Hooks and events reference', link: '/03-tools-integrations-security/hooks-and-events-reference/' },
+            { label: 'Status line runtime', link: '/03-tools-integrations-security/status-line/' },
             { label: 'Settings and integrations', link: '/03-tools-integrations-security/settings-policy-and-integrations/' },
             { label: 'Settings schema reference', link: '/03-tools-integrations-security/settings-schema-reference/' },
             { label: 'Architecture', link: '/03-tools-integrations-security/architecture/' },
@@ -219,6 +220,8 @@ export default defineConfig({
           items: [
             { label: 'Overview', link: '/06-agents-automation/' },
             { label: 'Agents, tasks, subagents', link: '/06-agents-automation/agents-tasks-and-subagents/' },
+            { label: 'Agent messaging', link: '/06-agents-automation/agent-messaging/' },
+            { label: 'Agent Teams', link: '/06-agents-automation/agent-teams/' },
             { label: 'Observer agents', link: '/06-agents-automation/observer-agents/' },
             { label: 'Runtime and scheduling', link: '/06-agents-automation/agent-runtime-scheduling-and-completion/' },
             { label: 'Dynamic workflows', link: '/06-agents-automation/dynamic-workflows/' },

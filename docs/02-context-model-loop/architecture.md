@@ -56,10 +56,11 @@ This separation lets the runtime support interactive TUI and scripted/SDK transp
 | TranscriptMirrorFrame | `transcript_mirror` | Local transcript mirror frame in stream-JSON mode. |
 | SdkFrameAdapterFilter | `case "rate_limit_event": return N("[sdkMessageAdapter] Ignoring rate_limit_event message")` | SDK adapter explicitly handles a subset of frame types. |
 | CompactionHookLifecycle | `PreCompact`, `PostCompact` | Compaction lifecycle hooks around context shrinking. |
-| FullCompaction | `rlo()` | Full manual/automatic compaction. |
+| FullCompaction | `rlo()` | Full automatic compaction and in-process teammate history compaction. |
 | PartialCompaction | `YMu()` | Message-selector compaction preserving the opposite segment. |
 | ReactiveCompaction | `flo()` → `Bas()` → `ilo()` → `hlo()` | Grouped immediate recovery and materialization. |
 | PrecomputedCompaction | `Ras()` → `Das()` | Background arm and later validated swap/consumption. |
+| ManualCompactRouter | `XTy()` → `JTy()` / `Bas()` → `hlo()` | `/compact` reuses a compatible precompute or executes grouped reactive summarization; it does not call `rlo()` in this build. |
 
 ## Internal decomposition
 
@@ -73,6 +74,7 @@ flowchart TD
     Sources --> Transcript[Conversation messages + reminders]
 
     Transcript --> CompactRouter{Context pressure?}
+    Manual[/compact/] --> Reactive
     CompactRouter -->|no| Request[Provider request]
     CompactRouter -->|full| Full[rlo]
     CompactRouter -->|reactive/precomputed| Reactive[flo / Das]
@@ -116,7 +118,7 @@ The module composes five cooperating sub-components:
 | Sub-component | Responsibility |
 |---|---|
 | Context sources and partition | Resolve base system text, `userContext`, `systemContext`, structured tools, messages, and runtime attachments. Dynamic-section exclusion relocates selected default-prompt/system context into `userContext`; it does not flatten every contributor into one string. |
-| Compaction router | Monitors the effective model window and selects full, reactive, or precomputed-result application. Partial compaction is exposed through message selection. Successful materialization refreshes bounded current attachments. |
+| Compaction router | Monitors the effective model window and selects full automatic, reactive, or precomputed-result application. Manual `/compact` uses the reactive/precomputed materializer; partial compaction is exposed through message selection. Successful materialization refreshes bounded current attachments. |
 | Provider/model router | Applies model aliases/policy and selects the first matching primary route: gateway, Bedrock, Foundry, Anthropic AWS, Anthropic Google Cloud, Mantle, Vertex, then first party. Bedrock can additionally receive a Mantle secondary route. |
 | Authentication/header matrix | Separates bearer/OAuth, API-key, WIF, host-managed cloud credentials, provider-specific headers, and refresh/recovery. |
 | Headless stream/control loop | Multiplexes model and non-model frames, correlates host requests by `request_id`, conditionally buffers a logical result after input closes while qualifying work remains, and eventually closes the outbound stream before SDK/transport cleanup completes. |
@@ -167,7 +169,7 @@ The headless stream/control loop wraps the same model loop used by interactive e
 4. **Authentication is a branch matrix.** Bearer/OAuth provenance, API-key provenance, WIF eligibility, cloud SDK/host credentials, header shaping, and refresh/recovery are separate decisions. Each lane has internal precedence, but there is no universal credential list spanning every provider.
 5. **Headless mode is a different projection, not a different agent.** The headless runner reuses the same context/model loop, then adds correlated controls and non-model frames. SDK and subprocess cleanup remain separate from print-loop draining.
 6. **Result and stream completion are different boundaries.** With open input, `shouldQuery:false`, or no qualifying closed-input work, the loop can enqueue `result` immediately. When input is closed and `S8f()` or `mei()` reports qualifying work, `j7a()` buffers the result until the command/background loop drains, then `G7a()` flushes it. Prompt suggestions and other frames can still follow a result, so consumers that need transport completion must wait for outbound stream closure rather than treating every `result` as end-of-stream.
-7. **Compaction is a family of runtime paths.** Full, partial, reactive, and precomputed flows share boundary/materialization concepts but differ in trigger, hook timing, preserved suffix, retries, and persistence. A version-1 `.precompact.json` sidecar can rehydrate an eligible ready main-session result after validation.
+7. **Compaction is a family of runtime paths.** Full, partial, reactive, and precomputed flows share boundary/materialization concepts but differ in trigger, hook timing, preserved suffix, retries, and persistence. In `2.1.215`, manual `/compact` routes through `XTy()` into grouped reactive/precomputed materialization, while `rlo()` serves automatic and in-process teammate callers. A version-1 `.precompact.json` sidecar can rehydrate an eligible ready main-session result after validation.
 8. **Fallback has multiple meanings.** Startup third-party availability probes can assign provider-usable family defaults; the ordered `--fallback-model` chain handles overload in print/headless mode; internal helper/compaction requests also have availability fallback chains. These must not be collapsed into one feature.
 
 ## Failure modes

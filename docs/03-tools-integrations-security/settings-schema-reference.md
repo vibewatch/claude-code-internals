@@ -25,6 +25,7 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | BlockedMarketplacePolicy | `blockedMarketplaces` | Managed marketplace blocklist. |
 | SandboxOverridePolicy | `dangerouslyDisableSandbox` | Settings/policy schema text controlling sandbox override behavior. |
 | StatusLineSettingsMutation | `~/.claude/settings.json` | Status-line setup instructions mutate user settings. |
+| StatusLineSchema | `statusLine`, `refreshInterval`, `hideVimModeIndicator`, `subagentStatusLine` | Main-line and agent-row command schemas [~71,080](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L71080). |
 | SettingsInjectionFlag | `--settings <file-or-json>` | Adds settings JSON file or inline JSON for a session. |
 | IdeIntegrationFlag | `--ide` | Auto-connect IDE integration flag. |
 | ChromeIntegrationFlag | `--chrome` | Chrome integration flag. |
@@ -32,6 +33,7 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | AccessibilitySetting | `axScreenReader` | Selects the [screen-reader-friendly classic renderer](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md); env/CLI take precedence. |
 | AutoModeShellSetting | `autoMode.classifyAllShell` | Routes all Bash/PowerShell commands through the auto-mode classifier. |
 | WorkflowSettings | `enableWorkflows`, `disableWorkflows`, `workflowKeywordTriggerEnabled`, `workflowSizeGuideline` | Enables workflows, controls the `ultracode` trigger, and advises default fan-out size. |
+| TeammateModeSetting | `teammateMode` | Chooses `auto`, `tmux`, `iterm2`, or `in-process` for experimental Agent Teams; default `in-process`. |
 | SandboxCredentialPolicy | `sandbox.credentials` | Protects credential files and environment variables inside sandboxed subprocesses. |
 | ManagedVersionPolicy | `requiredMinimumVersion`, `requiredMaximumVersion` | Refuses startup outside administrator-approved semver bounds. |
 | DisableClaudeAiConnectorsSetting | `disableClaudeAiConnectors` | Disables claude.ai connector loading while leaving other MCP sources separate. |
@@ -60,7 +62,7 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | Group | Setting or surface examples | Runtime implication | Primary owner |
 |---|---|---|---|
 | Retention/session cleanup | `cleanupPeriodDays` | Bounds how long local transcript/project state is retained. | [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md) |
-| Hooks and status line | `disableAllHooks`, `hooks`, `statusLine`, `subagentStatusLine` | Enables/disables hooks and status-line execution. | [Hooks and events reference](hooks-and-events-reference.md) |
+| Hooks and status line | `disableAllHooks`, `hooks`, `statusLine`, `subagentStatusLine` | Controls lifecycle hooks plus two separate command-derived UI protocols. | [Status line runtime and command protocol](status-line.md) |
 | Remote and agent policy | `disableRemoteControl`, `disableAgentView` | Managed policy can disable Remote Control and agent UI paths. | [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) |
 | Skill/slash safety | `disableSkillShellExecution` | Replaces or prevents shell execution in skills/custom slash commands. | [Slash commands and automation](../06-agents-automation/slash-commands-and-automation.md) |
 | Authentication helpers | `apiKeyHelper`, `proxyAuthHelper`, `enterpriseGateway` | Points to credential/proxy helper mechanisms. | [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md) |
@@ -72,11 +74,28 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | Accessibility/UI | `axScreenReader`, `wheelScrollAccelerationEnabled`, `vimInsertModeRemaps` | Selects accessible rendering and terminal input behavior. | [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md) |
 | Permission defaults/auto mode | `permissions.defaultMode`, `autoMode.classifyAllShell` | `manual` aliases historical `default`; auto mode can classify every shell command. | [Built-in tools and permissions](built-in-tools-and-permissions.md) |
 | Workflows | `enableWorkflows`, `disableWorkflows`, `workflowKeywordTriggerEnabled`, global `workflowSizeGuideline` | Controls feature availability, `ultracode` keyword opt-in, and advisory workflow size. | [Dynamic workflows](../06-agents-automation/dynamic-workflows.md) |
+| Agent Teams | `teammateMode` | Captured once after team enablement; selects the in-process or terminal-pane backend. It does not enable Agent Teams by itself. | [Agent Teams](../06-agents-automation/agent-teams.md#teammate-execution-modes) |
 | Team onboarding | organization policy `allow_team_onboarding` | Enables the user-only recent-session analysis workflow; hosted sharing remains separately gated. | [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md) |
 | Memory | `autoMemoryDirectory` | Sets the auto-memory directory; project settings are ignored for this key. | [Prompt, context, and memory](../02-context-model-loop/prompt-context-memory.md) |
 | Model/version policy | `availableModels`, `enforceAvailableModels`, `requiredMinimumVersion`, `requiredMaximumVersion` | Restricts models/default resolution and enforces supported CLI versions. | [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md) |
 | Sideload/process policy | `disableSideloadFlags`, `processWrapper` | Blocks inline plugin/agent/MCP flags or routes background self-spawns through a corporate launcher. | [Settings, policy, and integrations](settings-policy-and-integrations.md) |
 | Credential isolation | `sandbox.credentials.files`, `sandbox.credentials.envVars`, `allowPlaintextInject` | Denies credential-file reads or masks/removes secret env vars in sandboxed commands. | [Sandbox and isolation](sandbox-and-isolation.md) |
+
+## Status-line schemas
+
+The main status line accepts:
+
+| Field | Constraint | Effect |
+|---|---|---|
+| `statusLine.type` | Literal `"command"` | Selects the command adapter. |
+| `statusLine.command` | String | Receives the main session-state JSON object on stdin. |
+| `statusLine.padding` | Optional number | Horizontal TUI padding. |
+| `statusLine.refreshInterval` | Optional number, minimum `1` | Adds a periodic refresh every $N$ seconds. |
+| `statusLine.hideVimModeIndicator` | Optional boolean | Hides the built-in Vim indicator when the script renders `vim.mode`. |
+
+`subagentStatusLine` is a separate object with only `type: "command"` and `command`. Its command receives a task-array JSON object and must emit one `{id, content}` JSON object per stdout line. It does not inherit the main line's plain-text protocol, padding, interval, or Vim option.
+
+The [focused status-line page](status-line.md) owns payload fields, refresh/cancellation, shell/environment/cwd behavior, stdout normalization, trust/policy, and rendering.
 
 ## Settings versus flags versus env vars
 
@@ -105,6 +124,8 @@ The remaining “complete schema” gap is mechanical extraction: a future scrip
 
 Not every valid key is honored from every source. `autoMemoryDirectory` is ignored in checked-in project settings. `processWrapper` is read from managed, flag/SDK, or user settings (and can be overridden by `CLAUDE_CODE_PROCESS_WRAPPER`), while project/local values are ignored. `sandbox.credentials.allowPlaintextInject` and `sandbox.network.tlsTerminate` are likewise restricted to user, managed/policy, or `--settings` sources. `autoMode` classifier rules reject project/local sources because repositories control those files.
 
+`statusLine` normally uses the merged effective setting after workspace trust. Safe mode, managed `allowManagedHooksOnly`, or a non-policy merged `disableAllHooks` state reduces it to the managed-policy value; managed `disableAllHooks: true` suppresses execution. This is a source-selection boundary, not a per-refresh permission prompt.
+
 ## De-duplication rule
 
 When adding new settings detail, prefer this ownership split:
@@ -116,6 +137,7 @@ When adding new settings detail, prefer this ownership split:
 
 ## Related docs
 
+- [Status line runtime and command protocol](status-line.md)
 - [Settings, policy, and integrations](settings-policy-and-integrations.md)
 - [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md)
 - [Safe mode and recovery](../05-hosted-agent-ops/safe-mode-and-recovery.md)
@@ -124,3 +146,4 @@ When adding new settings detail, prefer this ownership split:
 - [MCP, plugins, and hooks](mcp-plugins-hooks.md)
 - [Environment variables reference](../05-hosted-agent-ops/environment-variables-reference.md)
 - [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md)
+- [Agent Teams](../06-agents-automation/agent-teams.md)

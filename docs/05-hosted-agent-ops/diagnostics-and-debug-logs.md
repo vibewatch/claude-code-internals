@@ -14,6 +14,8 @@ Use [Telemetry and tracing](telemetry-and-tracing.md) for traffic/telemetry/OTEL
 | DebugFilterFlag | `-d, --debug [filter]` | Debug mode with category filtering. |
 | RootDebugFlag | `--debug [filter]` | Root debug flag/filter. |
 | DoctorDiagnosticsScreen | `/doctor diagnostics screen` | Interactive diagnostics surface. |
+| DebugSkillCommand | `name: "debug"`, `enableDebugLogging()`, `getDebugLogPath()` | User-only bundled skill that enables logging and injects bounded session/daemon evidence [~878,587–878,770](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L878587). |
+| HeapDumpCommand | `heapdump`, `performHeapDump()`, `captureMemoryDiagnostics()` | Hidden support command that writes a V8 snapshot plus diagnostics JSON [~560,096–560,350](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L560096). |
 | EventLoopStallDetector | `startEventLoopStallDetector` | Optional event-loop stall diagnostic. |
 | StartupProfilingMarkers | `import_time`, `cli_entry`, `main_tsx_imports_loaded` | Startup profiling markers. |
 | ShutdownErrorFlushCoordinator | `recordUncaughtAndCheckBreaker`, `gracefulShutdown`, `flushAnalyticsSinks` | Error/crash recording and shutdown flush coordination. |
@@ -79,6 +81,33 @@ This is a support log, not a durability guarantee: directory creation, fallback,
 | Doctor diagnostics screen | `/doctor diagnostics screen` | Interactive diagnostics entry; command-level ownership is in [Updater and doctor](updater-and-doctor.md). |
 | Crash/error recording | `recordUncaughtAndCheckBreaker` | Centralizes uncaught exception/breaker classification before shutdown. |
 | Shutdown flush | `gracefulShutdown`, `flushAnalyticsSinks` | Gives logs/telemetry sinks a final best-effort drain. |
+
+### `/debug`: enable-now, then inspect bounded evidence
+
+The bundled `/debug [issue]` command is marked `disableModelInvocation: true`, so a model cannot silently turn logging on; the user must type it. Invocation calls `enableDebugLogging()`, resolves the current session log path, flushes pending debug entries, and builds a diagnostic prompt with only `Read`, `Grep`, and `Glob` pre-authorized.
+
+If logging was off before invocation, the prompt explicitly states that no earlier events were captured and asks the user to reproduce the issue before the log is reread. It does not pretend that enabling debug mode reconstructs startup history.
+
+The initial evidence block is bounded:
+
+- the last 20 lines of the session debug log, read from at most the final 65,536 bytes;
+- daemon lock and status files, each read through an 8,192-byte bound; and
+- the tail of the daemon log, plus paths to the roster/per-job state for follow-up only when relevant.
+
+The generated instructions then ask the model to grep the full session log for `[ERROR]` and `[WARN]`, correlate the user's issue description, and explain concrete fixes. The daemon roster is not eagerly embedded because it can contain prompts and environment data. This is a diagnosis skill over local evidence, not an external report submission.
+
+### Hidden `/heapdump` support command
+
+`/heapdump` is deliberately hidden but supports local/non-interactive and fleet-host calls. `performHeapDump()` writes two owner-only files under `HAl()`—the Desktop when available, otherwise the home directory:
+
+| File | Contents |
+|---|---|
+| `<session>[-dumpN].heapsnapshot` | `Bun.generateHeapSnapshot("v8", "arraybuffer")`, loadable in Chrome DevTools. |
+| `<session>[-dumpN]-diagnostics.json` | Process/V8/resource/JSC/native-memory evidence captured immediately before the snapshot. |
+
+The diagnostics include heap/RSS/external/array-buffer totals, V8 heap limits and spaces, process resource usage, active handles/requests, open file-descriptor count when `/proc` is available, `/proc/self/smaps_rollup` when readable, Bun/JSC object counts, mimalloc data when exposed, uptime-derived RSS growth, and heuristic leak warnings. It distinguishes JS heap from external/unaccounted native memory because the latter is not represented by the V8 snapshot.
+
+The generated files can contain sensitive process state and are support artifacts, not telemetry uploads. A failure returns a local error and records heap-dump telemetry; it does not crash the session. The source does not show automatic deletion or sanitization of these snapshots.
 
 ### Startup profiler artifacts
 

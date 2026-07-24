@@ -25,6 +25,8 @@ Use [Telemetry and tracing](telemetry-and-tracing.md) for telemetry/export behav
 | ArtifactGates | `CLAUDE_CODE_DISABLE_ARTIFACT`, `disableArtifact`, `enableArtifact`, `allow_cobalt_plinth`, `tengu_cobalt_plinth` | Combines hard disable, preference, policy, account, and rollout checks. |
 | DesignGates | `allow_design_sync`, `tengu_omelette_fouet`, `tengu_slate_quill` | Controls collaborative design and fixed-schema design-system sync exposure. |
 | ObserverAgentGates | `CLAUDE_CODE_EXPERIMENTAL_OBSERVER_AGENTS`, `tengu_observer_agents_enabled` | Requires explicit process opt-in plus rollout enablement. |
+| AgentTeamsGates | `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`, raw argv `--agent-teams`, `tengu_amber_flint` | Requires an explicit process/argv opt-in and a rollout value that is not false. |
+| BuiltInAgentRosterGates | `getBuiltInAgents()`, `CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS`, `tengu_slate_ibis`, `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`, `disableAgentView`, safe mode, SDK entrypoint | Produces the conditional built-in/native agent roster [~282,731–282,862](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L282731). |
 | EndConversationGates | `tengu_umber_kestrel`, `allowedEntrypoints`, `modelMeetsEndConversationFloor` | Restricts model-ended conversations by rollout configuration, entrypoint, and model floor. |
 | TeamOnboardingGates | `allow_team_onboarding`, `tengu_flint_harbor_share` | Controls local onboarding workflow policy and the optional hosted share layer. |
 | ComputerUseBoundary | `process.platform === "darwin"`, `--computer-use-mcp`, `computer-use.lock` | Limits native desktop control to the macOS/session-wired path and one controlling session. |
@@ -70,7 +72,7 @@ The table groups source-visible keys by nearby behavior. It does **not** claim e
 |---|---|---|
 | Remote / bridge / CCR | `tengu_ccr_bridge`, `tengu_remote_backend`, `tengu_bridge_repl_v2_cse_shim_enabled`, `tengu_bridge_attestation_enforce`, `tengu_bridge_attestation_enforce_config`, `tengu_ccr_v2_send_events_cli`, `tengu_bridge_requires_action_details`, `tengu_bridge_system_init`, `tengu_surreal_dali`, `CLAUDE_CODE_REMOTE`, `disableRemoteControl`, `allow_remote_sessions` | Remote Control, bridge transport, attestation, event forwarding, and remote routine management. |
 | Scheduled tasks / Kairos cron | `tengu_kairos_cron`, `tengu_kairos_cron_durable`, `tengu_kairos_loop_dynamic`, `tengu_kairos_loop_persistent`, `tengu_kairos_loop_prompt`, `tengu_kairos_push_notifications`, `tengu_kairos_input_needed_push`, `CLAUDE_CODE_DISABLE_CRON` | Cron/scheduled prompt feature family and autonomous-loop behavior. |
-| Agents / background agents | `tengu_auto_background_agents`, `tengu_agent_list_attach`, `tengu_mcp_subagent_prompt`, `tengu_slim_subagent_claudemd`, `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`, `CLAUDE_CODE_DISABLE_AGENT_VIEW`, `CLAUDE_CODE_EXPERIMENTAL_OBSERVER_AGENTS`, `tengu_observer_agents_enabled` | Agent UI, background agents, subagent prompt/context behavior, and experimental observer pairings. |
+| Agents / background agents | `tengu_auto_background_agents`, `tengu_agent_list_attach`, `tengu_mcp_subagent_prompt`, `tengu_slim_subagent_claudemd`, `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS`, `CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS`, `tengu_slate_ibis`, `CLAUDE_CODE_DISABLE_AGENT_VIEW`, `CLAUDE_CODE_EXPERIMENTAL_OBSERVER_AGENTS`, `tengu_observer_agents_enabled`, `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`, `tengu_amber_flint` | Native roster composition, Agent UI, background agents, subagent prompt/context behavior, experimental observer pairings, and Agent Teams. |
 | Dynamic workflows | `enableWorkflows`, `disableWorkflows`, `workflowKeywordTriggerEnabled`, `CLAUDE_CODE_DISABLE_WORKFLOWS`, `CLAUDE_CODE_WORKFLOWS`, org `allow_workflows` | Workflow availability, keyword opt-in, and policy enforcement. |
 | Hosted projects/artifacts/design/onboarding | `allow_projects_tool`, `CLAUDE_PROJECT_UUID`, `CLAUDE_CODE_DISABLE_ARTIFACT`, `allow_cobalt_plinth`, `tengu_cobalt_plinth`, `allow_design_sync`, `tengu_omelette_fouet`, `tengu_slate_quill`, `allow_team_onboarding`, `tengu_flint_harbor_share` | Attached Project knowledge, hosted page publication, collaborative design, design-system synchronization, and team-guide sharing. |
 | Auto-mode / permission automation | `tengu_auto_mode_config`, `tengu_disable_bypass_permissions_mode`, `tengu_auto_notice_once`, policy `defaultMode=auto` | Auto-mode defaults, consent, permission automation. |
@@ -101,7 +103,7 @@ flowchart TD
 |---|---|
 | Sessions/remote | Remote Control can be disabled by managed policy; bridge state and transcript mirrors emit observable frames. |
 | Tools/permissions | Permission automation and streaming execution are feature-gated; denials can surface as stream frames and telemetry. |
-| Agents/tasks | Background agents, subagent prompt shape, scheduled tasks, and auto-mode are behind feature/env/policy gates. |
+| Agents/tasks | Background agents, Agent Teams, observer agents, subagent prompt shape, scheduled tasks, and auto-mode are behind feature/env/policy gates. |
 | Conversation lifetime | `EndConversation` requires the rollout config, entrypoint regex, and supported model; its two-call reflection and durable marker are additional runtime guards. |
 | Scheduled tasks | `CLAUDE_CODE_DISABLE_CRON` disables cron; scheduled-task telemetry tracks missed/fire/expired behavior. |
 | Hosted review/update | Hosted review preflight and native updater emit operational telemetry but do not own model turns. |
@@ -118,6 +120,8 @@ flowchart TD
 | Lifecycle | Gate chain | Important distinction |
 |---|---|---|
 | [Observer agents](../06-agents-automation/observer-agents.md) | `CLAUDE_CODE_EXPERIMENTAL_OBSERVER_AGENTS` must be true; `tengu_observer_agents_enabled` must not disable the feature; the named observer type must exist and cannot itself declare an observer. | Even after feature enablement, arm and every digest delivery re-run Agent permission and managed `PreToolUse` checks. |
+| [Agent Teams](../06-agents-automation/agent-teams.md) | `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` or the raw argv token `--agent-teams`, plus `tengu_amber_flint !== false`; startup must be an interactive non-teammate lead to initialize the implicit team. | `teammateMode` selects execution only after enablement; disk-backed task/mailbox files do not turn the clean-exit-deleted team into a durable service. |
+| [Built-in/native agents](../06-agents-automation/agents-tasks-and-subagents.md#built-in-or-native-agent-inventory) | Normal mode seeds `general-purpose`; safe mode controls `statusline-setup`; Agent-view policy controls `claude`; `CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS`/`tengu_slate_ibis` control `Explore` + `Plan`; SDK entrypoint controls `claude-code-guide`; coordinator mode substitutes `worker`. | “Built-in” is provenance, not universal visibility. Nine source definitions do not mean nine simultaneously selectable personas. |
 | [Conversation termination](../01-runtime-lifecycle/conversation-termination.md) | `modelMeetsEndConversationFloor` + `tengu_umber_kestrel` + configured/default entrypoint regex + runtime exclusion check. | Visibility does not end a conversation: the same tool must be called across two assistant turns before the marker/abort path runs. |
 | [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md) | `allow_team_onboarding` controls the user-only workflow. Hosted sharing additionally requires nonessential traffic, stored OAuth, and `tengu_flint_harbor_share`. | A local `ONBOARDING.md` remains useful when hosted sharing is unavailable. |
 | [Computer-use MCP](../03-tools-integrations-security/computer-use-mcp.md) | macOS + interactive/session-wired startup + internal enablement predicate. | Startup visibility is only the first boundary; TCC, per-app approval/tier, optional grants, live target checks, and a process lock govern calls. |
@@ -294,6 +298,7 @@ The practical outcomes:
 - [Computer-use MCP](../03-tools-integrations-security/computer-use-mcp.md)
 - [Conversation termination](../01-runtime-lifecycle/conversation-termination.md)
 - [Observer agents](../06-agents-automation/observer-agents.md)
+- [Agent Teams](../06-agents-automation/agent-teams.md)
 - [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md)
 - [Agent runtime, scheduling, and completion](../06-agents-automation/agent-runtime-scheduling-and-completion.md)
 - [Operations and native-support architecture](architecture.md)

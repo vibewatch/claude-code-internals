@@ -50,7 +50,7 @@ The `Yu()` helper is the central “skip customization?” decision. In safe mod
 Safe mode is **not** “ignore all configuration.” The runtime continues to apply admin-managed settings and security policy. In the central `hvg` matrix, only `hooks`, `statusLine`, and `fileSuggestion` are exception categories; their resolvers then constrain surviving values to managed policy. In particular:
 
 - `Bzi()` returns only managed settings-file hooks;
-- `Bxt()` resolves the status line to the managed value, and `cQn()` resolves file suggestions to managed policy after its trust/disable checks;
+- `Bxt()` resolves the status line to the managed value, and `cQn()` resolves file suggestions to managed policy after its trust/disable checks; the later status-line JSON/command/render lifecycle is documented separately in [Status line runtime and command protocol](../03-tools-integrations-security/status-line.md);
 - permission modes, allow/deny policy, sandbox rules, model restrictions, and authentication continue normally;
 - the banner explicitly notes that managed policy applies even though managed plugins, skills, CLAUDE.md, and MCP servers are not loaded as customizations.
 
@@ -86,6 +86,7 @@ The runtime exposes `Rw()` specifically to render the correct restart instructio
 
 ## Related docs
 
+- [Status line runtime and command protocol](../03-tools-integrations-security/status-line.md)
 - [Command-line reference](../01-runtime-lifecycle/command-line-reference.md)
 - [Settings, policy, and integrations](../03-tools-integrations-security/settings-policy-and-integrations.md)
 - [Settings schema reference](../03-tools-integrations-security/settings-schema-reference.md)

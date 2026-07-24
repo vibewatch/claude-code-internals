@@ -29,9 +29,9 @@ flowchart TD
 |---:|---|---|
 | 1 | [Package and Bun bootstrap](package-and-bun-bootstrap.md) | How does the npm/native/Bun module graph reach `cli.renamed.js`, and what else is embedded? |
 | 2 | [CLI main paths](cli-main-paths.md) | How do outer bootstrap, top-level main, Commander root, headless, interactive, resume, remote, and MCP paths connect? |
-| 3 | [Daemon and background service](daemon-and-background-service.md) | What does `claude daemon` supervise, how does service install/transient startup work, and how are locks/roster/reachability handled? |
+| 3 | [Daemon and background service](daemon-and-background-service.md) | What does `claude daemon` supervise, how do `/background` and `/stop` hand off/retain session state, and how do service install/transient startup, locks, roster, and reachability work? |
 | 4 | [Commands and flags](commands-and-flags.md) | Which root flags and top-level command families define the user-facing CLI surface? |
-| 5 | [Command-line reference](command-line-reference.md) | Which source-visible flags, subcommands, aliases, and mode-specific CLI surfaces exist? |
+| 5 | [Command-line reference](command-line-reference.md) | Which source-visible flags, root subcommands, all core/bundled interactive command names, aliases, gates, and mode-specific surfaces exist? |
 | 6 | [Accessibility and screen-reader mode](accessibility-and-screen-reader-mode.md) | How do flag/env/setting precedence, classic renderer selection, animation suppression, terminal cues, and child propagation compose? |
 | 7 | [Conversation termination](conversation-termination.md) | How does the gated `EndConversation` tool reflect twice, persist an `ended-by-model` marker, block resumed turns, and recover through `/clear`? |
 | 8 | [Runtime lifecycle architecture](architecture.md) | How is bootstrap → main → Commander composed, what is the public interface, and what design decisions drive mode dispatch and shutdown? |

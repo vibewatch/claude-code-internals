@@ -31,6 +31,10 @@ This page reverse-engineers the local session and transcript paths that explain 
 | RewindFilesResumeGuard | `--rewind-files requires --resume` | Rewind validation. |
 | BackgroundForkCommand | `Usage: /fork \<directive\>` | Copies the current conversation into a new background session with its own agent-view row. |
 | InSessionSubtaskCommand | `Usage: /subtask \<task\>` | Runs the former in-session `/fork` delegation behavior as a subagent. |
+| ClearConversationCommand | `clearConversation()`, `conversation_reset`, `regenerateSessionId` | Runs SessionEnd, clears transient state, rotates identity, and leaves the prior transcript resumable [~498,650–499,000](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L498650). |
+| RenameConversationCommand | `performRename()`, `Jcr()` | Persists an explicit or generated session name locally and to eligible bridge metadata [~556,100–556,235](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L556100). |
+| BranchConversationCommand | `createFork()`, `branchAndResume()` | Rewrites the selected chain under a new session ID and reconnects it as a resumable branch [~558,800–559,075](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L558800). |
+| RecapCommand | `Otn()`, `Rqy` | Runs a one-turn, no-tool fork to generate a short session recap [~563,450–563,760](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L563450). |
 
 ## Bundle module in `cli.renamed.js`
 
@@ -78,6 +82,59 @@ These similarly named surfaces now have distinct contracts:
 | `--fork-session` | When used with CLI `--resume`/`--continue`, restores the selected transcript under a new session ID rather than mutating the original. |
 
 Background sessions participate in `/resume`; from the agent view, `/resume` opens a picker and resumes the selected entry as a background session. The persisted transcript remains the durable source even when the original agent-view row was deleted.
+
+## Session lifecycle commands
+
+The [command catalog](../01-runtime-lifecycle/command-line-reference.md#core-session-context-and-interface-commands) lists every name and gate. Four commands have persistence behavior that is easy to miss if they are treated as UI shortcuts.
+
+### `/clear`: a new identity, not transcript deletion
+
+`/clear [name]` (aliases `/reset`, `/new`) starts by running `SessionEnd` hooks with reason `clear` under the configured hook timeout. It then separates work that can outlive the foreground conversation from work that must be stopped:
+
+- backgrounded agents/tasks are retained and their IDs are passed to cache cleanup so their skill/task state is not blindly discarded;
+- foreground running shell/agent tasks are killed or aborted and their task output is evicted;
+- eligible retained task-output links are recreated after the new session path exists.
+
+The command clears conversation messages, read-file state, loaded nested-memory paths, session environment variables, memory selection, plan slugs, file-history snapshots, transient frame/browser state, command/prompt/tool caches, send-message pins, and agent-name entries that no longer resolve. It returns to the original cwd when it still exists, otherwise tries the project root.
+
+The identity transition is ordered after the visible reset event:
+
+1. emit `conversation_reset` with a fresh conversation UUID;
+2. save transition costs, reset cost accounting, and clear session metadata;
+3. regenerate the session ID with the old session as parent;
+4. reset the active transcript pointer and register the new session file; and
+5. run the `SessionStart` hook path for source `clear`.
+
+An explicit clear name can be saved against the cleared session path; otherwise the current title is carried to the new session. Agent/web-search spawn budgets reset only when no retained task remains. The prior JSONL file is not deleted, which is why `/resume` can return to it.
+
+### `/branch`: physical transcript rewriting
+
+`/branch [name]` is distinct from `/fork <directive>` and CLI `--fork-session`. It creates a new random session ID and scans the current materialized transcript for only the UUIDs in the selected live message chain. For each retained record it:
+
+- rewrites `sessionId` to the new ID;
+- rebuilds a linear `parentUuid` chain across non-progress records;
+- clears sidechain/session-kind state; and
+- records `forkedFrom: {sessionId, messageUuid}`.
+
+Content-replacement records and the latest relocated-cwd record are copied separately. Optional extra messages are stamped with the source message's cwd/user type/entrypoint/version/branch. The output file is created under the project transcript directory with owner-only mode; a read/write failure deletes the partial fork.
+
+After the file closes, the runtime chooses an explicit title or derives one from the first meaningful prompt. Automatic titles use `(<name>) (Branch)`, `(Branch 2)`, and so on to avoid collisions. `branchAndResume()` can immediately resume the newly constructed session; otherwise it reports the new ID for later `/resume`.
+
+### `/rename`: explicit metadata or a bounded model helper
+
+With an argument, `/rename <name>` persists that exact trimmed name as both the custom session title and standalone-agent display name, updates app state, and best-effort mirrors it to the active bridge. The explicit path also emits a hidden reminder that the user named the session, so the name can inform later conversation context without pretending it was model-generated.
+
+With no argument, the runtime asks for a 2–4 word kebab-case name. A feature-gated warm-cache path uses a one-turn fork of the existing context; the fallback sends at most the last 1,000 characters of non-meta conversation through a structured `{name}` request. Both paths deny tools. No usable conversation context returns the usage hint instead of inventing a name. Teammate sessions refuse because the team leader owns their names.
+
+### `/recap`: disposable one-turn fork
+
+`/recap` is not compaction and does not replace conversation history. It reuses the last cache-safe request parameters when available; if the session has messages but no saved parameters, it rebuilds a reduced analysis-only prompt/context envelope. It then runs a one-turn fork with:
+
+- all tools denied;
+- cache writes and transcript persistence disabled for the helper turn; and
+- a prompt requesting one or two plain sentences under 40 words: overall goal/current task, then the next action.
+
+The command returns the helper text directly. An API error can be rendered as the command result, an abort returns `Recap cancelled`, and a session with no turn returns `Nothing to recap yet`. The same helper also powers automatic away summaries; eligible Remote Control sessions can publish the result as `recap` metadata, but the explicit command itself is only a read-only summary operation.
 
 ## Persistence interpretation
 

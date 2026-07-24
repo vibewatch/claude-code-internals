@@ -6,6 +6,7 @@ This page is the canonical list of hook names, runtime event families, and exter
 
 - Hook names are source-visible in the analyzed `cli.renamed.js` bundle; exact input/output schemas are event-specific and may be extended by plugins or feature gates.
 - This page distinguishes **hooks** from **frames** and **protocol methods**. They are all event-like, but they do not share one subscription mechanism.
+- The configured [`statusLine`](status-line.md) reuses command-spawn infrastructure but is not a `HOOK_EVENT_REGISTRY` lifecycle event.
 - Treat `tengu_*` strings as telemetry or feature-signal names unless adjacent code/doc text confirms a public event contract.
 
 ## Source anchors
@@ -162,7 +163,7 @@ Each `command` / `prompt` / `agent` / `http` / `mcp_tool` hook may carry an `if`
 3. **Match** — calls `getMatchingHooks(...)`. No matches ⇒ early return.
 4. **Abort check** — if the `signal` is already aborted, returns.
 5. **Telemetry** — for any non-callback / non-function hook, emits `tengu_run_hook` with `hookName`, `numCommands`, per-type counts, and plugin counts.
-6. **Per-record execution** — runs each hook with its declared `timeoutMs` (defaulting to the shared `timeoutMs`), invoking `executeStatusLineCommand` for status-line hooks and `executeFileSuggestionCommand` for file-suggestion hooks. Outputs that exceed `YcK` bytes are pushed through `persistHookOutput`, which spills to disk and emits `tengu_hook_output_persisted`.
+6. **Per-record execution** — dispatches the matched `command`, `prompt`, `agent`, `http`, `mcp_tool`, `callback`, or `function` implementation with its declared timeout (or the shared default). Oversized model-visible hook outputs pass through `persistHookOutput`, which can spill to disk and emit `tengu_hook_output_persisted`. The standalone status-line and file-suggestion helpers are exported by the same module but are not per-record lifecycle-hook variants.
 7. **Hook-JSON parsing** — for hooks that return JSON, the dispatcher feeds the text through a Zod schema validator (`parseElicitationHookOutput` for Elicitation, an internal validator for the rest). Validation errors are returned as `{ validationError: "..." }` and the hook is treated as observational.
 8. **Blocking detection** — `hasBlockingResult(result)` checks whether any record produced a blocking outcome. Per-family blocking messages are produced via `getPreToolHookBlockingMessage`, `getStopHookMessage`, `getUserPromptSubmitHookBlockingMessage`, `getTeammateIdleHookMessage`, `getTaskCreatedHookMessage`, `getTaskCompletedHookMessage`.
 
@@ -202,8 +203,11 @@ The effective timeout is clamped to a hard ceiling (`GB5`).
 
 `HOOK_EVENT_REGISTRY` is a single object that maps each canonical hook event name to its per-event executor. It is the canonical machine-readable list of supported hooks; SDK consumers re-export it as `HOOK_EVENTS` (see [SDK query, session API, and subagent surface](../04-sessions-persistence-remote/sdk-query-and-session-api.md)).
 
+There is no `StatusLine` entry in this registry. `executeStatusLineCommand()` is called directly by the prompt-footer refresh controller and has its own plain-stdout contract, cancellation, and rendering state. See [Status line runtime and command protocol](status-line.md).
+
 ## Related docs
 
+- [Status line runtime and command protocol](status-line.md)
 - [Tool inventory and schemas](tool-inventory-and-schemas.md)
 - [Built-in tools and permissions](built-in-tools-and-permissions.md)
 - [MCP, plugins, and hooks](mcp-plugins-hooks.md)

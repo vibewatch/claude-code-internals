@@ -29,6 +29,9 @@ This page reverse-engineers the hosted-session, teleport, and Remote Control pat
 | HostedRemoteClient | [~853,215](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L853215) | `SessionsV2Client` | Separate SSE client used by `--remote` attach/create. |
 | HostedRequestIdFilter | [~853,420-853,755](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L853420) | `issuedRequestIds`, `Rqb = 500` | Bounds the set used to reject non-worker responses to this hosted client's own control requests. |
 | TeleportLogFallback | [~336,767](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L336767) | `v2 endpoint returned null, trying session-ingress` | Fetches hosted logs with an ordered endpoint fallback. |
+| RemoteEnvironmentCommand | [~813,295–813,790](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L813295) | `/remote-env`, `P0a()`, `z0a()`, `A$e()` | Lists cloud targets, resolves settings precedence, and writes the user default environment. |
+| WebSetupCommand | [~828,230–828,760](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L828230) | `/web-setup`, `rcf()`, `NPa()`, `TIt()` | Confirms/imports the local GitHub CLI token and bootstraps a default cloud environment when needed. |
+| SessionLinkCommand | [~817,956–818,122](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L817956) | `/session`, `/remote`, `remoteSessionUrl` | Reads the current hosted URL and renders a screen-reader-aware QR view without mutating session state. |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -67,6 +70,54 @@ flowchart TD
 | `bridgeMain` | Headless bridge process entry used by bridge/session-ingress modes. |
 | `initReplBridge` | Interactive bridge initialization for inbound messages, permission responses, interrupts, model changes, and thinking-token changes. |
 | `CLAUDE_CODE_SESSION_ACCESS_TOKEN` | Bearer-like session ingress token source and refresh variable. |
+
+## Interactive remote setup commands
+
+The three nearby slash commands have different authority boundaries: `/remote-env` mutates local settings, `/web-setup` transfers a GitHub credential to the hosted service after confirmation, and `/session` only displays an already-created hosted-session link.
+
+### `/remote-env`: default environment selection
+
+`/remote-env` is a local TUI command gated by Claude.ai subscriber status and the `allow_remote_sessions` policy. It concurrently lists first-party cloud environments and any additional target provider implemented by the build. In `2.1.215`, `JIu()` returns no additional targets, so the visible list comes from `GET /v1/environment_providers` using Claude.ai OAuth plus the organization UUID. The fetch path also caches only a boolean `hasRemoteEnvironment` hint in global config; the environment records remain service data.
+
+The initial selection comes from the effective `remote.defaultEnvironmentId` settings stack. Selecting a target concurrently requests two writes:
+
+1. remove `remote.defaultEnvironmentId` from `localSettings` when that local override exists; and
+2. store the selected environment ID in `userSettings`.
+
+After both Promises resolve, the handler recomputes the effective setting. If a higher-precedence policy/flag/other source still pins another ID, the success text explicitly warns that the selected user value does not currently win. Unlike settings handlers that inspect the returned `{error}` value, this branch does not check either update result before emitting success copy; the precedence warning is therefore not a general write-verification mechanism. Listing failures are preserved separately from an empty list so the UI can say whether no environment exists or the service could not be queried. The command chooses an existing target; it does not create or delete environments.
+
+### `/web-setup`: import local GitHub CLI authentication
+
+`/web-setup` is available only on the Claude.ai surface when the rollout gate and both `allow_remote_sessions` and `allow_quick_web_setup` policies pass. Its implementation is not merely a browser link:
+
+```mermaid
+flowchart TD
+  Start[/web-setup/] --> Login[prepare authenticated Claude API request]
+  Login --> GH{gh installed and authenticated?}
+  GH -->|no| Alt[open web onboarding alt-auth page + explain gh auth login]
+  GH -->|yes| Token[read gh auth token into redacting wrapper]
+  Token --> Existing{hosted auth already GitHub App OAuth?}
+  Existing -->|yes| Replace[warn that token scopes replace App access]
+  Existing -->|no| Confirm[confirm credential transfer]
+  Replace --> Confirm
+  Confirm --> Import[POST /v1/code/github/import-token]
+  Import --> Envs{any cloud environment?}
+  Envs -->|no| Create[best-effort create Default environment]
+  Envs -->|yes| Open[open claude.ai/code]
+  Create --> Open
+```
+
+Before transfer, the UI says the hosted product uses the credential to clone and push on the user's behalf. If the account is already connected through the GitHub App, it warns that continuing replaces that authentication and that repository access will follow the local token's scopes. Only an explicit **Continue**/**Replace connection** action calls the import endpoint. The token wrapper redacts `toString`, JSON serialization, and Node inspection, but the secret necessarily remains in process memory long enough to enter the authenticated request body.
+
+The import maps network, signed-out, invalid-token, and other server failures to distinct user messages. On success, if listing environments returns none **or the list request fails**, the command best-effort creates an Anthropic cloud environment named `Default` (Python 3.11, Node 20, default-host network access). Environment-creation failure is logged as a warning and does not roll back a successful credential import; the command still opens the hosted Code page and reports the returned GitHub username.
+
+Cancellation sets a local ignored-result latch. The inspected path does not attach an abort signal to all already-issued login/import requests, so cancellation prevents later UI handling but is not proof that an in-flight server request was canceled transactionally.
+
+### `/session` (`/remote`): read-only hosted link
+
+`/session` is enabled only in remote mode and hidden from normal discovery unless the `fanout` feature is active. It reads `remoteSessionUrl` from runtime state, prints the browser URL, and—unless screen-reader mode is active—generates a UTF-8 QR code. QR generation failure is debug-logged and simply omits the code; the text URL remains visible.
+
+If no URL exists, the view distinguishes a non-remote local session from a directly connected/browser context that has no shareable browser link. It performs no settings write, hosted API mutation, archive, or transport handoff.
 
 ## Permission and control bridge
 

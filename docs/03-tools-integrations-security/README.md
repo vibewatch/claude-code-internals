@@ -41,14 +41,15 @@ flowchart TD
 | 2 | [Tool inventory and schemas](tool-inventory-and-schemas.md) | Which built-in, MCP, plugin, skill, and agent/task tool surfaces exist, who owns their schemas, and which permission boundary applies? |
 | 3 | [Built-in tools and permissions](built-in-tools-and-permissions.md) | Which built-in tool names exist, how do flags filter or permission them, and how does `ToolExecutionBoundary` mediate `PreToolUse`, `can_use_tool`, `PermissionDenied`, and edit/web guards? |
 | 4 | [Computer-use MCP](computer-use-mcp.md) | How does the macOS computer-control MCP register tools, request per-app access, enforce tiers and lock ownership, and clean up a turn? |
-| 5 | [Artifact publishing and live pages](artifact-publishing-and-live-pages.md) | How does `Artifact` publish/list/version hosted pages, restore URL state, guard concurrent updates, and monitor live republishing? |
+| 5 | [Artifact publishing and live pages](artifact-publishing-and-live-pages.md) | How do `Artifact`, `/artifacts`, live capability guidance, extracted templates/validators, plan/PR publishing skills, URL restoration, and conflict/live-update guards compose? |
 | 6 | [Claude Design and design-system sync](claude-design-and-design-sync.md) | How do `ClaudeDesign`, `DesignSync`, OAuth/consent, path plans, project grants, and the bundled `/design-sync` pipeline compose? |
-| 7 | [Sandbox and isolation](sandbox-and-isolation.md) | How does command sandboxing work, which Linux/macOS mechanisms are used, and how do strict/fallback modes, filesystem policy, and network filtering compose with tool permissions? |
-| 8 | [MCP, plugins, and hooks](mcp-plugins-hooks.md) | How are MCP servers, plugins, marketplaces, and lifecycle hooks wired into the runtime, and how does `McpRuntimeCoordinator` connect always-load configs, regular configs, and claude.ai connectors? |
+| 7 | [Sandbox and isolation](sandbox-and-isolation.md) | How does command sandboxing work across Linux/WSL, macOS, and feature-gated Windows, and how do strict/fallback modes, filesystem policy, and network filtering compose with tool permissions? |
+| 8 | [MCP, plugins, and hooks](mcp-plugins-hooks.md) | How are MCP servers, plugins, marketplaces, and hooks wired into the runtime; how does `McpRuntimeCoordinator` connect them; and what do `/reload-plugins`, `/reload-skills`, and `/skill-doctor` rebuild or inspect? |
 | 9 | [Hooks and events reference](hooks-and-events-reference.md) | Which hook names, lifecycle events, stream frames, control frames, and MCP protocol methods are visible? |
-| 10 | [Settings, policy, and integrations](settings-policy-and-integrations.md) | Which settings files, managed policy knobs, IDE/Chrome/file integrations, and helper scripts shape runtime behavior? |
-| 11 | [Settings schema reference](settings-schema-reference.md) | Which known settings roots, keys, policy groups, and setting-vs-flag-vs-env boundaries should readers use as canonical references? |
-| 12 | [Tool runtime and security architecture](architecture.md) | How is the capability registry + single execution boundary structured, and how do MCP/plugins/hooks/integrations compose without bypassing trust? |
+| 10 | [Status line runtime and command protocol](status-line.md) | How do `/statusline` setup, JSON stdin, refresh/cancellation, shell execution, rendering, policy/trust, and the separate subagent-row protocol work? |
+| 11 | [Settings, policy, and integrations](settings-policy-and-integrations.md) | Which settings/policy/integration sources shape runtime behavior, and how do `/config`, `/auto-mode-setup`, `/import`, `/init`, `/keybindings`, and `/statusline` cross their mutation/consent boundaries? |
+| 12 | [Settings schema reference](settings-schema-reference.md) | Which known settings roots, keys, policy groups, and setting-vs-flag-vs-env boundaries should readers use as canonical references? |
+| 13 | [Tool runtime and security architecture](architecture.md) | How is the capability registry + single execution boundary structured, and how do MCP/plugins/hooks/integrations compose without bypassing trust? |
 
 ## Handoffs
 

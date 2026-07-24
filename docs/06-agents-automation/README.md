@@ -1,6 +1,6 @@
 # Agents and automation
 
-This chapter documents the agent/task automation layer: custom agents, background-by-default subagents, observer agents, background sessions, deterministic dynamic workflows, task tools, lifecycle hooks, slash-command automation, `ultrareview`, and `auto-mode`.
+This chapter documents the agent/task automation layer: custom agents, background-by-default subagents, cross-agent messaging, experimental Agent Teams and observer agents, background sessions, deterministic dynamic workflows, task tools, lifecycle hooks, slash-command automation, `ultrareview`, and `auto-mode`.
 
 Read this chapter when the question is: **how does Claude Code delegate work, run subagents, or automate runtime behavior?**
 
@@ -25,6 +25,10 @@ flowchart TD
     AgentsFlag --> Custom[Custom agents]
     AgentsCmd --> Background[Background agents]
     TaskTools --> Subagents[Subagents / tasks]
+    Subagents --> Messages[SendMessage routing and receive queues]
+    Runtime --> Teams[Experimental Agent Teams]
+    Messages --> Teams
+    Teams --> Teammates[In-process / tmux / iTerm2 teammates]
     Slash --> Automation[command automation]
     Runtime --> Workflow[Workflow tool]
     Workflow --> Orchestration[deterministic multi-agent orchestration]
@@ -34,13 +38,15 @@ flowchart TD
 
 | Order | Page | Automation question answered |
 |---:|---|---|
-| 1 | [Agents, tasks, and subagents](agents-tasks-and-subagents.md) | Which command/flag/tool/hook surfaces define custom agents, tasks, background agents, and hosted review, and how do `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`, subagent hooks, cron scheduling, and `ultrareview` preflight work? |
-| 2 | [Observer agents](observer-agents.md) | How do agent declarations auto-spawn read-only observers, persist pairings, deliver digests, and route one-way `ObserverReport` messages? |
-| 3 | [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md) | How are agent families designed, how are tasks scheduled, how is completion detected, and how do timed/cron tasks work? |
-| 4 | [Dynamic workflows](dynamic-workflows.md) | How does the `Workflow` tool execute deterministic JavaScript orchestration with agents, pipelines, shared budgets, progress, and resumable journals? |
-| 5 | [Slash commands and automation](slash-commands-and-automation.md) | Which slash-command, hook, skill, and auto-mode surfaces automate behavior around the main session? |
-| 6 | [Cron and scheduled tasks](cron-and-scheduled-tasks.md) | How do `/loop`, cron tools, wakeups, persistence, and missed-task handling inject later work? |
-| 7 | [Agent and automation architecture](architecture.md) | How are custom agents, tasks, workflows, slash commands, `auto-mode`, and hosted review orchestrated over the same runtime? |
+| 1 | [Agents, tasks, and subagents](agents-tasks-and-subagents.md) | Which built-in/native agent roles exist, what are they for, and how does `Agent` resolve its model, run concurrency-safe calls in parallel, choose foreground/background/isolation, and coexist with task tools and hooks? |
+| 2 | [Agent messaging and communication](agent-messaging.md) | How does `SendMessage` resolve a recipient and route through an Agent queue, team mailbox, main queue, local socket, or cloud API; when does the receiver see it; and how do acknowledgement, reply, and completion differ? |
+| 3 | [Agent Teams](agent-teams.md) | How does the gated implicit team spawn named teammates, choose in-process/tmux/iTerm2 backends, coordinate through locked roster/task/inbox files, forward permissions, stop, clean up, and narrowly resume evicted workers? |
+| 4 | [Observer agents](observer-agents.md) | How do agent declarations auto-spawn read-only observers, persist pairings, deliver digests, and route one-way `ObserverReport` messages? |
+| 5 | [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md) | How do Agent launch, task claiming, `now`/`next`/`later` steering, TUI/SDK interruption, cancellation, completion, and cron injection compose? |
+| 6 | [Dynamic workflows](dynamic-workflows.md) | How does `Workflow` schedule `parallel`/`pipeline` agents through a FIFO concurrency limiter with shared model, effort, budget, abort, progress, and journal state? |
+| 7 | [Slash commands and automation](slash-commands-and-automation.md) | How are core, bundled, plugin, workflow, filesystem, and MCP commands assembled and filtered; how do `/btw`, `/goal`, `/autofix-pr`, and `/ultraplan` isolate, resume, or hand off work; and which bundled workflow families have independent control flow? |
+| 8 | [Cron and scheduled tasks](cron-and-scheduled-tasks.md) | How do `/loop`, cron tools, wakeups, persistence, and missed-task handling inject later work? |
+| 9 | [Agent and automation architecture](architecture.md) | How are custom agents, teams, tasks, workflows, slash commands, `auto-mode`, and hosted review orchestrated over the same runtime? |
 
 ## Handoffs
 

@@ -2,7 +2,7 @@
 
 This page reverse-engineers how `cli.renamed.js` manages model-visible context and memory, how conversation compaction works, and which checkpoint/rewind surfaces are source-confirmed.
 
-Scope: local/project/managed/auto memory, context accounting, manual and automatic compaction, compaction hooks, transcript context-collapse state, file checkpoints, `--rewind-files`, and the absence of a general source-confirmed `undo` command in this build.
+Scope: local/project/managed/auto memory, context accounting, manual and automatic compaction, compaction hooks, transcript context-collapse state, file checkpoints, interactive `/rewind` (aliases `/checkpoint` and `/undo`), and headless `--rewind-files`. `/undo` is a name for the rewind selector, not a separate general-purpose inverse-operation engine.
 
 ## Source anchors
 
@@ -21,19 +21,26 @@ Scope: local/project/managed/auto memory, context accounting, manual and automat
 | CompactionHookLifecycle | `PreCompact`, `PostCompact` | Hook lifecycle around compaction. |
 | PreCompactHookSchema | `PreCompact`, `trigger`, `custom_instructions` | Hook schema for manual/auto compaction and hook-provided instructions. |
 | PostCompactSummaryHook | `compact_summary` | `PostCompact` hook receives the produced summary. |
-| FullCompaction | `rlo()` | Full manual/automatic summary path, including hooks, retries, boundary creation, and refreshed attachments. |
+| FullCompaction | `rlo()` | Full automatic summary path, including hooks, retries, boundary creation, and refreshed attachments. In this build it is used by the normal automatic route and in-process teammate history compaction, not by `/compact`. |
 | PartialCompaction | `YMu()` | Message-selector compaction in `from` or `up_to` direction while preserving the opposite segment. |
-| ReactiveCompaction | `flo()` → `Bas()` → `ilo()` → `hlo()` | Hook orchestration, grouped retrying summary, and result materialization under immediate pressure. |
-| PrecomputedCompaction | `Ras()` → `ilo()`, then `Das()` → `hlo()` | Background arm and later swap/consume path. |
+| ReactiveCompaction | `flo()` / `XTy()` → `Bas()` → `ilo()` → `hlo()` | Grouped retrying summary and result materialization for automatic immediate-pressure or manual command routes. |
+| PrecomputedCompaction | `Ras()` → `ilo()`, then `Das()` / `JTy()` → `hlo()` | Background arm and later automatic swap or manual consume path. |
+| ManualCompactRouter | `XTy()` → `JTy()` / `Bas()` → `hlo()` | `/compact` runs a manual hook pass, reuses a compatible ready precompute when possible, and otherwise uses grouped reactive summarization [~499,359–499,529](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L499359). |
+| CompactSummaryContract | `Jao()`, `cWg()`, `J9r()` | One-turn, no-tool, no-transcript/cache-write summary request and the continuation message built from its `<summary>` output [~346,360–346,700](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L346360). |
+| CompactResultSplice | `E.type === "compact"`, `jVe()` | Local-command dispatch appends command/display records to the retained suffix and returns the compacted chain without another model turn [~351,953–351,974](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L351953). |
 | PrecomputedSidecar | `Qrr()`, `oOu()`, `iOu()`, `.precompact.json` | Versioned, size-bounded persistence for a ready main-session precompute. |
 | PreservedMessageMetadata | `gas()`, `preservedMessages`, `preservedSegment` | Current explicit preserved-UUID metadata and its legacy contiguous-segment compatibility form. |
 | TranscriptCompactionRelink | `dOd()`, `_8y()`, `buildConversationChain()` | Resume-time preserved-message relinking and conversation-chain reconstruction. |
 | CompactionSummaryFailure | `Failed to generate conversation summary` | Full compaction failure when no valid summary is returned. |
 | PartialCompactionFailure | `tengu_partial_compact_failed` | Partial compaction failure path. |
 | ContextLowWarning | `Context low ... Run /compact to compact & continue` | TUI context-low warning and manual compaction prompt. |
+| ContextUsageCommand | `collectContextData()`, `GQr()` | TUI/text `/context` implementations collect category, MCP, agent, memory, and skill estimates [~502,648–502,670](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L502648). |
+| ManualCompactCommand | `name: "compact"`, `XTy()`, `JTy()` | `/compact` runs hooks and can reuse a ready precomputed result [~499,350–499,620](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L499350). |
+| AutoCompactWindowCommand | `name: "autocompact"`, `applyAutoCompactWindow()` | Reads/writes the effective auto-compact window with env/model precedence [~499,650–499,740](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L499650). |
 | ContextCollapseState | `contextCollapseCommits`, `contextCollapseSnapshot` | Context-collapse state is persisted/restored with session state. |
 | FileCheckpointSetting | `fileCheckpointingEnabled` | File snapshot setting used by `/rewind`. |
 | FileHistoryRewind | `FileHistory: [Rewind] Rewinding to snapshot` | File rewind implementation applies a tracked snapshot. |
+| InteractiveRewindCommand | `name: "rewind"`, `aliases: ["checkpoint", "undo"]`, `open_message_selector` | Opens the interactive code/conversation restoration selector [~560,096](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L560096). |
 | HeadlessRewindGuard | `Error: --rewind-files requires --resume` | Headless rewind guard. |
 | RewindSuccessFrame | `Files rewound to state at message` | `--rewind-files` success path. |
 
@@ -97,6 +104,19 @@ Context accounting uses model-aware token/window logic. The visible surfaces inc
 - `DISABLE_COMPACT` and `DISABLE_AUTO_COMPACT`: environment kill switches.
 - UI text such as `Context low (...) · Run /compact to compact & continue`.
 
+### `/context`, `/compact`, and `/autocompact`
+
+The three commands expose different layers of this subsystem:
+
+| Command | What it reads or changes |
+|---|---|
+| `/context [all]` | Collects a current estimate and renders a colored grid in the TUI. The non-interactive twin emits Markdown tables for model/window totals, category estimates, MCP tools, custom agents, memory files, and skill frontmatter. It can also account for built-in/deferred tools and system-prompt sections. This is a measurement request, not a compaction trigger. |
+| `/compact [instructions]` | Normalizes the current live chain, refuses an ended or empty conversation, runs `PreCompact(trigger:"manual")`, and applies a grouped reactive result. With no custom/hook instructions it may consume a ready precomputed summary at the exact retained boundary; custom instructions or hook-added instructions force a fresh grouped summary. It does not call `rlo()` in `2.1.215`. |
+| `/autocompact` | Reports the configured/effective window, its source, model cap, and whether automatic compaction is enabled. |
+| `/autocompact auto` or `100k`–`1m` | Writes `autoCompactWindow` to user settings (`reset`, `unset`, and `default` mean `auto`), then emits `apply_flag_settings` so a host/bridge can synchronize it. `CLAUDE_CODE_AUTO_COMPACT_WINDOW` has higher precedence and makes the command report that the persisted value is currently shadowed. |
+
+`/context` values remain estimates: individual token-count helper calls can fail and fall back, dynamic/deferred content can change before the next model request, and remote/provider-side accounting is not reconstructed by this view. `/autocompact` similarly reports the minimum of the configured window and the current model's maximum rather than promising one universal trigger count.
+
 `wWg(...)` computes the current model-aware estimate (minus any supplied token credit), evaluates it against the effective window, logs `autocompact: tokens=<n> level=<level> effectiveWindow=<n>`, and returns true for `compact` or `blocked` levels. `autocompact(...)` then applies feature, query-source, failure-breaker, and rapid-refill gates before choosing a full or reactive route. `AWg(...)` separately detects a fixed cached prefix that is already larger than the threshold, because summarizing transcript messages cannot make that prefix smaller.
 
 ## Full, partial, reactive, and precomputed compaction
@@ -105,12 +125,37 @@ Compaction has several source-confirmed execution shapes. “Automatic” is a t
 
 | Variant | Trigger | Confirmed anchors | Behavior |
 |---|---|---|---|
-| Full | `/compact`, or the normal automatic route at a model/window threshold | `rlo()` | Summarizes the conversation, emits a compact boundary plus a transcript-only summary message, and rebuilds current attachments. `isAutoCompact` changes hook/telemetry behavior but not the result shape. |
+| Full | Normal automatic route when reactive routing does not apply; in-process teammate history above its threshold | `rlo()` | Summarizes the conversation, emits a compact boundary plus a transcript-only summary message, and rebuilds current attachments. The retained implementation supports manual/auto telemetry parameters, but no manual `/compact` caller reaches it in this build. |
 | Partial | Message-selector operation with direction `from` or `up_to` | `YMu()` | Summarizes one side of a selected index, keeps the other side, and records preservation metadata so the retained messages can be reconstructed. Optional user feedback is folded into summary instructions. |
-| Reactive | Immediate threshold or prompt-too-long recovery route | `flo()`, `Bas()`, `ilo()`, `hlo()` | Summarizes older normalized conversation groups while retaining a suffix. It can increase the retained suffix across retries rather than repeatedly sending the same oversized prefix. |
-| Precomputed | Background arm before immediate recovery is required | `Ras()`, `Das()` | Runs the grouped reactive summarizer ahead of time. At pressure time the runtime validates the boundary, appends messages created since precompute to the retained suffix, and materializes the result through `hlo()`. |
+| Reactive | Manual `/compact`; an eligible automatic threshold/prompt-too-long recovery route | `XTy()`, `flo()`, `Bas()`, `ilo()`, `hlo()` | Summarizes older normalized conversation groups while retaining a suffix. It can increase the retained suffix across retries rather than repeatedly sending the same oversized prefix. |
+| Precomputed | Background arm before immediate recovery is required; later automatic or manual reuse | `Ras()`, `Das()`, `JTy()` | Runs the grouped reactive summarizer ahead of time. At consumption the runtime validates the boundary, appends messages created since precompute to the retained suffix, and materializes the result through `hlo()`. |
 
-`autocompact(...)` can call `rlo()` directly or route through `flo()` depending on the effective threshold source and runtime mode. Therefore “auto compact” must not be read as an alias for only the full summarizer.
+`autocompact(...)` can call `rlo()` directly or route through `flo()` depending on the effective threshold source and runtime mode. Therefore “auto compact” must not be read as an alias for only the full summarizer. Conversely, the user-facing `/compact` command is not the current full-path caller: it uses the grouped reactive materializer, with optional precompute reuse.
+
+### Exact manual `/compact` call path
+
+```mermaid
+flowchart TD
+    Command[/compact optional instructions/] --> Guard[YTy: normalize live chain; reject ended or empty]
+    Guard --> Prepare[XTy: run manual PreCompact and build cache-safe request parameters]
+    Prepare --> Merge[merge user and hook-provided instructions]
+    Merge --> Reuse{no instructions and compatible ready precompute?}
+    Reuse -->|yes| Materialize[hlo materializes ready result]
+    Reuse -->|no| Group[Bas → ilo groups turns and preserves a recent suffix]
+    Group --> Summary[cWg: one-turn no-tool summary fork]
+    Summary --> Materialize
+    Materialize --> Result[type: compact]
+    Result --> Dispatch[local-command dispatcher adds command/display records and returns jVe chain]
+```
+
+The entry has four distinct phases:
+
+1. `YTy()` rejects a conversation already ended by the model, normalizes the live chain with `lS()`, rejects an empty chain, and treats the remaining command text as custom summary instructions.
+2. `XTy()` runs `PreCompact(trigger:"manual")` in parallel with `ZTy()`'s reconstruction of cache-safe system/user/system context. User instructions and `newCustomInstructions` from the hook are concatenated.
+3. `JTy()` permits reuse only when neither source supplied instructions. It consumes a ready precompute, verifies that `precomputedAtUuid` remains in the current chain, and preserves every non-progress message after that boundary. A miss calls `Bas()` → `ilo()`; the latter groups normalized turns, initially preserves the newest group, and progressively preserves more groups after prompt-too-long failures.
+4. `hlo()` creates the compact boundary, summary message, explicit preserved-UUID metadata, rebuilt attachments, and `PostCompact` result. The local-command dispatcher then appends the `/compact` command record and visible `Compacted ...` output to `messagesToKeep`, flattens the result with `jVe()`, and returns `shouldQuery:false`. Compaction itself therefore performs a helper model request, but it does not launch a second ordinary assistant turn afterward.
+
+The helper request is deliberately constrained: `cWg()` invokes a one-turn fork with every tool denied, transcript and prompt-cache writes disabled, and `querySource:"compact"`. `Jao()` requires plain text containing `<analysis>` followed by `<summary>` and asks the helper to preserve user intent, technical decisions, files/code, errors/fixes, all genuine user messages, pending/current work, next-step context, and security constraints. Optional `/compact` instructions are appended to this prompt. `J9r()` strips the analysis block, turns the summary into a continuation message, includes the transcript path when available, and tells the main agent to resume without recapping.
 
 ### Hook lifecycle
 
@@ -118,8 +163,8 @@ Hook timing differs slightly by path:
 
 1. Full `rlo()` and partial `YMu()` run `PreCompact` immediately before their summary request. `PreCompact` receives `trigger: "manual" | "auto"` and nullable `custom_instructions`.
 2. A hook can block compaction through `blockedBy` or extend the summary request through `newCustomInstructions`.
-3. Non-precomputed reactive compaction runs `PreCompact` in `flo()`, summarizes through `Bas()`/`ilo()`, and materializes through `hlo()`.
-4. Precomputed compaction runs `PreCompact` when `Ras()` arms the background job. A blocked result is never made ready. If the result is later consumed, the stored hook display text is carried forward; `PreCompact` is not rerun at swap time.
+3. Automatic non-precomputed reactive compaction runs `PreCompact` in `flo()`, summarizes through `Bas()`/`ilo()`, and materializes through `hlo()`. Manual `XTy()` owns the equivalent manual hook pass before entering `Bas()`.
+4. Precomputed compaction runs `PreCompact(trigger:"auto")` when `Ras()` arms the background job. A blocked result is never made ready. Automatic `Das()`/`flo()` consumption carries the stored hook display text and does not rerun `PreCompact` at swap time. Manual `/compact` is different: `XTy()` always runs a new `PreCompact(trigger:"manual")` pass before `JTy()` considers reuse, and any new hook instructions force a fresh grouped summary.
 5. Successful paths run `PostCompact` only when the result is materialized. It receives `compact_summary`; for precompute this occurs when `hlo()` applies the ready result, not when the background summary first becomes ready.
 
 ```mermaid
@@ -244,15 +289,22 @@ The headless runner rejects unsafe combinations before any model work:
 
 This makes rewind a file-restore operation tied to a resumed transcript, not a prompt modifier.
 
-### Is there `undo`?
+### What does `/undo` mean?
 
-For this build, the source-confirmed user-facing reversible operations are:
+The current core registry explicitly defines:
 
-- resume/continue/fork at the session layer;
-- context compaction/collapse at the prompt-history layer;
-- file checkpoint + `/rewind` / `--rewind-files` at the filesystem layer.
+```text
+name: "rewind"
+aliases: ["checkpoint", "undo"]
+```
 
-No high-signal CLI flag or slash command for a general `undo` operation was confirmed in the runtime anchors used for this page. Hits for `undo` in the bundle are mostly unrelated vendor/editor strings, so this page does **not** document a general undo feature as confirmed behavior.
+Invoking any of those names calls the same local handler, which emits `open_message_selector` and skips a model turn. The selector can restore code, conversation state, or both to a selected point according to the available checkpoint/transcript state.
+
+This confirms `/undo` as a **command alias**, but not as a separate universal undo engine. It does not synthesize inverse tool calls, reverse arbitrary remote effects, or promise that every filesystem operation has a checkpoint. The source-confirmed reversible families remain:
+
+- resume/continue/branch at the session layer;
+- context compaction/collapse at the prompt-history layer; and
+- file checkpoint plus `/rewind`/`/checkpoint`/`/undo` or headless `--rewind-files` at the filesystem layer.
 
 ## Operational interpretation
 

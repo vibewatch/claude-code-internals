@@ -15,6 +15,10 @@
 | ArtifactInputSchema | [~421,640](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L421640) | `buildArtifactInputSchema` | Defines publish/list/live-edit inputs and optional runtime declarations. |
 | ArtifactDescriptor | [~421,819](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L421819) | `ArtifactTool = Ai({...})` | Tool visibility, permissions, validation, execution, and result mapping. |
 | ArtifactSizeLimit | [~376,009](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L376009) | `MAX_ARTIFACT_BYTES = 16777216` | Raw source-file limit: 16 MiB. |
+| ArtifactCapabilitySkill | [~873,270](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L873270) | `artifact-capabilities`, `resolveContract`, `fetchContractDefs` | Fetches the live capability roster/prompt/type definitions for the current contract. |
+| ArtifactTemplateSkills | [~874,423](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L874423) | `artifact-${kind}`, `OZb` | Expands dashboard, report, data-table, and explainer template skills. |
+| ArtifactReviewSkills | [~887,510–888,410](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L887510) | `plan-artifact`, `pr-explainer`, `artifact-pr-review` | Plan/PR publishing workflows with independent gates. |
+| DataVisualizationSkill | [~878,555](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L878555) | `dataviz`, `validate_palette.js`, `validate_palette.py` | Extracts design guidance and executable palette validators. |
 
 ## Availability boundary
 
@@ -28,6 +32,26 @@ The tool is not universally visible. The gate requires all of the following:
 - `enableArtifact` not disabled by higher-priority policy/flag/user settings.
 
 Restricted nonessential traffic also makes the hosted path ineligible. These checks explain why the SDK declaration proves a contract but not availability in every local session.
+
+## Artifact command and bundled-skill layer
+
+The hosted `Artifact` tool is the mutation boundary; the related slash commands are navigation or prompt/asset packages around it. They do not bypass the tool's read, publication, ownership, and conflict checks.
+
+| Command | Registration and role |
+|---|---|
+| `/artifacts` | Core `local-jsx` browser for published/shared pages, enabled only when the Artifact tool is enabled. |
+| `/artifact-design` | Bundled design guidance that must be loaded before authoring a page. It can conditionally point chart work to `/dataviz`. |
+| `/artifact-dashboard`, `/artifact-report`, `/artifact-data-table`, `/artifact-explainer` | Four names expanded from one `Lu()` loop. Each extracts `SKILL.md` plus `template.html`, applies a creation-only contract, and requires all slot/placeholder content to be replaced before publishing. |
+| `/artifact-capabilities` | Fetches the **live** contract roster rather than trusting a vendored capability list. It can extract `<contract>/<capability>.d.ts` files, fetch composed authoring guidance, and pin guidance to the target artifact's stored contract. |
+| `/dataviz` | Extracts chart-form/color/accessibility references and both JavaScript and Python implementations of the same palette checks. It instructs the caller to execute the validator rather than eyeballing color separation. |
+| `/plan-artifact` | Publishes or restyles an implementation plan/design doc/RFC from an extracted plan template. |
+| `/artifact-pr-review` | Gated PR-review briefing workflow. It gathers GitHub metadata/diff, treats PR text as untrusted data, validates a bounded JSON synthesis, escapes every PR-derived string, fills a self-contained template, then publishes through `Artifact`. |
+| `/pr-explainer` | Retained but disabled in this build (`isEnabled_13() === false`). Its prompt would create a reviewer-oriented narrative walkthrough, not a correctness review. |
+| `/code-walkthrough` | Retained but disabled (`isEnabled_10() === false`); it would publish a code explainer Artifact. |
+
+The template skills are user-invocable and model-invocable unless a caller/skill override says otherwise. `/artifact-capabilities` is especially important as an evidence boundary: capability names, configuration, and call definitions come from the control-plane contract served to the current user. Failure to fetch that roster produces “no capability available” guidance; it does not license a guessed `window.claude.*` API.
+
+Bundled file extraction is itself guarded: the generic `Lu()` path rejects absolute/`..` file entries and uses exclusive no-follow creation where the platform exposes it. The resulting base directory is prepended to the skill prompt so templates and validators are read from the exact extracted version.
 
 ## Actions and data model
 

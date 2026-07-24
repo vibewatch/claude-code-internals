@@ -2,7 +2,7 @@
 
 This page uses reverse-engineered `cli.renamed.js` anchors to answer the sandbox question: **does Claude Code have a sandbox, and how is it designed?**
 
-Yes. The bundle contains a source-confirmed command sandbox subsystem. It is settings- and policy-driven, wraps shell commands before execution, supports Linux/WSL and macOS differently, exposes network and filesystem restrictions, and can ask for permission or fall back outside the sandbox depending on policy.
+Yes. The bundle contains a source-confirmed command sandbox subsystem. It is settings- and policy-driven, wraps shell commands before execution, supports Linux/WSL, macOS, and a feature-gated Windows path with different OS mechanisms, exposes network and filesystem restrictions, and can ask for permission or fall back outside the sandbox depending on policy.
 
 ## Source anchors
 
@@ -18,14 +18,17 @@ Yes. The bundle contains a source-confirmed command sandbox subsystem. It is set
 | SandboxManagedPolicyMerge | `sandbox.enabled`, `sandbox.failIfUnavailable`, `sandbox.network`, `sandbox.filesystem` | Managed settings merge preserves sandbox policy controls. |
 | SandboxSettingsValidator | `enabled`, `failIfUnavailable`, `allowUnsandboxedCommands`, `network`, `filesystem`, `ignoreViolations` | Settings-key validator recognizes sandbox settings. |
 | SandboxCredentialSettings | `sandbox.credentials.files`, `sandbox.credentials.envVars`, `allowPlaintextInject` | Protects credential paths and secret environment variables inside sandboxed commands. |
-| SandboxRuntimePackageLookup | `@anthropic-ai/sandbox-runtime` | Runtime searches for the external sandbox-runtime package. |
+| SandboxRuntimePackage | `@anthropic-ai/sandbox-runtime` | The bundle includes the package's JavaScript orchestration; platform/native helpers remain separate enforcement boundaries. |
 | LinuxSandboxDependencyChecks | `bubblewrap (bwrap) not installed`, `socat not installed` | Linux dependency checks. |
 | LinuxSandboxWrapper | `--unshare-net`, `--tmpfs`, `--ro-bind`, `apply-seccomp` | Linux command wrapping uses bubblewrap, network namespace, bind mounts, and optional seccomp. |
 | MacSandboxWrapper | `/usr/bin/sandbox-exec`, `(deny default`, `mach-lookup` | macOS command wrapping uses `sandbox-exec` profile generation. |
+| WindowsSandboxGate | `CLAUDE_CODE_NANKEEN_KESTREL`, `tengu_nankeen_kestrel`, `Qnt()` | Windows sandbox support is present but requires an environment or feature-gate enablement [~242,468](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L242468). |
+| WindowsSandboxInstaller | `installWindowsSandbox`, `srt-win install`, `ClaudeCodeSandbox` | One-time elevated setup provisions a dedicated user and WFP filters [~231,845-231,910](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L231845). |
+| WindowsSandboxWrapper | `wrapWithSandboxArgv`, `srt-win exec` | Windows uses an argv/env wrapper and a non-shell spawn rather than the Unix shell-string wrapper [~232,050-232,090](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L232050), [~232,850-232,930](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L232850). |
 | SandboxNetworkInfrastructure | `Network infrastructure initialized` | Sandbox initializes HTTP/SOCKS proxy infrastructure for network filtering. |
-| SandboxCommandWrapperApi | `wrapWithSandbox:St1` | Sandbox manager exposes the command-wrapping API. |
+| SandboxCommandWrapperApi | `SandboxManager.wrapWithSandbox`, `SandboxManager.wrapWithSandboxArgv` | The manager exposes string wrapping for Unix-like hosts and argv wrapping for Windows. |
 | SandboxRuntimeConfigConverter | `convertToSandboxRuntimeConfig`, `SandboxManager` | Claude Code converts settings/permissions into a sandbox-runtime config. |
-| ShellSandboxWrapCall | `rM.wrapWithSandbox` | Shell command is transformed through the sandbox manager before execution. |
+| ShellSandboxWrapCall | `SandboxManager.wrapWithSandbox`, `SandboxManager.wrapWithSandboxArgv` | Shell execution selects the platform-appropriate manager API [~328,680-328,720](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L328680). |
 | SandboxPermissionFrames | `sandbox_permission_request`, `sandbox_permission_response` | Sandbox-specific approvals can cross the remote/control channel. |
 | ReplSandboxViolationRetry | `REPL Bash sandbox violation — auto-retrying unsandboxed` | REPL shell path can detect sandbox violation and retry outside sandbox when allowed. |
 | ModelSandboxDefaultGuidance | `You should always default to running commands within the sandbox` | Model-facing Bash guidance defaults commands to sandboxed execution. |
@@ -35,7 +38,7 @@ Yes. The bundle contains a source-confirmed command sandbox subsystem. It is set
 | ShellSandboxDecision | `shouldUseSandbox` | Bash/PowerShell execution path decides whether to wrap the command. |
 | SandboxConfigurationUi | `Commands will try to run in the sandbox automatically` | User-visible sandbox configuration UI. |
 | SandboxBlockedStatus | `Sandbox blocked` | TUI status line reports blocked sandbox operations. |
-| StartupSandboxInitialization | `if(c6.isSandboxingEnabled()){L7("before_sandbox_init")...}` | Main startup initializes sandbox before running the session. |
+| StartupSandboxInitialization | `SandboxManager.isSandboxingEnabled()`, `before_sandbox_init`, `SandboxManager.initialize(...)` | Main startup checks required/unavailable behavior and initializes the sandbox before running the session [~950,800-950,900](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L950800). |
 
 ## Design overview
 
@@ -49,12 +52,15 @@ flowchart TD
     Init --> Platform{platform}
     Platform -->|Linux / WSL| Linux[bubblewrap + net namespace + seccomp + socat bridge]
     Platform -->|macOS| Mac[sandbox-exec profile + Mach/Unix socket policy]
+    Platform -->|Windows + gate| Windows[srt-win + dedicated user + ACL + WFP]
     Platform -->|unsupported| Fallback{failIfUnavailable?}
     Fallback -->|true| Error[startup error]
     Fallback -->|false| Unsandboxed[warn and run unsandboxed]
-    Linux --> Wrap[wrapWithSandbox]
+    Linux --> Wrap[wrapWithSandbox string]
     Mac --> Wrap
-    Wrap --> Shell[Bash / PowerShell command]
+    Windows --> Argv[wrapWithSandboxArgv]
+    Wrap --> Shell[Bash / PowerShell process]
+    Argv --> Shell
     Shell --> Result[stdout/stderr/result]
     Result --> Violations[violation store / hadSandboxViolation]
 ```
@@ -63,7 +69,7 @@ The sandbox is not a separate always-on container. It is a command wrapper and p
 
 ## Configuration model
 
-The settings schema exposes three control layers:
+The settings schema exposes four control layers:
 
 | Layer | Settings | Meaning |
 |---|---|---|
@@ -79,6 +85,7 @@ Important schema details:
 - `sandbox.network.allowedDomains` / `deniedDomains` define network policy, with managed-only modes such as `allowManagedDomainsOnly`.
 - `sandbox.filesystem.allowWrite`, `denyWrite`, `denyRead`, and `allowRead` define path policy. Edit/Read permission rules can feed those lists.
 - `bwrapPath` and `socatPath` are Linux/WSL-only and only honored from admin-controlled managed settings.
+- Windows additionally requires `Qnt()` to pass: `CLAUDE_CODE_NANKEEN_KESTREL` or the `tengu_nankeen_kestrel` feature gate must be enabled. Bundle presence alone does not activate the Windows path.
 
 ### Credential isolation
 
@@ -91,7 +98,7 @@ Important schema details:
 | `envVars[].injectHosts` | applies to `mask` | Narrows substitution to named reachable hosts; if omitted, allowed network domains are used. |
 | `allowPlaintextInject` | boolean, default false | Allows sentinel replacement on plain HTTP. It is ignored from project/local settings and should be reserved for trusted test fixtures. |
 
-Mask mode is text-only: binary/non-UTF-8 credential files are not supported. The runtime warns when mask entries exist without a usable proxy/TLS path, because merely placing a sentinel in the child environment does not make arbitrary plaintext egress safe.
+`mask` is an environment-variable mode in Claude Code's settings schema; credential-file entries expose only `deny`. Sentinel replacement operates on proxy-visible HTTP headers, not arbitrary binary protocols. The runtime warns when mask entries exist without a usable proxy/TLS path, because merely placing a sentinel in the child environment does not make arbitrary plaintext egress safe.
 
 ## Execution path
 
@@ -100,8 +107,8 @@ The shell tool path decides whether a command should be sandboxed:
 1. Bash/PowerShell receives tool input, including optional `dangerouslyDisableSandbox`.
 2. Permission checking treats unsandboxed execution as `decisionReason.type === "sandboxOverride"` and can ask the user/host with the message `Run outside of the sandbox`.
 3. `shouldUseSandbox` returns false if sandboxing is disabled, the command is excluded, or an allowed unsandboxed override is present.
-4. When sandboxing is enabled, `c6.wrapWithSandbox` delegates to `rM.wrapWithSandbox`.
-5. The platform wrapper rewrites the command string to run through Linux `bwrap`/seccomp/proxy setup or macOS `sandbox-exec`.
+4. On Linux/WSL and macOS, `SandboxManager.wrapWithSandbox` returns a rewritten shell command. On Windows, `SandboxManager.wrapWithSandboxArgv` returns `{argv, env, unsetEnv}` for a direct, non-shell spawn.
+5. The platform wrapper routes through Linux `bwrap`/seccomp/proxy setup, macOS `sandbox-exec`, or Windows `srt-win exec` under the provisioned sandbox user.
 6. Results carry normal stdout/stderr plus sandbox-specific violation metadata when detected.
 
 ```mermaid
@@ -117,9 +124,9 @@ sequenceDiagram
     Model->>Bash: command + optional dangerouslyDisableSandbox
     Bash->>Perm: check permissions
     Perm-->>Bash: allow / ask sandboxOverride / deny
-    Bash->>SM: shouldUseSandbox + wrapWithSandbox
+    Bash->>SM: shouldUseSandbox + wrapWithSandbox/Argv
     SM->>OS: build platform command wrapper
-    OS-->>Bash: sandboxed command string
+    OS-->>Bash: sandboxed command string or argv/env
     Bash->>OS: execute
     OS-->>Bash: result or violation
     Bash->>Store: record violations / annotate stderr
@@ -151,15 +158,34 @@ The macOS path generates a `sandbox-exec` profile:
 
 This is a different implementation from Linux: macOS uses a profile language and system sandbox command; Linux uses namespace/mount/proxy/seccomp wrapping.
 
+## Windows design (feature-gated)
+
+The current bundle contains a complete JavaScript orchestration path for Windows, but it is not unconditionally available. `Qnt()` returns true only on Windows and only when `CLAUDE_CODE_NANKEEN_KESTREL` or the `tengu_nankeen_kestrel` feature gate enables it. When that gate is off, startup reports that the Windows sandbox is not active rather than treating the embedded code as usable.
+
+The enabled path uses `srt-win.exe` and differs from both Unix implementations:
+
+| Mechanism | Source-confirmed behavior |
+|---|---|
+| One-time installation | `/sandbox install` reaches `installWindowsSandbox()`, which invokes `srt-win install` with a UAC-capable 60-second operation. It provisions the dedicated `ClaudeCodeSandbox` user and installs WFP filters. |
+| Network fence | Initialization verifies that the dedicated user's direct outbound probe is blocked outside the proxy port range. The default WFP permit range is `60080-60089`; the in-process HTTP/SOCKS mux proxy performs domain filtering inside that fence. |
+| Filesystem policy | Session initialization resolves existing paths, grants allowed read/write access, and stamps deny ACLs for the sandbox user's SID. Reset revokes grants and restores stamped ACLs; anomalous outcomes are logged for `srt-win acl recover`. |
+| Command launch | Windows cannot use the shell-string `wrapWithSandbox()` API. `wrapWithSandboxArgv()` produces `srt-win exec ... -- <shell> <command>` plus env additions/removals, and Claude Code spawns that argv with `shell: false`. |
+| Shell selection | PowerShell and Git Bash are both routed through the argv wrapper. Sandboxed Bash requires an absolute bash-family executable or an installed Git Bash fallback. |
+| TLS credential injection | TLS termination requires persistent CA certificate/key paths and a matching CA already trusted in the sandbox user's Root store. The runtime does not install an ephemeral per-session CA into that account. |
+
+Windows filesystem ACLs are session-wide. `updateConfig()` can refresh proxy/domain configuration live, but if the effective file-access set changes it warns that a `reset()` followed by `initialize()` is required; the previously applied ACL set remains active until then. Per-command Windows overrides may add deny paths, but per-command `allowRead`/`allowWrite` is rejected because `srt-win exec` exposes only per-exec denies.
+
+The argv builder also enforces the Windows `CreateProcessW` command-line limit. Near 30,000 assembled characters it raises a dedicated error; PowerShell's encoded-script expansion leaves roughly 10,000 source characters in the documented worst case, so the suggested recovery is to write a script file or split the command.
+
 ## Network filtering
 
 Network restrictions are proxy-mediated:
 
-1. The sandbox runtime starts or uses HTTP/SOCKS proxy ports.
+1. The sandbox runtime starts or uses HTTP/SOCKS proxy ports. Linux bridges its network namespace through `socat`; Windows WFP confines the dedicated sandbox user to the proxy port range.
 2. The filter checks `deniedDomains` first, then `allowedDomains`.
 3. If no rule matches and a permission callback exists, it can ask the user/host.
 4. Denied requests return a sandbox-runtime 403 response or block the connection.
-5. Optional TLS termination can generate an ephemeral CA so request bodies are visible to the filter.
+5. On Linux/macOS, optional TLS termination can generate an ephemeral CA so request bodies are visible to the filter. Windows requires persistent CA paths and a matching certificate already trusted by the sandbox account.
 
 The remote/control schema includes `sandbox_permission_request` and `sandbox_permission_response`, so a sandbox network approval can cross the same control channel as tool permissions when the host is remote or SDK-driven.
 
@@ -170,6 +196,7 @@ Filesystem policy is derived from settings and permission rules:
 - `denyRead` denies broad read regions; `allowRead` can re-allow subpaths inside those regions.
 - `allowWrite` is merged with paths allowed by edit permissions; `denyWrite` takes precedence within allowed write regions.
 - Linux expands glob read patterns but skips glob write patterns on Linux/WSL, warning about unsupported write glob patterns.
+- Windows resolves existing policy paths into session-wide grant/deny ACL operations; live filesystem-policy changes require sandbox reset/reinitialization.
 - The runtime can plant/scrub protective bare-repo markers and has special handling around Git config/hooks.
 
 The model-facing Bash prompt summarizes current sandbox filesystem/network policy and warns not to add sensitive paths such as shell RC files, SSH keys, or credential files to allowlists.
@@ -181,7 +208,7 @@ The sandbox has two user-visible operating styles:
 | Mode | Behavior |
 |---|---|
 | Allow unsandboxed fallback | Commands default to sandbox; if a command appears to fail because of sandbox restrictions, the model may retry with `dangerouslyDisableSandbox: true`, which prompts for permission. |
-| Strict sandbox mode | `dangerouslyDisableSandbox` is disabled by policy; all model-invoked Bash commands must run sandboxed or be explicitly excluded. |
+| Strict sandbox mode | `dangerouslyDisableSandbox` is disabled by policy; model-invoked shell commands must run sandboxed or be explicitly excluded. Windows additionally refuses compound commands when only a partial exclusion would otherwise bypass the sandbox. |
 
 The runtime guidance is intentionally conservative: default to sandboxed execution, treat each unsandboxed command individually, and explain the likely restriction when retrying outside the sandbox.
 
@@ -192,6 +219,9 @@ The runtime guidance is intentionally conservative: default to sandboxed executi
 | Sandbox enabled but platform unsupported | If `failIfUnavailable` is true, startup errors; otherwise warning/fallback. |
 | Missing Linux dependencies | Reports missing `bubblewrap`/`socat`; strict deployments can fail startup. |
 | Seccomp unavailable | Warns that Unix socket blocking is disabled; other restrictions can still apply. |
+| Windows feature gate off | Reports that the Windows sandbox is not active for the session; strict policy can refuse startup or command execution rather than silently bypassing it. |
+| Windows setup incomplete | Missing `srt-win`, dedicated-user credentials, WFP filters, or a matching trusted TLS CA makes dependency/init checks fail and points to `/sandbox install` or administrator remediation. |
+| Windows command too long | `wrapWithSandboxArgv` raises `SandboxCommandTooLongError` before spawn and recommends a script file or smaller commands. |
 | Sandbox violation during Bash/REPL | `hadSandboxViolation` can be set; REPL Bash can auto-retry unsandboxed if allowed. |
 | Blocked operation in TUI | Status line displays `Sandbox blocked ...` and points to `/sandbox`. |
 | Settings change | Sandbox config is updated live from settings subscriptions. |
@@ -210,13 +240,13 @@ flowchart LR
 
 ## Caveats
 
-- This page documents the readable `cli.renamed.js` wrapper and configuration path. It does not reverse-engineer every native or external `@anthropic-ai/sandbox-runtime` implementation detail.
+- This page documents Claude Code's wrapper plus the readable JavaScript from bundled `@anthropic-ai/sandbox-runtime`. It does not reverse-engineer native helpers such as `srt-win.exe`, kernel/OS enforcement internals, or every host-dependent filesystem behavior.
 - Exact behavior depends on platform, settings source precedence, installed dependencies, managed policy, and whether a host is available to answer permission prompts.
-- Windows appears to have setting/policy surfaces, but the source-confirmed command wrapper disables sandbox use for PowerShell on Windows in the current bundle; the supported platform logic is Linux/WSL and macOS.
+- Windows support is source-confirmed but feature-gated and installation-dependent. Presence in the bundle does not prove that a given account/session can enable it.
 
 ## Subprocess env scrub and egress gateway
 
-The `SandboxScrub` module (`cli.renamed.js:237151`-`238180`) layers a stricter env-scrub regime on top of the regular sandbox. It is gated by `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` and is the source of the hosted-runtime hardening referenced in [Built-in tools and permissions](built-in-tools-and-permissions.md).
+The `SandboxScrub` module (`cli.renamed.js:237151`-`238180`) layers a stricter bubblewrap/env-scrub regime on top of the regular sandbox. It is gated by `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` and is the source of the hosted-runtime hardening referenced in [Built-in tools and permissions](built-in-tools-and-permissions.md); it is separate from the Windows `srt-win` path.
 
 ### Scrub gates
 
@@ -277,9 +307,9 @@ Resolves a per-settings-source path pattern: `//absolute/path` strips the leadin
 
 ### `convertToSandboxRuntimeConfig(settings)`
 
-The central translator. Produces `{network, filesystem, ignoreViolations, enableWeakerNestedSandbox, enableWeakerNetworkIsolation, ripgrep, seccomp, bwrapPath, socatPath}`. Highlights:
+The central translator. Produces the common `network`, `filesystem`, `credentials`, violation, ripgrep, and platform-weakening fields; Linux receives seccomp/`bwrapPath`/`socatPath`, macOS receives Apple-event policy, and Windows receives the sandbox-user plus `srtWin` descriptor. Highlights:
 
-- Walks every settings source via `FJ`, resolving path patterns relative to that source's root. Read/Write/Bash deny rules with `domain:` prefixes become `network.deniedDomains`. The same patterns become filesystem `allowRead`/`denyRead`/`allowWrite`/`denyWrite` entries.
+- Walks every settings source via `FJ`, resolving path patterns relative to that source's root. `WebFetch(domain:...)` allow/deny rules feed network domains, while Read/Edit path rules feed filesystem `allowRead`/`denyRead`/`allowWrite`/`denyWrite` entries.
 - The `allowWrite` list is seeded with `.` (cwd) and the sandbox staging directory.
 - Includes the settings file for every source, plus WSL managed-settings paths when running under WSL.
 - When cwd differs from original cwd, also includes the cwd's `.claude/settings.json` and `.claude/settings.local.json` and the cwd's `.claude/skills` directory.
@@ -288,11 +318,12 @@ The central translator. Produces `{network, filesystem, ignoreViolations, enable
 - Network policy: when scrub is enabled AND sandbox is available AND `!isSandboxEnabledInSettings()`, hard-codes `{allowedDomains: undefined, deniedDomains: [], allowAllUnixSockets: true}` — the scrub-mode default is "trust nothing on the network" because the egress gateway already enforces it.
 - Picks the `ripgrep` binary descriptor so the sandbox process can run `rg` inside.
 - Includes seccomp and bwrap paths.
+- On Windows, adds `{windows: {sandboxUser: "ClaudeCodeSandbox", srtWin: {path: process.execPath}}}`; the embedded executable is invoked with the `--srt-win` prefix.
 
 ### `isSandboxEnabledInSettings` / `isAutoAllowBashIfSandboxedEnabled` / `areUnsandboxedCommandsAllowed` / `isSandboxRequired`
 
 - `isSandboxEnabledInSettings()` — true when `tengu_sandbox_gb_config.disableNoSandbox` is set AND scrub is OFF, OR when `settings.sandbox.enabled === true`.
-- `isAutoAllowBashIfSandboxedEnabled()` — disabled when scrub is on (the scrub regime overrides); otherwise `settings.sandbox.autoAllowBashIfSandboxed`, default true.
+- `isAutoAllowBashIfSandboxedEnabled()` — disabled when scrub is on or on Windows; otherwise `settings.sandbox.autoAllowBashIfSandboxed`, default true.
 - `areUnsandboxedCommandsAllowed()` — `settings.sandbox.allowUnsandboxedCommands`, default true.
 - `isSandboxRequired()` — `isSandboxEnabledInSettings() && isPlatformInEnabledList() && settings.sandbox.failIfUnavailable`. When true, missing sandbox kills the session at boot rather than running unsandboxed.
 

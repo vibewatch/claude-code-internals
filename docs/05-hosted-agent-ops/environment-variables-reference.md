@@ -30,6 +30,9 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | McpIdleToolTimeoutEnv | `CLAUDE_CODE_MCP_TOOL_IDLE_TIMEOUT` | No-response/no-progress MCP watchdog; zero disables it. |
 | McpRefreshToolEnv | `CLAUDE_CODE_ENABLE_REFRESH_MCP_TOOLS` | Adds `RefreshMcpTools` to the base tool pool. |
 | ObserverAgentsEnv | `CLAUDE_CODE_EXPERIMENTAL_OBSERVER_AGENTS` | Required process opt-in for observer-agent declarations. |
+| AgentTeamsEnv | `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | Explicit process opt-in for Agent Teams; `tengu_amber_flint` must also allow the feature. |
+| DisableExplorePlanAgentsEnv | `CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS` | Removes both built-in `Explore` and `Plan` personas. |
+| DisableSdkBuiltInAgentsEnv | `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS` | In noninteractive sessions, removes the entire built-in agent roster. |
 | AutoModeSiblingContextEnv | `CLAUDE_CODE_AUTO_MODE_SIBLING_CONTEXT` | Overrides whether auto-mode classification sees earlier tool calls from the same assistant turn. |
 | SessionAccessTokenEnv | `CLAUDE_CODE_SESSION_ACCESS_TOKEN` | Remote/session ingress token source. |
 | WebSocketAuthFdEnv | `CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR` | WebSocket auth file-descriptor handoff. |
@@ -107,9 +110,11 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | `CLAUDE_CODE_PLUGIN_PREFER_HTTPS` | Plugin transport preference gate. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_CODE_PLUGIN_USE_ZIP_CACHE` | Plugin zip-cache gate. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_CODE_SYNC_PLUGIN_INSTALL` | Synchronous plugin installation behavior. | [Feature gates reference](feature-gates-reference.md) |
-| `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS` | Built-in agent availability gate. | [Feature gates reference](feature-gates-reference.md) |
+| `CLAUDE_AGENT_SDK_DISABLE_BUILTIN_AGENTS` | When true in a noninteractive session, `getBuiltInAgents()` returns `[]`; interactive CLI sessions do not take this early return. | [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md#registry-gates-and-overrides) |
+| `CLAUDE_CODE_DISABLE_EXPLORE_PLAN_AGENTS` | Removes the paired built-in `Explore` and `Plan` definitions before the normal roster is returned. | [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md#registry-gates-and-overrides) |
 | `CLAUDE_CODE_DISABLE_AGENT_VIEW` | Agent UI/view gate. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_CODE_EXPERIMENTAL_OBSERVER_AGENTS` | Enables parsing/arming observer declarations; the GrowthBook observer gate must also pass. | [Observer agents](../06-agents-automation/observer-agents.md) |
+| `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` | Enables the implicit-team startup/spawn path when `tengu_amber_flint` is not false. Child teammate processes set this to `1`. | [Agent Teams](../06-agents-automation/agent-teams.md) |
 | `CLAUDE_CODE_FORWARD_SUBAGENT_TEXT` | Forwards subagent text/thinking into stream-JSON output with parent linkage. | [SDK query, session API, and subagent surface](../04-sessions-persistence-remote/sdk-query-and-session-api.md) |
 | `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | Sets the spawn budget; default 200 and reset by `/clear`. | [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md) |
 | `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` | Sets the WebSearch call budget; default 200. | [Tool inventory and schemas](../03-tools-integrations-security/tool-inventory-and-schemas.md) |
@@ -163,6 +168,7 @@ This page centralizes environment variables visible in the analyzed runtime and 
 - [Safe mode and recovery](safe-mode-and-recovery.md)
 - [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md)
 - [Observer agents](../06-agents-automation/observer-agents.md)
+- [Agent Teams](../06-agents-automation/agent-teams.md)
 - [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md)
 - [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md)
 - [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md)

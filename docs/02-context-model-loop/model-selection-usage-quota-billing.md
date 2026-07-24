@@ -2,7 +2,7 @@
 
 This page reverse-engineers how `cli.renamed.js` selects models dynamically, how many logical model roles are visible, how provider calls are made, and how rate limits, errors, usage, quota, and billing are surfaced.
 
-Scope: model aliases and precedence, main/helper/subagent/advisor/fallback model roles, Messages API request construction, streaming and retry behavior, rate-limit headers/events, token/cost accounting, headless budget guards, quota checks, and billing/extra-usage UI surfaces.
+Scope: model aliases and precedence, main/helper/subagent/advisor/fallback model roles, the Fable 5 availability/consent/request/refusal lifecycle, Messages API request construction, streaming and retry behavior, rate-limit headers/events, token/cost accounting, headless budget guards, quota checks, and billing/usage-credit UI surfaces.
 
 ## Source anchors
 
@@ -12,6 +12,9 @@ Scope: model aliases and precedence, main/helper/subagent/advisor/fallback model
 | SmallFastModelOverride | `ANTHROPIC_SMALL_FAST_MODEL` | Small/fast helper model override. |
 | MainModelEnvOverride | `ANTHROPIC_MODEL` | Environment-level main model override. |
 | PerTurnModelResolver | `getRuntimeMainLoopModel({permissionMode,mainLoopModel,exceeds200kTokens})` | Per-turn model resolver; plan mode can alter the selected model. |
+| SubagentModelResolver | `oue()`, `pRu()`, `CLAUDE_CODE_SUBAGENT_MODEL` | Resolves environment, one-call tool, agent-frontmatter, and inherited model choices [~333,311–333,390](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L333311). |
+| WorkflowAgentModelResolver | `a4u()`, `oue()`, `agent(..., {model, effort})` | Workflow agents use the same subagent resolver and a separate effort override [~386,671–388,150](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L386671). |
+| ResumeModelResolver | `Q4t()`, `JAf()`, `Z4t()` | Scans the newest eligible assistant model, validates it, and restores or declines it under stronger-override and refusal-fallback rules [~860,250–860,430](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L860250). |
 | ModelAliasResolver | `case "opusplan"`, `case "sonnet"`, `case "haiku"`, `case "opus"`, `case "best"` | Alias-to-concrete-model mapping. |
 | StartupModelPrecedence | `ibc({cli,env,settings,agentFrontmatter})` | Startup model precedence across CLI, env, settings, and agent frontmatter. |
 | FallbackModelResolver | `obc({cli,settings})` | CLI/settings fallback-chain resolver; normalizes, filters, deduplicates, and caps the chain at three candidates. |
@@ -19,6 +22,14 @@ Scope: model aliases and precedence, main/helper/subagent/advisor/fallback model
 | ModelSelectionFlag | `--model <model>` | Root model-selection flag. |
 | FallbackModelFlag | `--fallback-model <model>` | Print-mode overload fallback flag. |
 | EmbeddedModelCatalog | `claude-sonnet-5`, `claude-opus-4-8`, `claude-fable-5` | Build-local catalog containing provider IDs, aliases, limits, capabilities, and pricing tiers. |
+| FableAvailability | `isFableAvailable()`, `isPinnedFableModel()`, `getAdditionalModelOptionsCache()` | Separates dynamically advertised Fable availability from an explicit custom Fable pin [~130,952–131,116](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L130952). |
+| FableConsentState | `Q9t()`, `ltt()`, `fableOverageConsentV2`, `fableConsentSessionFallback` | Reads and records Fable usage-credit consent by organization/account, with a process-only fallback when identity is unavailable [~142,183–142,207](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L142183). |
+| FableConsentGate | `jrr()`, `IMu()`, `getFableDeclineFallbackModel()` | Determines whether a Fable attempt needs an interactive usage-credit decision and resolves an allowed non-Fable substitute [~345,607–345,654](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L345607). |
+| FablePromptAdaptation | `S3e()`, `PS()`, `M2()`, `T6y`, `w6y` | Selects the lean prompt and Fable-specific identity, autonomy/communication, and optional tool-JSON guidance [~568,052–568,369](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L568052). |
+| FableRequestShaping | `J9t()`, `QTt()`, `$te()`, `output_config`, `thinking` | Applies adaptive thinking, disabled-thinking omission, effort, temperature, and tool-choice rules [~487,900–488,100](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L487900). |
+| FableCreditFeedback | `bto()`, `NIg()`, `FIg()`, `fableCreditsRequired` | Feeds successful response headers and Fable-specific `429` details back into consent state and user guidance [~285,109–286,500](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L285109). |
+| RefusalFallbackRouter | `lSc()`, `iZu()`, `QQu()`, `fallback_request` | Resolves a policy-compatible Opus route and chooses server-side or client-visible refusal retry [~143,331–143,620](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L143331). |
+| RefusalFallbackPersistence | `model_refusal_fallback`, `latchRefusalFallbackModel()`, `Z4t()` | Tombstones refused output, records the substitution, latches the session model, and reconstructs the latch on resume [~460,600–461,500](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L460600), [~860,250–860,435](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L860250). |
 | ManagedModelAllowlist | `availableModels`, `enforceAvailableModels` | Constrains main, agent, subagent, advisor, and Default model selection. |
 | AdvisorModelSetting | `advisorModel` | Settings surface for the server-side advisor tool model. |
 | SubagentModelOverride | `CLAUDE_CODE_SUBAGENT_MODEL` | Subagent model override. |
@@ -41,8 +52,13 @@ Scope: model aliases and precedence, main/helper/subagent/advisor/fallback model
 | MaxBudgetFlag | `--max-budget-usd <amount>` | Headless API-spend budget flag. |
 | MaxBudgetErrorResult | `error_max_budget_usd` | Headless result when the dollar budget is exceeded. |
 | UsageLimitMessage | `usage limit`, `extra usage spending limit` | User-visible limit/overage messages. |
-| BillingUpgradeGuidance | `hasBillingAccess`, `/extra-usage`, `/upgrade` | Billing/overage guidance in rate-limit UI. |
+| BillingUpgradeGuidance | `hasBillingAccess`, `/usage-credits`, `/upgrade` | Billing/overage guidance in rate-limit UI; hidden `/extra-usage` is a rename shim. |
 | ApiUsageBillingStatus | `API Usage Billing` | Status-line billing type for API-key/console-style usage. |
+| InteractiveModelCommand | `name: "model"`, `uPt()`, `PQr()` | Validates entitlement/availability and applies a session/default model [~561,121–561,210](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L561121). |
+| InteractiveEffortCommand | `name: "effort"`, `W0o()`, `NWy()` | Resolves supported effort, pins, env precedence, remote synchronization, and `ultracode` [~561,778–562,100](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L561778). |
+| FastModeCommand | `name: "fast"`, `A0o()`, `nur()` | Toggles fast mode and its required model with local/remote state propagation [~558,337–558,540](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L558337). |
+| UsageCommand | `name: "usage"`, `collectUsageData()`, `formatBehaviors()` | Combines current-session totals, plan utilization, and bounded local behavior estimates [~557,700–558,300](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L557700). |
+| UsageCreditsCommand | `usage-credits`, `fur()`, `HIs()` | Opens billing management or prepares/deduplicates an organization admin request [~561,500–561,750](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L561500). |
 | ThirdPartyAvailabilityFallback | `checkBedrockDefaultAvailability()`, `checkVertexDefaultAvailability()`, `apply3PDefaultFallbacks()` | Startup probes provider-usable defaults and applies session defaults when current family heads are unavailable. |
 | ThirdPartyUpgradeCandidates | `findBedrockUpgradeCandidates()`, `findVertexUpgradeCandidates()` | Detects recognized stale same-tier environment pins and probes newer provider IDs. |
 | ThirdPartyUpgradeDialog | `ThirdPartyModelUpgradeDialog`, `bedrockDeclinedUpgrades`, `vertexDeclinedUpgrades` | Presents upgrades, persists accepted IDs, and suppresses previously declined from/to pairs. |
@@ -86,7 +102,34 @@ The visible precedence is:
 4. Settings model.
 5. Default main-loop model resolver.
 
-Resume can also restore the model: `Sa5(...)` scans prior assistant messages and `IG(...)` reapplies a compatible restored model if no stronger override is active.
+Resume can also restore the model. `Q4t()` first refuses restoration when a current model override, `ANTHROPIC_MODEL`, provider-family environment pin, or non-first-party model namespace already owns the choice. `JAf()` then scans backward to the newest non-meta assistant message with a model, rejects unknown-family, disallowed, or retired models, and avoids mistaking a temporary `opusplan`/`haiku` plan-mode upgrade for a new persistent selection. `Z4t()` applies an accepted model and preserves the separate refusal-fallback latch when the prior session ended on that route.
+
+## Does Claude Code choose a model from task complexity?
+
+Not through one general “easy task → Haiku, hard task → Opus” classifier in the inspected client. The model that handles a task is primarily selected by **configuration and execution role**:
+
+1. the session resolves a main model at startup;
+2. a mode-dependent alias can resolve differently for an individual plan-mode turn;
+3. an Agent/Workflow call can request a model, or its agent definition can declare one;
+4. helper subsystems choose their own role-specific models; and
+5. provider errors can move a turn through a configured fallback chain.
+
+The main model may decide to delegate based on the task and choose an available agent type, but that is a model/tool decision. The runtime does not inspect arbitrary task prose and independently promote every difficult task to a stronger model.
+
+### Resolution matrix by execution role
+
+| Execution role | Resolution order | Runtime notes |
+|---|---|---|
+| Main session startup | CLI `--model` → main-agent frontmatter (unless `inherit`) → `ANTHROPIC_MODEL` → settings/org default → account/provider default | `ibc()` resolves aliases, applies `availableModels`/entitlement restrictions, and can step a restricted family down to an allowed member. |
+| Main turn | `getRuntimeMainLoopModel({permissionMode, mainLoopModel, exceeds200kTokens})` | Usually retains the session model. In plan mode, `opusplan` can use Opus unless the context already exceeds 200K; a `haiku` session can use Sonnet. Both upgrades remain policy/entitlement constrained. |
+| Resumed session | Strong current/env/provider choice, otherwise newest eligible historical assistant model | Unknown, retired, disallowed, and temporary mode-dependent models are not blindly restored. |
+| Ordinary Agent call | `CLAUDE_CODE_SUBAGENT_MODEL` (unless `inherit`) → `Agent({model})` → agent-definition/frontmatter model → inherited parent runtime model | A disallowed override is dropped and the parent runtime model is inherited. Same-family aliases can preserve the parent's concrete pin. |
+| Fork Agent | Parent model | The `model` input is intentionally ignored: a fork inherits the parent's context and model. |
+| Workflow `agent()` | Same `oue()` order: subagent env → `agent({model})` → selected agent definition → parent | `agent({effort})` is resolved separately and attached to the workflow agent definition; it does not choose another model by itself. |
+| Skill/command override | Skill model through `resolveSkillModelOverride()`, otherwise session model | A model outside `availableModels` is rejected and the session model is kept; eligible 1M context suffix behavior is preserved. |
+| Helper call | Helper-specific resolver | Memory relevance uses default Sonnet; quota probing uses the small/fast resolver; compaction, advisor, auto-mode, title/summary, and other helpers each own their explicit resolver/fallback rather than inheriting one universal helper model. |
+
+For Agent definitions, `model: inherit` means “resolve the parent's model for the current permission mode,” not “copy the raw startup string forever.” Consequently, entering plan mode can affect an inherited subagent through the same runtime resolver. A one-call `Agent({model})` override outranks frontmatter but not `CLAUDE_CODE_SUBAGENT_MODEL`.
 
 ## Logical model roles
 
@@ -116,7 +159,7 @@ The alias resolver maps user-facing names to current concrete IDs:
 | `haiku` | Resolves through `getDefaultHaikuModel()`. |
 | `opus` | Resolves through `getDefaultOpusModel()`. |
 | `fable` | Resolves to the current Fable family default. |
-| `best` | Resolves through the catalog's `best` family, which is `fable` in `2.1.215`. |
+| `best` | The catalog names `fable` as best in `2.1.215`, but `getBestModel()` uses it only when Fable's availability predicate passes and policy allows the resolved model; otherwise it falls back to the Opus resolver. |
 | `opusplan` | Resolves to Sonnet normally but can switch to Opus in plan mode through `getRuntimeMainLoopModel(...)`. |
 | `default` | Treated as the current default concrete model in CLI/fallback handling. |
 
@@ -128,14 +171,149 @@ The `2.1.215` catalog is embedded at approximately lines ~15,726–16,029.
 
 | Family head | Catalog ID | Context | Max output | Default effort | Notable capability flags |
 |---|---|---:|---:|---|---|
-| Sonnet 5 | `claude-sonnet-5` | 1M native | 128K upper | `high` | `xhigh_effort`, adaptive thinking, mid-conversation system, context management |
+| Sonnet 5 | `claude-sonnet-5` | 1M native | 128K upper | `high` | effort through `max`, adaptive thinking, mid-conversation system, context management |
 | Opus 4.8 | `claude-opus-4-8` | 1M native | 128K upper | `high` | fast mode, lean prompt, adaptive thinking, mid-conversation system |
-| Fable 5 | `claude-fable-5` | 1M native | 128K upper | `high` | adaptive thinking, lean prompt, Fable mitigations; disabled-thinking rejection |
+| Fable 5 | `claude-fable-5` | 1M native | 128K upper | `high` | effort through `max`, adaptive thinking, lean prompt, mid-conversation system, Fable mitigations; disabled-thinking rejection |
 | Haiku 4.5 | `claude-haiku-4-5` | 200K | 64K upper | catalog/provider default | context management; 1M suffix support |
 
 Catalog aliases are provider-specific. The default `sonnet → claude-sonnet-5` and `opus → claude-opus-4-8` mappings do not imply every Bedrock, Vertex, Foundry, Mantle, Anthropic AWS, or gateway deployment serves that exact ID. The resolver applies `per_provider` entries before request construction.
 
 Organization policy is part of resolution, not a picker-only filter. `availableModels` applies to aliases, explicit IDs, subagents, teammates, advisor choices, and server-requested swaps. Managed `enforceAvailableModels` also constrains the Default row and refuses cascade-trust behavior if a policy source failed to load.
+
+## How Fable 5 is supported end to end
+
+Fable is not implemented as a display-name alias wrapped around an ordinary model call. In `2.1.215`, support crosses the embedded catalog, model discovery, organization policy, an account-specific usage-credit decision, prompt assembly, request-body shaping, rate-limit handling, and a separate refusal-fallback state machine.
+
+```mermaid
+flowchart TD
+    Catalog[Catalog provider IDs and capabilities] --> Resolve[fable / best / explicit pin]
+    Advertised[Bootstrap or gateway model advertisement] --> Resolve
+    Pin[ANTHROPIC_DEFAULT_FABLE_MODEL] --> Resolve
+    Resolve --> Policy[Entitlement and availableModels checks]
+    Policy --> Consent{Eligible subscriber needs usage-credit consent?}
+    Consent -->|No| Shape[Fable prompt and request shaping]
+    Consent -->|Consent succeeds| Shape
+    Consent -->|Decline or credits unavailable| CreditFallback[Allowed Opus, Sonnet, or Haiku substitute]
+    CreditFallback --> ConsentFrame[model_consent_fallback]
+    Shape --> Provider[Provider request]
+    Provider -->|Headers or Fable 429| CreditState[Refresh credit requirement and guidance]
+    Provider -->|stop_reason refusal| RefusalRoute[Policy-compatible Opus refusal route]
+    RefusalRoute --> Retry[Server or client retry]
+    Retry --> RefusalFrame[model_refusal_fallback and session latch]
+```
+
+### Catalog, alias, and availability layers
+
+The catalog entry near [`cli.renamed.js:15940`](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L15940) makes Fable a first-class family:
+
+| Catalog surface | Fable 5 value | Runtime consequence |
+|---|---|---|
+| Family and aliases | family `fable`; alias `fable`; catalog `best: "fable"` | `parseUserSpecifiedModel("fable")` calls `getDefaultFableModel()`; `best` selects Fable only while its availability and allowlist checks pass. |
+| Provider IDs | Explicit IDs for first party, Bedrock, Vertex, Foundry, Anthropic AWS/Google Cloud, Mantle, and gateway | `toProviderWireModelId()` can route the catalog model through the selected provider adapter. A non-null ID is routing support, not proof that a particular account, region, or deployment has access. |
+| Limits | 1M native context; 64K default and 128K upper output | No separate first-party `[1m]` Fable variant is needed; request and compaction limits use catalog metadata. |
+| Pricing | `$10` input / `$50` output per million tokens, plus cache/search rates from `tier_10_50` | Local API-key cost accounting can price known Fable usage. Subscriber usage-credit accounting remains server-driven. |
+| Capabilities | effort, `max_effort`, `xhigh_effort`, adaptive thinking, disabled-thinking rejection, mid-conversation system, context management, lean prompt, Fable mitigations | Capability predicates alter prompt construction and request fields rather than merely decorating the picker. |
+| Other metadata | default effort `high`, 2,000-pixel image limits, advisor rank `5`, eager input streaming on Bedrock/Vertex | Shared request, image, advisor, and provider paths can consume Fable metadata without a Fable-only client. |
+
+`isFableAvailable()` is deliberately narrower than “does any adapter know a Fable ID?” [~130,958–130,989](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L130958):
+
+- On the normal first-party endpoint, bootstrap `additional_model_options` advertises Fable and can explicitly mark it disabled. Picker/absent handling and the `best` decision consume that cached state; an explicit `fable` selection can still enter `/model` validation.
+- A gateway can advertise Fable through its model-list result.
+- `ANTHROPIC_DEFAULT_FABLE_MODEL` supplies an explicit custom pin and normally satisfies availability independently of dynamic advertisement. An explicit disabled Fable row from the normal first-party bootstrap is checked first and remains authoritative.
+- Bedrock, Vertex, Foundry, Mantle, and Claude Platform adapters can still expose or route their non-null catalog mapping even though, without a custom pin, the dynamic-advertisement predicate is false for those provider classes. Therefore, `isFableAvailable() === false` is not evidence that those adapters lack Fable support.
+- On the first-party endpoint, an explicit Fable selection that is absent from cached advertisement receives the same one-token validation probe used by `/model`; a successful probe refreshes bootstrap data. Entitlement and `availableModels` checks still run before the choice is accepted [~500,356–500,600](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L500356).
+
+The provider IDs, custom-pin metadata, and the limited role of `fallback_3p` are detailed in [Models, providers, and auth](models-providers-auth.md#fable-provider-routing-and-custom-pins).
+
+### Usage-credit consent is a pre-request gate
+
+The Fable consent path applies only to a specific subscriber lane. `Mq()` exempts non-first-party providers, non-Claude.ai subscribers, Enterprise PAYG, and the zero/default rate-limit tier. Credits-only tiers are handled separately. For the remaining eligible accounts, `HPe()` and the process-level `fableCreditsRequired` bit indicate that Fable must draw from usage credits; `EFr()` then determines whether confirmed consent and usable overage state are missing [~142,119–142,239](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L142119).
+
+Consent and availability are independent: a model can be advertised and policy-allowed while still requiring a usage-credit decision.
+
+| Stage | Source-confirmed behavior |
+|---|---|
+| Interactive `/model` | A consent-required Fable pick opens `fable_overage_consent_prompt`. The dialog checks current credit/overage state and can continue, re-enable/setup or purchase credits, open billing management, request an admin action, or keep/switch models [~806,000–806,240](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L806000). |
+| Durable decision | `ltt()` records `fableOverageConsentV2[organizationUuid]`; if no organization ID exists it uses `acct:<accountUuid>`. With neither identity, it uses only `fableConsentSessionFallback`, so the decision is process-scoped rather than durable. |
+| Live verification | `IMu()` records the decision, refreshes extra-usage state when needed, and succeeds only if the resulting state permits Fable. Remembering consent is therefore not the same as guaranteeing that credits remain enabled or funded. |
+| Turn preflight | Before provider dispatch, an eligible Fable main-thread attempt with a capable dialog host can run the same decision. An active Remote Control bridge can forward it; the bridge-specific wait is bounded to 60 seconds before the client falls back [~460,314–460,470](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L460314). |
+| Decline/failure | `getFableDeclineFallbackModel()` tries allowed non-Fable defaults in Opus → Sonnet → Haiku order. The loop changes the live model, reconciles fast mode, emits `query_model_change`, and records `model_consent_fallback`. |
+| Optional default rewrite | A `switch_default` choice rewrites the saved user model only when no stronger runtime/env source owns the model and user settings currently contain the Fable selection. Otherwise the substitute is session-only. |
+| No legal substitute | `CLAUDE_CODE_NO_MODEL_FALLBACK` or a policy that allows only Fable makes the turn fail instead of silently violating the no-fallback/policy boundary. |
+
+The text/non-interactive `/model` implementation does not manufacture consent: when `coe()` says the pick needs it, the command directs the user to interactive `/model`. A Remote Control thin-client switch is also refused when the cloud session cannot host the dialog. SDK dialog hosts must declare the Fable dialog kind; a host without that capability does not receive the prompt.
+
+When this gate is reached inside non-main-thread work, the runtime does not open a subagent-owned consent UI. It substitutes the allowed decline model for that attempt. The direct compaction helper similarly replaces a consent-gated primary Fable model before summarization; when a later compact fallback-chain candidate requires substitution, that replacement is accepted only if it does not shrink the original context window [~347,500–347,610](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L347500).
+
+### Fable-specific prompt and request shaping
+
+After selection and consent, Fable travels through the shared provider client, but model predicates change the body and system prompt:
+
+| Concern | Fable behavior in `2.1.215` |
+|---|---|
+| Base prompt | `lean_prompt` makes `PS()` choose the lean Claude Code prompt branch. |
+| Identity | `M2()` adds `fable_identity` for the canonical family or an exact `ANTHROPIC_DEFAULT_FABLE_MODEL` pin. The text identifies Fable 5, describes its relationship to Mythos 5, and distinguishes Fable's additional mitigations. This is client-supplied model context, not independent proof of service-side product policy. |
+| Communication/autonomy | `fable_5_mitigations` selects Fable-aware communication wording and, behind the `tengu_amber_sextant` rollout, an autonomy/continuity section. The same predicate also owns a narrow loop-wakeup end-turn special case. |
+| Tool parameters | Behind `tengu_silent_harbor` (or the broader global gate), the prompt adds `w6y`: object/array tool parameters must remain one JSON value rather than parameter-tag markup. This instruction is rollout-gated, not unconditional. |
+| Thinking | With thinking enabled, `J9t()` emits `{type:"adaptive"}`. If thinking is disabled, `rejects_disabled_thinking` prevents `{type:"disabled"}` from being sent; the field is omitted. The request builder still treats that omission as thinking-active for compatibility, demotes forced named-tool choice to `auto`, and does not add temperature. |
+| Effort | Fable supports `low`, `medium`, `high`, `xhigh`, and `max`; catalog default is `high`. `$te()` sends the selected value through `output_config.effort`, subject to organization maximums. Fable's launch effort is initially pinned to its catalog default unless a stronger env choice wins; an eligible interactive `/effort` releases the launch pin. |
+| Context controls | The catalog enables mid-conversation system turns and context management. Their beta/header and fallback logic remains shared with other capable models. |
+| Prompt caching | Caching remains enabled by default. `DISABLE_PROMPT_CACHING_FABLE=1` disables it for canonical or explicitly pinned Fable requests without disabling caching for every model [~486,972–486,995](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L486972). |
+| Fast mode | Fable does not advertise `fast_mode`; `/fast` remains an Opus 4.8/4.7 path in this build. |
+
+Agent and Workflow model resolution does not create a second Fable implementation. If the effective subagent model resolves to Fable, the same canonical/pinned predicates shape its prompt and request. Fork agents still inherit the parent model, and ordinary Agent/Workflow calls still obey the resolver order documented above. Consent-required non-main-thread calls use the substitution rule described in the previous section.
+
+### Credits and rate limits feed the next decision
+
+Fable's credit state is not determined once at startup. Response processing updates it continuously:
+
+1. `bto()` parses unified rate-limit headers on successful responses. When a relevant Fable response reports overage in use but the account has not recorded consent, it sets the in-process `fableCreditsRequired` bit and caches the overage-disabled reason.
+2. `NIg()` recognizes a Fable `429` when the representative claim is `seven_day_overage_included` or the error detail is `credits_required`.
+3. `FIg()` maps out-of-credit, spend-cap, organization, seat, member, and group reasons into Fable-specific `/usage-credits` and `/model` guidance. The normal limit UI labels `seven_day_overage_included` as the “Fable 5 limit.”
+4. A later eligible Fable attempt reevaluates `w3e()`/`EFr()` using that fresher state, so the dialog or substitute can appear after included usage is exhausted rather than only when the model is first selected.
+
+This feedback loop is separate from cost estimation: API-key usage can be locally priced from the catalog, while Claude.ai included limits and usage-credit eligibility come from account state and server headers.
+
+### Refusal fallback is a separate post-response mechanism
+
+Fable's `fable_5_mitigations` capability also makes it eligible for refusal fallback, but that path starts only after a provider response ends with `stop_reason:"refusal"`. It is not the usage-credit consent fallback under another name.
+
+`lSc()` resolves an eligible Opus route—normally the catalog's current Opus 4.8 target, but still subject to provider/default pins—`n$h()` applies entitlement/allowlist checks, and `RIi()` avoids reducing the current context window. `CLAUDE_CODE_DISABLE_REFUSAL_FALLBACK` and the stronger `CLAUDE_CODE_NO_MODEL_FALLBACK` disable the route. The user setting **Switch models when a message is flagged** (`switchModelsOnFlag`, default true) controls automatic switching [~143,331–143,620](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L143331).
+
+Two execution lanes are visible:
+
+- On the first-party API backend, the request can arm a server-side `fallbacks` target and the associated beta/header state. The stream/non-stream parser recognizes typed fallback blocks and iteration usage.
+- Otherwise, or after server-lane degradation, the client can handle `fallback_request`. With automatic switching enabled it retries without asking; with the setting disabled and a capable main-thread dialog host, it offers retry-on-fallback versus edit-prompt. If the setting is disabled and no dialog capability exists, the route is suppressed rather than inventing consent.
+
+The build has an explicit `cyber → Opus 4.8` category map and a catch-all enabled by default; `CLAUDE_CODE_REFUSAL_FALLBACK_CATCH_ALL=0` leaves unmapped categories without a retry. In that case the runtime emits `model_refusal_no_fallback` and preserves the refusal result.
+
+When a retry runs, the client:
+
+1. tombstones already-streamed output from the refused leg;
+2. aborts/discards in-flight or queued tool work associated with that leg;
+3. emits `query_model_change` and retries on the resolved target;
+4. optionally stitches safe retained text in the lanes that support continuation;
+5. emits a structured `model_refusal_fallback` system record with original/fallback models, request/category data, and retracted UUIDs; and
+6. for a visible main-thread substitution, latches the fallback as the live session model.
+
+Resume scans the transcript for that record and reconstructs the latch when the newest eligible assistant model is the recorded fallback [~860,250–860,435](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L860250). A fork neutralizes inherited refusal-fallback markers instead of treating the fork as a continuation of the substitution. Explicit `/model` and config model changes clear the latch; session switching can restore the pre-fallback model state, and rewind can unwind it when the triggering record is sliced away.
+
+### Three different model substitutions
+
+| Mechanism | Trigger | Candidate | State/event behavior |
+|---|---|---|---|
+| Fable consent fallback | Before a consent-gated Fable provider call; consent declined or credits cannot be enabled | First allowed non-Fable default: Opus, Sonnet, then Haiku | Changes the live session model; can rewrite a saved Fable user default only on explicit `switch_default`; emits `model_consent_fallback`. |
+| Fable refusal fallback | After `stop_reason:"refusal"` and an allowed route | Policy-compatible current Opus route; catalog routing targets Opus 4.8 | Retracts refused output/tool work, retries, emits `model_refusal_fallback`, and can create a resume-aware session latch. |
+| Ordinary overload/configured fallback | Repeated overload, server/model error, or a configured fallback-chain condition | Next `--fallback-model`/settings candidate | Emits `model_fallback`; normal overload handling retries the primary on the next user turn rather than creating the refusal latch. |
+
+The catalog's `fallback_3p:"claude-opus-4-8"` is a fourth, much smaller surface: in this build it supplies a “model not found—try ... instead” suggestion for recognized third-party model IDs. It is not the Bedrock/Vertex startup probe, the overload chain, or the refusal state machine.
+
+### Evidence boundary
+
+- The retained client proves catalog/routing data, local availability predicates, consent storage and UI, request shaping, credit feedback, and fallback/transcript behavior. It cannot prove that any particular account, cloud region, or custom deployment is entitled to Fable.
+- Bundled SDK/API migration text discusses service-side Fable requirements and cross-model conversation guidance. No inspected local call path establishes a client-side “30-day,” ZDR, or equivalent service-eligibility gate, so this page does not attribute one to Claude Code.
+- The runtime normalizes and replays message history through shared code, but SDK guidance about moving thinking blocks between model families is not treated as a separate Claude Code guarantee without a directly connected local enforcement path.
+- Model IDs, pricing, rollout keys, and refusal routing are build-specific and can change after `2.1.215`.
 
 ## Provider call path
 
@@ -228,6 +406,66 @@ After a successful API call, telemetry includes:
 
 Headless `result` frames include `total_cost_usd`, `usage`, and `modelUsage`, so SDK/print-mode consumers can account for the entire run rather than only the final message.
 
+## Interactive model and usage commands
+
+The [command catalog](../01-runtime-lifecycle/command-line-reference.md#core-session-context-and-interface-commands) separates TUI and text twins. These commands share the model/accounting state above but add validation and persistence semantics of their own.
+
+### `/model`
+
+`/model` with no argument opens the interactive picker; the text implementation reports the current model or accepts an alias/full ID. Before changing state, `uPt()`:
+
+- rejects models denied by organization entitlement or `availableModels`, with a restricted-family step-down only when one is available;
+- checks account access to extended-context Opus/Sonnet variants;
+- honors server-provided disabled/absent reasons;
+- probes an absent dynamic model with a one-token request; and
+- validates a non-family explicit ID, caching successful validation for the process.
+
+An explicit Fable selection that needs usage-credit consent is refused on the non-interactive path and must pass the interactive consent surface. A successful interactive selection updates live state and saves the default for future sessions; the non-interactive twin applies a session override only. Fast mode is reconciled when the selected model cannot carry its previous fast state. The response also explains when project/local/managed settings or an organization default will reassert on restart.
+
+### `/effort` and `/fast`
+
+`/effort` accepts only levels supported by the effective model plus `auto`; organization maximum effort can step a requested value down. `ultracode` is not just another thinking label: it requires an `xhigh`-capable model plus dynamic workflows, applies `xhigh`, and marks workflow orchestration for this session.
+
+The setter preserves several precedence boundaries:
+
+- `CLAUDE_CODE_EFFORT_LEVEL` can shadow both a persisted setting and a session-only choice;
+- a launch-time effort pin is released only by an eligible interactive command;
+- session-only values that cannot reach a remote transport are reported as local-only;
+- bridge-capable transports receive `apply_flag_settings`; and
+- interactive ordinary levels can be saved as the default, while non-interactive changes are session-scoped.
+
+`/fast [on|off]` first checks current model/account availability. Turning it on selects the required fast-capable model when necessary, updates local or remote flag state, reports the speed tier, and can display a model deprecation notice. Interactive changes persist to user settings; non-interactive/bridge-local changes explicitly report `this session only` when they are not saved.
+
+### `/usage`: account state plus local attribution heuristics
+
+`/usage` (`/cost`, `/stats`) has a TUI view and a text implementation. The common collector returns exact **current-process/session accumulators**—cost estimate, API duration, elapsed duration, lines changed, and per-model usage—and, when subscriber/profile scope permits, fetches current plan utilization.
+
+The non-interactive text path can additionally scan local JSONL transcripts from this machine for the last 24 hours and seven days. It deduplicates provider request/message UUIDs and estimates which independent characteristics contributed at least 10% of weighted usage:
+
+| Characteristic | Local classification rule |
+|---|---|
+| cache miss | more than 100,000 uncached input tokens on a request |
+| long context | more than 150,000 input/cache tokens |
+| subagent-heavy | at least three subagent requests or more than half the session's weight from subagents |
+| high parallelism | at least four session IDs in one five-minute bucket |
+| long-running/cron-like | one session active in at least eight distinct hourly buckets |
+
+Attribution metadata can also produce top skill, subagent, plugin, and MCP-server percentages. These are **approximate characteristics, not an additive bill breakdown**: they can overlap, they exclude other devices and claude.ai sessions, and the weighting function is a local token-cost proxy. The UI says so rather than presenting the percentages as server billing truth.
+
+### `/usage-credits` and the `/extra-usage` shim
+
+The active command is `/usage-credits`; `/extra-usage` is retained as a hidden compatibility entry that prints the rename notice and delegates.
+
+For Pro/Max-style consumer accounts, the flow opens the applicable usage-credit management URL. For Team/Enterprise accounts without direct billing access, it can:
+
+1. fetch the organization's current extra-usage state;
+2. explain exhausted credits, a reached cap, or already-unlimited credit state;
+3. check whether an admin request is allowed;
+4. avoid creating a duplicate when a pending/dismissed request already exists; and
+5. present a separate confirmation before `limit_increase` is posted.
+
+The text/non-interactive command never manufactures that confirmation. It tells the user to run the interactive command when an admin request needs review. Account, data-residency, essential-traffic, and feature-disable gates can remove the command entirely.
+
 ## Budget guards
 
 The root flag `--max-budget-usd <amount>` is a print/headless budget guard. The headless loop checks `vW()>=maxBudgetUsd` after events and emits a `result` frame with subtype `error_max_budget_usd` when exceeded.
@@ -279,7 +517,7 @@ The UI distinguishes several user-facing cases:
 | `seven_day_opus` | Opus-specific limit. |
 | `seven_day_sonnet` | Sonnet-specific limit. |
 | `overage` | usage or extra-usage spending limit. |
-| `/extra-usage` | Suggested when extra usage can be requested/enabled. |
+| `/usage-credits` | Suggested when usage credits can be requested/enabled. Hidden `/extra-usage` only reports the rename. |
 | `/upgrade` | Suggested for Pro/Max-style upgrade paths when applicable. |
 | `hasBillingAccess` | Gates whether the user can manage billing/extra usage. |
 | `API Usage Billing` | Status-line billing type for API/console billing mode. |
@@ -293,7 +531,7 @@ This confirms that billing/quota handling is not just a raw API error. The CLI p
 | Per-request usage | Provider response + runtime accounting | Token/cache/cost fields collected after API calls. |
 | Per-run budget | Local headless loop | `--max-budget-usd` and `error_max_budget_usd`. |
 | Account quota/rate limits | Provider/server headers | `anthropic-ratelimit-unified-*` parsing and `rate_limit_event`. |
-| Billing/overage UI | Account state + server headers + OAuth account role | `/extra-usage`, `/upgrade`, billing-access checks, `API Usage Billing`. |
+| Billing/overage UI | Account state + server headers + OAuth account role | `/usage-credits`, `/upgrade`, billing-access checks, `API Usage Billing`. |
 
 ## Caveats
 

@@ -1,10 +1,10 @@
 # Mechanism-question audit: agents and automation
 
-This ledger records the full-analysis reverse-engineering audit of the seven mechanism-oriented pages under `docs/06-agents-automation`. It records the reader questions used to test each page, source-confirmed answers, documentation decisions, and the boundary beyond which the retained artifacts do not support a claim.
+This ledger records the original full-analysis reverse-engineering audit of seven mechanism-oriented pages under `docs/06-agents-automation`, plus later focused rounds including the experimental Agent Teams lifecycle. It records the reader questions used to test each page, source-confirmed answers, documentation decisions, and the boundary beyond which the retained artifacts do not support a claim.
 
 ## Scope and exclusions
 
-Audited pages:
+Original audited pages:
 
 1. [`agent-runtime-scheduling-and-completion.md`](../06-agents-automation/agent-runtime-scheduling-and-completion.md)
 2. [`agents-tasks-and-subagents.md`](../06-agents-automation/agents-tasks-and-subagents.md)
@@ -14,7 +14,9 @@ Audited pages:
 6. [`observer-agents.md`](../06-agents-automation/observer-agents.md)
 7. [`slash-commands-and-automation.md`](../06-agents-automation/slash-commands-and-automation.md)
 
-Excluded from direct editing were the section `README.md`, shared navigation/indexes, extracted source artifacts, generated prompt catalogs and source atlases, other documentation sections, website configuration, and other audit ledgers. A page that already answered its source-answerable mechanism questions was intentionally left unchanged rather than churned.
+The later Agent Teams follow-up added and audited [`agent-teams.md`](../06-agents-automation/agent-teams.md), then updated the section guide, architecture/ordinary-Agent/runtime handoffs, canonical flag/settings/environment/feature-gate references, cross-cutting protocol map, navigation, and website sidebar. The original seven-page audit excluded those navigation/reference files; that historical scope does not describe the later focused round.
+
+Extracted source artifacts, generated prompt catalogs, and `source-atlas/` remained read-only throughout. A page that already answered its source-answerable mechanism questions was intentionally left unchanged rather than churned.
 
 ## Artifact identity and evidence model
 
@@ -60,6 +62,7 @@ For each page:
 | Does every workflow result labelled `async_launched` represent a launched task? | No. A compile-failure branch allocates identifiers and returns that status plus `error`, but returns before `LKr(...)` registers/starts the workflow. The renderer says it “was not launched.” | `jat`, `LKr`, and tool call [~385,563, ~388,554, ~389,583–389,675](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L389583) |
 | Are observer delivery batches retried after ordinary gate or send failure? | No. The current buffer is spliced into one batch; deny/error/delivery failure drops it. Only resumable-state loss starts a fresh observer and retries that digest. A user-stopped observer remains terminal. | `Zuy`, `tdy` [~448,930–449,043](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L448930) |
 | What do slash automation restrictions change? | Shell-disable policy replaces eligible user/project/plugin embedded shell forms with a literal marker instead of executing them. Policy-sourced skills remain on permission-checked local expansion; MCP prompts use neither local expansion nor replacement. `disableModelInvocation` excludes model/Skill invocation but does not by itself prevent direct user slash invocation. Unknown command-like names return locally with no model query. | `processSlashCommand`/`ils` [~351,442–352,352](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L351442); `Iyo`, `uhy`, `createSkillCommand` [~464,401–464,650](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L464401) |
+| How does `/goal` keep a session working until a condition holds? | It installs an unscoped session prompt Stop hook. A small structured-output evaluator checks transcript evidence at normal stop boundaries; unmet results update `active_goal` and continue, while met/impossible results remove the hook. Transcript attachments support resume/fork reconstruction. | command/hook state [~454,790–454,881](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L454790); stop loop [~458,940–459,120](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L458940); evaluator [~573,350–573,530](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L573350); restore [~860,118–860,150](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L860118) |
 
 ## Per-page question rounds
 
@@ -171,6 +174,21 @@ Zero new source-answerable mechanism questions. Model/provider handling after a 
 
 Zero new source-answerable mechanism questions. Remote-control command gating and individual built-in command internals remain documented at their owning pages. **Status: edited and converged.**
 
+#### Round 4 — `/goal` follow-up
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| What do `/goal`, `/goal <condition>`, and `/goal clear` do? | They inspect, install, or remove an unscoped session prompt Stop hook. Six clear-like tokens are accepted, conditions are capped at 4,000 characters, and trust/hook-policy gates apply to installation/restoration rather than inspection or clearing. | Added command grammar, gates, aliases, and state shape. |
+| How is completion judged? | `JPd()` calls the small fast model with thinking disabled, no tools, a 30-second default timeout, transcript-only instructions, and a JSON schema for `ok`, `reason`, and optional `impossible`. | Added evaluator inputs, schema, timeout, and context truncation/retry behavior. |
+| What happens for unmet, met, impossible, and evaluator-error outcomes? | Unmet blocks normal stopping and increments the active goal; met and impossible remove the hook and clear state; evaluator failures are non-blocking for the current stop attempt and leave the hook registered. | Added the branch diagram and fail-open boundary. |
+| Does background work count as goal completion? | No. Qualifying background work temporarily removes the goal hook for one stop pass and restores it in `finally`, deferring evaluation. | Added background-task ordering. |
+| Does resume preserve goal counters? | No. Local resume/fork reconstructs the condition from the newest nonterminal `goal_status` attachment but resets iterations/time/token baselines. Remote attach can seed the latest worker `active_goal` object instead. | Added local/remote persistence distinctions. |
+| Is `/goal` an unbounded deterministic loop? | No deterministic guarantee exists: model judgment and transcript visibility decide each check. No explicit iteration cap was found, but non-reinvoking end-turn branches and evaluator errors can end the current turn without satisfying the condition. | Added limits and non-guarantees. |
+
+#### Round 5 — convergence
+
+The post-edit reread produced zero new source-answerable mechanism questions. Remaining uncertainty is provider/model judgment, server retention for remote history, and abrupt-process behavior. **Status: edited in follow-up and converged.**
+
 ## Evidence-limited questions retained
 
 1. **Hosted/server behavior:** hosted review scheduling, remote routine execution, cloud agent persistence, and server-side observer/workflow behavior are not inferred from local client routes.
@@ -182,7 +200,7 @@ Zero new source-answerable mechanism questions. Remote-control command gating an
 
 ## Final convergence result
 
-A complete post-edit pass over all seven in-scope pages produced **zero new source-answerable mechanism questions**.
+The original complete post-edit pass over all seven in-scope pages produced **zero new source-answerable mechanism questions**. A later focused `/goal` pass updated its owning slash-command page and then produced zero new questions in Round 5.
 
 | Page | Documentation decision | Final pass: new source-answerable questions | Status |
 |---|---|---:|---|
@@ -202,7 +220,8 @@ Cross-page terminology now consistently preserves these boundaries:
 - dynamic-loop wakeups versus fixed-interval recurring cron;
 - an `async_launched`-shaped compile error versus an actually registered workflow;
 - observer resume recovery versus dropped best-effort batches;
-- shell-content replacement, model-invocation exclusion, and direct user invocation.
+- shell-content replacement, model-invocation exclusion, and direct user invocation;
+- `/goal` Stop-hook continuation versus cron/dynamic scheduling, local transcript reconstruction versus remote `active_goal` seeding, and model judgment versus deterministic completion.
 
 ## Validation
 
@@ -215,5 +234,127 @@ Cross-page terminology now consistently preserves these boundaries:
 | Whitespace | `git diff --check` passed across all tracked worktree changes, including the seven edited pages. |
 | Documentation build | `website/npm run build` completed successfully: Astro generated 89 pages, including all audited pages and this ledger; Pagefind and sitemap generation also completed. Vite emitted only its non-fatal large-chunk advisory. |
 | File accounting | This audit modified the seven scoped pages and created this ledger. The section `README.md`, navigation/indexes, retained source bundles, generated prompt catalog/source atlas, website configuration, and unrelated documentation changes were not edited by this audit. |
+
+### `/goal` follow-up — 2026-07-24
+
+- Full-analysis source reads traced command registration, trust/policy gates, session-hook ownership, Stop evaluation, background-work deferral, structured evaluator outcomes, query events, transcript reconstruction, session metadata, remote seeding, SDK forwarding, and TUI rendering.
+- Editor diagnostics reported no errors in the expanded slash-command page, agents chapter index, interactive command reference, or this ledger.
+- All 77 relative Markdown targets across those four files resolved on disk; stale/missing `/goal` markers were absent.
+- Repository-wide `git diff --check` passed.
+- Astro loaded 88 documentation sources and generated 89 static pages, including `/06-agents-automation/slash-commands-and-automation/`; Pagefind and sitemap generation completed. The only warning was Vite's existing advisory for chunks larger than 500 kB after minification.
+- Follow-up accounting contains exactly four documentation changes. No path under `claude-code-pkg/` or `source-atlas/` changed.
+- `source-atlas/` was intentionally left untouched because no package-version comparison was requested and the readable retained bundle supplied enclosing control-flow evidence directly.
+
+### Complete built-in command follow-up — 2026-07-24
+
+This follow-up extended beyond the original seven-page domain scope because the user asked whether any other commands remained unresearched. It treated the [command-line reference](../01-runtime-lifecycle/command-line-reference.md) as the canonical cross-domain catalog and put each nontrivial mechanism in its existing owner page rather than creating a duplicate command page.
+
+#### Inventory result
+
+| Layer | Source-confirmed inventory |
+|---|---|
+| Core | `Hur()` statically references 105 distinct names across conditional branches, including hidden, gated, compatibility, and disabled objects. Same-name TUI/text twins are one name. |
+| Bundled | 29 `Lu({...})` call sites expand to 32 names because the Artifact template registration loops over dashboard, report, data-table, and explainer. |
+| Distinct static names | 136 across core + bundled because `/design` appears in both layers. This is an artifact inventory, not one account's visible menu. |
+| Dynamic/non-built-in | Filesystem skills, legacy command files, nested workflows, plugin/builtin-plugin skills, and MCP prompts are merged at runtime and intentionally excluded from the static built-in count. |
+| Non-advertised support | `INTERNAL_ONLY_COMMANDS` additionally retains `/commit-push-pr` and disabled `/version` objects; stubs/null feature arms are not user commands. |
+
+#### Question rounds
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Is the menu one hard-coded array? | No. `_xo()` merges filesystem skills, workflows, plugins, bundled skills, and `Hur()`; `getCommands()` later adds MCP/fallback entries, gates them, and resolves scopes/collisions. | Added the assembly pipeline and complete catalog. |
+| Do `local-jsx`, `local`, and `prompt` mean the same execution path? | No. They are TUI, text/control, and prompt/skill owners. Headless, remote, bridge, and thin-client filters admit different subsets; same-name twins adapt one command to multiple surfaces. | Added type and surface tables. |
+| Can a model invoke every direct slash command? | No. `disableModelInvocation`, `userInvocable`, bundled kill switches, skill overrides, permission rules, session allowlists, and caller identity are independent gates. | Added exact caller-boundary behavior. |
+| How are duplicate skills resolved? | First-match ordering matters; nested project skills can be qualified, fallbacks can be dropped by plugin/MCP suffixes, and unsafe unresolved collisions can be omitted. Bundled `/design` precedes its core helper. | Added collision/scoping semantics. |
+| Does `/btw` append a second user turn or pause the main agent? | Neither. It runs a one-turn no-tool fork over cache-safe context with cache writes/transcript disabled. The TUI keeps at most 20 successful side-thread pairs in memory; remote control uses a correlated, cancellable `side_question` request with retry progress. | Added side-question isolation, history, cancellation, and explicit promotion-to-fork behavior. |
+| What owns `/autofix-pr` after the command resolves a PR? | It creates or reuses a long-running remote-agent task keyed by PR metadata, subscribes the cloud session to PR events, warns on missing GitHub-app/webhook delivery and unpushed commits, and archives a just-created session on cancellation when possible. | Added PR resolution, consent, deduplication, subscription, and failure behavior. |
+| Does `/ultraplan` merely return a prompt string? | No. It launches remote plan mode, polls every three seconds for `ExitPlanMode` calls/results, retries transient polling failures, and routes approval either to remote implementation or a local teleport choice. Missing plan markers and terminal/timeout states fail explicitly. | Added launch, polling, approval/rejection/teleport, stop, and archive behavior. |
+| Which apparently documented commands are actually unavailable? | `/desktop`, `/loops`, `/pause-memory`, `/update`, `/wellbeing`, `/code-walkthrough`, and `/pr-explainer` have false enable gates in this build. `/vim`, `/output-style`, and `/extra-usage` are compatibility shims; several dialogs/helpers are hidden. | Classified disabled/hidden/shim entries instead of advertising them. |
+| Which configuration commands have mutation safeguards beyond ordinary permissions? | `/auto-mode-setup` separates proposal from reviewed `--apply-file`; `/import` requires a same-process preview before `--yes` and applies path/symlink/shell-marker guards; `/config` exposes only descriptor-approved values; `/init` confirms its artifact proposal. | Added detailed settings command mechanisms. |
+| Are bundled commands just static prompt strings? | No. `Lu()` can extract assets, add caller/tool/hook/model/effort layers, and call dynamic builders. `/batch`, `/code-review`, `/verify`, `/run`, `/run-skill-generator`, `/debug`, `/doctor`, and Artifact skills have source-visible control flow. | Added a bundled workflow-family table. |
+| Is the old “no `/undo` command” conclusion still valid? | No. The core registry defines `/rewind` aliases `checkpoint` and `undo`. All names open the same restoration selector; there is no separate arbitrary inverse-operation engine. | Corrected the context/checkpoint page and catalog. |
+
+#### Documentation ownership
+
+- `command-line-reference.md` now inventories every core and bundled static name, aliases, gates, disabled/hidden state, surface type, and mechanism owner.
+- `slash-commands-and-automation.md` owns aggregation, collision/scoping, caller boundaries, bundled extraction, and workflow families.
+- Configuration/import/init commands are in `settings-policy-and-integrations.md`.
+- `/clear`, `/branch`, `/rename`, and `/recap` are in `session-resume-and-transcripts.md`.
+- `/context`, `/compact`, `/autocompact`, and rewind/undo semantics are in `context-memory-compaction-checkpoints.md`.
+- `/model`, `/effort`, `/fast`, `/usage`, and `/usage-credits` are in `model-selection-usage-quota-billing.md`.
+- `/reload-plugins`, `/reload-skills`, and `/skill-doctor` are in `mcp-plugins-hooks.md`.
+- `/debug` and hidden `/heapdump` are in `diagnostics-and-debug-logs.md`; Artifact skill commands are in `artifact-publishing-and-live-pages.md`.
+
+The post-edit command-name scan and reread produced zero additional static built-in names lacking either a catalog classification or an owning mechanism explanation. Remaining variability is runtime-generated (custom/plugin/MCP/workflow names) or account/provider/policy/feature availability. **Status: edited and converged.**
+
+### Model selection, concurrency, and interruption follow-up — 2026-07-24
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Does Claude Code classify arbitrary task text and automatically choose a stronger/weaker model? | No general complexity classifier was found. The main session uses startup/per-turn resolution; Agent and Workflow calls use environment/call/definition/inherit precedence; helpers own role-specific models; provider failures can use fallback. | Added a cross-role model-resolution matrix and explicit non-classifier boundary. |
+| How do several Agent calls in one assistant response run concurrently? | `Agent.isConcurrencySafe()` is true. `Y3g()` groups consecutive safe tool uses and `J3g()`/`Eao()` runs the group up to `CLAUDE_CODE_MAX_TOOL_USE_CONCURRENCY` (10 by default). Non-safe tools form ordered barriers. | Added the tool-handler concurrency path and separated it from background worker lifetime. |
+| What limits live Agent fan-out? | The tool scheduler bounds concurrent handler/launch work, not all live background workers. Agent depth is capped at five and session spawns at 200 by default. Workflow local agents have a separate FIFO `min(16,max(2,cores-2))` limiter and a 1,000-call lifetime backstop. | Added layer-specific concurrency/budget boundaries. |
+| Do Task records execute or interrupt agents? | No. They are shared status/ownership/dependency state. Idle in-process teammates can claim the first unowned pending task whose blocker IDs are completed/absent; `TaskUpdate` does not preempt a running provider call. | Added the task-state versus worker-execution distinction and claim rule. |
+| How is new work inserted while an agent is running? | Main prompts use `now`/`next`/`later`; eligible `next` work folds between tool batches. Live Agent `SendMessage` queues pending attachments; teammate messages wait in pending-user/mailbox queues. These are boundary-based steering mechanisms. | Added queue priority, mid-turn folding, Agent steering, and teammate mailbox behavior. |
+| What is the difference between interrupt, cancel, and stop? | Turn/Esc aborts the active controller; `cancel_async_message` removes a still-queued UUID; `control_cancel_request` cancels one correlated control operation; task/agent stop invokes a task-type kill handler and persists a user-stop marker that blocks automatic resumption. | Added scope/state diagrams and survival semantics. |
+
+The post-edit semantic reread found no further local-client mechanism gap across model resolution, Agent/Workflow concurrency, task claiming, queue steering, and interruption. Provider-side scheduling and operating-system fairness remain outside the retained client. **Follow-up status: edited and converged.**
+
+### Experimental Agent Teams follow-up
+
+This follow-up reconstructed the complete local teammate lifecycle rather than treating the strings `team_name`, `TeamCreate`, or `mailbox` as a complete design. Direct reads covered enablement/startup, `AsyncLocalStorage` and external-process identity, backend selection, named-Agent branching, roster/task/mailbox storage, in-process polling, permission forwarding, public versus internal messaging, cooperative/forced shutdown, clean-exit cleanup, and transcript-backed evicted-worker recovery.
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Is the “single implicit team” always active, and can the model create/delete teams? | No. `isAgentSwarmsEnabled()` requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` or an exact raw-argv `--agent-teams` token and `tengu_amber_flint !== false`; normal startup initializes the team only for an interactive non-teammate lead. `TeamCreate`/`TeamDelete` remain expected-absent legacy names, and `Agent.team_name` is ignored. The raw token is not registered in the Commander root option table. | Added the exact gate, raw-argv caveat, startup conditions, implicit-team contract, and retired-tool boundary. |
+| Which named Agent calls become teammates? | Only a call with active `teamContext` and `name`, with no fork, `isolation`, or `cwd`. The branch runs before ordinary sync/background selection and returns `teammate_spawned`; teammates cannot create a second roster level. | Documented the branch predicate and separated teammates from ordinary named/worktree/remote/fork Agents. |
+| How is execution topology chosen? | One captured `teammateMode` value selects `in-process` (default), `tmux`, `iterm2`, or `auto`. A normal noninteractive lead does not initialize a team; if an inherited/nonstandard noninteractive context reaches the selector, it forces in-process. Explicit pane failures fail, while `auto` can warn and fall back in-process. | Added mode selection, terminal detection/failure behavior, pane layouts, child flags/env/config inheritance, and in-process loop reuse. |
+| What exactly is stored on disk? | The roster is locked `~/.claude/teams/<roster-sanitized-team>/config.json`; inboxes are locked, atomically rewritten JSON arrays at `~/.claude/teams/<inbox-sanitized-team>/inboxes/<agent>.json`; tasks are separate locked JSON records under `~/.claude/tasks/<task-list-id>/` with `.lock` and `.highwatermark`. Roster writes under lock use ordinary `writeFile`; inbox writes use atomic whole-array replacement. | Added exact trees, schemas, lock/atomic-write distinctions, invalid-entry pruning, and the different custom-name sanitizers. Explicitly rejected the incorrect JSONL/append-only mailbox model. |
+| Do task records launch workers or interrupt provider calls? | No. They coordinate owner/status/dependencies. Idle in-process teammates poll every 500 ms and lock-claim the first eligible pending task; explicit assignment writes `task_assignment`. Local shared-task `TaskGet` returns current state immediately, unlike the separate SDK/MCP waiter. | Added local task schema/claim race behavior and corrected the cross-page SDK/MCP-versus-local `TaskGet` boundary. |
+| What does `SendMessage` expose versus what the mailbox understands internally? | Public structured input is limited to shutdown request/response and plan response; strings require `summary`, broadcast and `@team` addressing are rejected, and delivery differs for main, ordinary Agent, teammate mailbox, and peer sessions. Internal mailbox frames additionally carry permission, sandbox, mode, task, idle, and termination traffic. | Added the public/internal protocol split, routing/pinning behavior, shutdown priority, and malformed/unrouted-frame handling. |
+| Can one teammate grant another permission or approve its plan? | No. Peer content is explicitly non-user input. In-process forwarding accepts a matching `permission_response` only when the outer sender is `team-lead`; `localDisplayOnly` consent is denied; plan and mode responses are likewise lead-only. `team_permission_update` is dropped. | Added the anti-laundering trust model and permission/plan/mode enforcement paths. |
+| What is the difference between interrupt, shutdown, stop, and process exit? | Current-work interruption returns an in-process teammate to idle. Cooperative shutdown requires a structured response. Forced stop aborts lifecycle state, marks killed/notified, removes the member with stale-removal protection, and bounds pane teardown to 10 seconds. Global shutdown cleanup kills registered pane members, removes listed worktrees, and recursively removes the team directory. | Added separate lifecycle diagrams and exact cleanup/failure semantics. |
+| Are Agent Teams durable across sessions? | Not as a whole-team service. External children can reconstruct context while the roster exists. An evicted recipient with `taskKind:"in_process_teammate"` can be rebuilt in the active team from transcript/metadata; otherwise the same-ID ordinary Agent resume path is tried. Clean exit removes the team directory, teammate durable cron is refused, and process-local controllers/callbacks are not restored. Shared task files may remain, but no startup whole-team reconstruction path was found. | Replaced vague durability language with the narrow recovery paths, clean-exit boundary, crash-leftover caveat, and evidence limits. |
+
+Two independent read-only reviews were followed by direct revalidation of every disputed claim. The direct source confirmed `cleanupSessionTeams()` → `cleanupTeamDirectories()` recursive removal and the `jKr()` 10,000 ms pane-teardown bound; those claims were retained despite one review failing to locate their enclosing code. The post-correction reread found no new source-answerable local Agent Teams mechanism question. **Follow-up status: documented and converged.**
+
+#### Agent Teams validation
+
+- Editor diagnostics reported no errors in the new page, its cross-links/references/navigation, website configuration, or this ledger.
+- All 1,202 relative Markdown targets across the 40 currently changed Markdown files resolved on disk, including every new source-line link.
+- Generated HTML contained the expected Agent Teams anchors (`what-one-implicit-team-means`, `teammate-execution-modes`, `shared-task-files`, `shared-task-lifecycle`, `messaging-and-protocol-frames`, and `shutdown-cleanup-and-resume`), and the ordinary-Agent page linked to the intended generated routes/fragments.
+- Repository-wide `git diff --check` passed.
+- Astro loaded 89 documentation sources and built 90 pages, including `/06-agents-automation/agent-teams/`; Pagefind indexed 90 HTML files and sitemap generation completed. The only warning was Vite's existing advisory for chunks larger than 500 kB after minification.
+- `git diff --name-only -- claude-code-pkg source-atlas` was empty. Retained source and generated/source-atlas artifacts were not edited.
+
+### Built-in/native agent inventory follow-up — 2026-07-24
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| How many native agents are present? | `source:"built-in"` definitions yield nine agent roles: six normal personas (`general-purpose`, `Explore`, `Plan`, `statusline-setup`, `claude-code-guide`, `claude`) plus coordinator-only `worker`, experimental `fork`, and internal `workflow-subagent`. | Added a count with normal-versus-total scope instead of presenting one misleading universal number. |
+| Are all nine simultaneously available? | No. `getBuiltInAgents()` returns up to six in normal mode, only `[worker]` in coordinator mode, or `[]` when the SDK disable env applies to a noninteractive session. Safe mode, Agent-view policy, Explore/Plan gates, and SDK entrypoint further reduce the normal roster. `fork` and `workflow-subagent` use separate call paths. | Added the exact roster builder and gate matrix. |
+| What does each normal persona do? | General execution, read-only search, read-only architecture planning, status-line configuration, official-doc guidance, and background/FleetView catch-all are distinct prompts/tool/model profiles. | Added purpose, tools/model posture, and availability boundary for every normal persona. |
+| Do runtime labels increase the count? | No. `main`, `subagent`, `main-session`, `team-lead`, and `teammate` classify contexts/tasks; they are not `source:"built-in"` agent definitions. Observer personas are selected from the dynamic agent registry. | Added explicit exclusions and preserved the Agent Teams/observer distinction. |
+
+The source inventory was derived from executable definitions and `getBuiltInAgents()` control flow, not prompt-catalog string counts. `source-atlas/` remained untouched because no package-version comparison was requested. **Follow-up status: documented and converged.**
+
+### Agent messaging and communication follow-up — 2026-07-24
+
+This follow-up traced `SendMessage` as an address resolver and target router rather than assuming one agent chat transport. Direct reads covered recipient discovery and ambiguity, conversation pins and rebound rejection, live/stopped/evicted Agent delivery, team mailbox persistence and poll order, main/local/cloud session paths, observer reports, completion notifications, and receive-side safe-boundary insertion.
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Does `SendMessage` itself carry every message? | No. It resolves and validates a target, then dispatches to the target-owned process queue, team mailbox, or main priority queue. Local-socket and cloud-API cases are also implemented, but their candidate providers return empty lists in this exact artifact. | Added a router diagram, source anchors, target transport matrix, and dormant-peer-route caveat. |
+| Does “sent” mean the recipient model processed the message? | No. The tool result acknowledges enqueue/write/socket/API acceptance. A recipient reply is a separate `SendMessage`; background-Agent completion normally uses `task-notification`. | Separated send acknowledgement, peer reply, and completion paths. |
+| Can a message alter a request already in flight? | No. Live Agents drain pending messages into `queued_command` attachments; teammates poll at turn-end/idle boundaries; main/peer events enter priority queues. | Added receive timing and explicit non-preemption semantics. |
+| How are stale or ambiguous names handled? | Ambiguity returns candidates rather than guessing. Conversation pins reject a later name rebound; team sends revalidate the member ID against current state. | Added address resolution, references, pins, and stale-recipient behavior. |
+| Can messaging revive stopped work? | A user-stopped marker blocks automatic resumption. Other stopped/evicted Agents can resume from transcript/metadata; teammate-typed metadata can reconstruct an in-process teammate inside an active team. | Added state-specific resume and failure behavior. |
+| Is a teammate inbox append-only JSONL? | No. It is a locked JSON array atomically rewritten on append and delivery. Structured protocol frames are JSON serialized inside the outer `text`. | Added exact persistence and receive-order mechanics. |
+| Can peer text approve permissions or forge control frames? | No. Receiver permissions run normally, peer/cross-session traffic is framed as non-user input, public plain text cannot masquerade as structured team protocol, and control frames require matching sender/role checks. | Added the anti-laundering and authority boundary. |
+| Does `isolatePeerMachines` add approval to cross-machine text? | No. Plain-text `SendMessage.checkPermissions()` allows delivery and never consults that setting. Its visible approval checks are in the disabled `SendFile` implementation. | Added the text-versus-file transport-approval boundary. |
+| Are shared tasks, observer reports, and completion events all peer chat? | No. Shared tasks coordinate state, `ObserverReport` is one-way, and `task-notification` reports lifecycle completion. | Added an adjacent-channel distinction table. |
+
+Direct follow-up reads confirmed that `CSg()`/`OQn` are correctly anchored, that the stopped-by-user exception for `observer-activity` belongs to the internal observer-resume path and is unreachable from `SendMessage` because observer targets are rejected first, and that peer discovery is dormant despite retained transport implementations. The post-edit reread found no additional source-answerable message-transport question across ordinary Agents, teammates, main, local/cloud route code, observers, or task completion. Server-side cloud delivery after HTTP acceptance and provider behavior after insertion remain evidence-limited. `source-atlas/` was intentionally left untouched. **Follow-up status: documented and converged.**
 
 **Audit status: complete and converged for Claude Code `2.1.215`.**

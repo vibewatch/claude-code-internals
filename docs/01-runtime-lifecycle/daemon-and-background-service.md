@@ -36,6 +36,8 @@ Short version: the daemon is the **long-lived local supervisor process** used by
 | DaemonTelemetryFamily | `tengu_bg_daemon_*`, `tengu_bg_orphan_reap`, `tengu_bg_dispatch_*` | Operational telemetry families around daemon lifecycle. |
 | AgentJsonSurface | `claude agents --json`, `--all`, `waitingFor` | Scriptable active/completed session roster and blocked-on state. |
 | CorporateProcessWrapper | `processWrapper`, `CLAUDE_CODE_PROCESS_WRAPPER` | Required launcher prefix for the supervisor, workers, and covered background self-spawns. |
+| BackgroundSessionCommand | `name: "background"`, `spawnBackgroundFork()`, `spawnBgSession()` | Flushes/snapshots the live session and dispatches a resumable daemon worker [~768,500–769,300](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L768500). |
+| StopBackgroundCommand | `name: "stop"`, `lxo()`, `daemonDetachApc()` | Marks the current job stopped, detaches its host, and shuts the worker down without deleting retained state [~564,789–564,860](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L564789). |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -289,6 +291,27 @@ The user-facing install prompt supports:
 - `yes` (install service)
 - `once` (transient run)
 - `never` (dismiss install prompt path)
+
+## `/background` and `/stop`
+
+The interactive `/background [prompt]` command (alias `/bg`) is a handoff from the foreground REPL into the daemon worker model, not an instruction for the current model to “keep thinking quietly.” It requires agent-fleet support, transcript persistence, and a conversation that can produce a background seed. An already-backgrounded session simply detaches instead of spawning another worker.
+
+### Handoff sequence
+
+1. `deriveBackgroundSeed()` scans backward for the latest substantive user intent, optional explicit prompt, current user/AI title, color, and a short assistant detail. With no substantive turn and no explicit prompt, the command refuses.
+2. The runtime classifies current tasks into work that can be checkpointed/carried over and work that must stop. When abandonable work exists, the UI names the count and asks before proceeding.
+3. The adoption helper serializes transferable shells, cron entries, agents, and workflows into the new job directory; it pauses/aborts the corresponding parent-owned work and performs a best-effort checkpoint flush. `spawnBackgroundFork()` separately attempts a session-storage flush (two seconds for ordinary handoff). A keep-parent fork additionally persists the transcript leaf checkpoint, waits up to ten seconds, and refuses to dispatch on an incomplete flush. The ordinary exit-and-handoff branch continues after its shorter flush timeout, so the two paths do not have the same transactional guarantee.
+4. The daemon launch argv resumes the materialized transcript with `--fork-session`, then carries session-added directories, CLI/session allow/deny rules, the selected model and effort, permission mode, agent definitions, and optional prompt/system context.
+5. Worktree state is either handed to the worker or translated into an instruction to isolate away from a worktree still owned by the live parent. Session permission rules and paused-memory state are copied into job metadata.
+6. After a successful daemon dispatch, carryable tasks are disowned by the parent and the foreground process exits with a short ID plus reattach hints. Failed dispatch retains/queues recovery state only in the explicit source-visible branches; it is not reported as a successful background session.
+
+When the parent must remain live (the separate background-fork path), the implementation allocates a new session ID, copies the transcript to the job directory as `parent-transcript.jsonl`, and resumes the copy. Ordinary `/background` exits the parent after handoff instead.
+
+### Stopping from inside the worker
+
+`/stop` is advertised only when `isEnabled_8()` identifies a background session. It updates that job's persisted state to `stopped`, clears active/blocked/in-flight fields, records the first terminal timestamp, and emits the daemon-detach control sequence when attached through the PTY host. It then performs graceful shutdown with the normal resume hint suppressed.
+
+The command description is precise: transcript and worktree are kept. `/stop` does not equal Fleet-view **delete**, does not remove the job directory, and does not clean a retained worktree. Those are separate daemon/Fleet operations. A text twin supports a bridge/non-interactive control request so the same worker self-stop semantics do not require the full TUI.
 
 ## Background workers and roster behavior
 

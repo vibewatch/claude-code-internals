@@ -1,6 +1,6 @@
 # Models, providers, and auth
 
-This page reverse-engineers the authentication and provider-selection paths that show how Claude Code chooses a provider, then resolves the credential lane appropriate to that provider and execution host. Provider routing, bearer/OAuth tokens, API keys, workload identity, host-managed cloud credentials, provider-specific headers, and MCP OAuth are related but distinct decisions.
+This page reverse-engineers the authentication and provider-selection paths that show how Claude Code chooses a provider, then resolves the credential lane appropriate to that provider and execution host. Provider routing, Fable 5 provider/custom-pin support, bearer/OAuth tokens, API keys, workload identity, host-managed cloud credentials, provider-specific headers, and MCP OAuth are related but distinct decisions.
 
 ## Source anchors
 
@@ -24,6 +24,10 @@ This page reverse-engineers the authentication and provider-selection paths that
 | ModelSelectionFlag | `--model <model>` | Root model-selection flag. |
 | FallbackModelFlag | `--fallback-model <model>` | Print-mode fallback model flag. |
 | EmbeddedModelCatalog | `display_name: "Sonnet 5"`, `display_name: "Opus 4.8"`, `display_name: "Fable 5"` | Hand-maintained runtime catalog with provider IDs, context, output, capability, pricing, and alias metadata. |
+| FableProviderMap | `provider_ids`, `VERTEX_REGION_CLAUDE_FABLE_5` | Maps Fable 5 to each provider adapter and its Vertex region override [~15,940–15,975](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L15940). |
+| FableCustomPin | `ANTHROPIC_DEFAULT_FABLE_MODEL`, `..._NAME`, `..._DESCRIPTION` | Declares a custom Fable deployment and its picker metadata. |
+| FableCustomCapabilities | `ANTHROPIC_DEFAULT_FABLE_MODEL_SUPPORTED_CAPABILITIES`, `gle()` | Lets a matching custom third-party pin declare capability predicates used by request shaping [~140,990–141,025](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L140990). |
+| ThirdPartyFableSuggestion | `fallback_3p`, `cwy()`, `uwy()` | Turns a recognized unavailable Fable ID into an Opus suggestion; it is not an automatic startup/runtime fallback [~500,356–500,390](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L500356). |
 | ManagedModelPolicy | `availableModels`, `enforceAvailableModels` | Organization policy can restrict aliases, explicit model picks, subagents, and the resolved Default model. |
 | OAuthAuthorizeBuilder | `buildAuthUrl()` | Selects the authorize URL and the custom-client, inference-only, or all-scope branch. |
 | OAuthTokenExchange | `exchangeCodeForTokens()`, `refreshOAuthToken()` | Exchanges or refreshes OAuth tokens with JSON token requests. |
@@ -71,14 +75,66 @@ The embedded catalog near `cli.renamed.js` lines ~15,726–16,029 is the build-l
 
 | Family alias | Catalog default | Context | Output tokens (default / upper) | Key capabilities |
 |---|---|---:|---:|---|
-| `sonnet` | `claude-sonnet-5` | 1M native | 64K / 128K | effort through `xhigh`, adaptive thinking, mid-conversation system updates, context management |
-| `opus` | `claude-opus-4-8` | 1M native | 64K / 128K | effort through `xhigh`, adaptive thinking, fast mode, lean prompt, mid-conversation system updates |
-| `fable` | `claude-fable-5` | 1M native | 64K / 128K | effort through `xhigh`, adaptive thinking, lean prompt, Fable mitigations; rejects explicit disabled thinking |
+| `sonnet` | `claude-sonnet-5` | 1M native | 64K / 128K | effort through `max`, adaptive thinking, mid-conversation system updates, context management |
+| `opus` | `claude-opus-4-8` | 1M native | 64K / 128K | effort through `max`, adaptive thinking, fast mode, lean prompt, mid-conversation system updates |
+| `fable` | `claude-fable-5` | 1M native | 64K / 128K | effort through `max`, adaptive thinking, lean prompt, mid-conversation system updates, Fable mitigations; rejects explicit disabled thinking |
 | `haiku` | `claude-haiku-4-5` | 200K (1M suffix support) | 32K / 64K | context management |
 
-`best` resolves to the `fable` family in this build. Provider exceptions are explicit catalog data: for example, `sonnet` remains on older Sonnet deployments for several third-party providers, while `opus` maps to Opus 4.6 on Foundry and Opus 4.7 on the generic gateway. Full IDs bypass alias mapping but still pass availability and policy checks.
+The catalog declares `best: "fable"`, but the resolver uses Fable only while its dynamic/custom availability predicate passes and policy allows it; otherwise `best` falls back to Opus. Provider exceptions are explicit catalog data: for example, `sonnet` remains on older Sonnet deployments for several third-party providers, while `opus` maps to Opus 4.6 on Foundry and Opus 4.7 on the generic gateway. Full IDs bypass alias mapping but still pass availability and policy checks.
 
 The newer catalog entries use adaptive thinking and effort rather than a fixed thinking-token budget. Sonnet 5 and Opus 4.8 accept disabled thinking; Fable 5 rejects an explicit disabled value, so the runtime omits the parameter when thinking is not requested.
+
+## Fable provider routing and custom pins
+
+Fable has a complete provider map in the embedded catalog. These IDs prove that the corresponding client adapters know how to shape a Fable route; they do not prove deployment availability or entitlement for a particular account.
+
+| Provider key | Fable 5 catalog ID |
+|---|---|
+| First party | `claude-fable-5` |
+| Bedrock | `us.anthropic.claude-fable-5` |
+| Vertex | `claude-fable-5` |
+| Foundry | `claude-fable-5` |
+| Anthropic AWS | `claude-fable-5` |
+| Anthropic Google Cloud | `claude-fable-5` |
+| Mantle | `anthropic.claude-fable-5` |
+| Gateway | `claude-fable-5` |
+
+The catalog additionally declares eager input streaming for Bedrock/Vertex, `VERTEX_REGION_CLAUDE_FABLE_5`, a native 1M window, and `fallback_3p:"claude-opus-4-8"` [~15,940–15,975](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L15940).
+
+### Dynamic advertisement versus adapter support
+
+Three mechanisms must not be collapsed into one:
+
+1. **First-party/gateway advertisement.** `isFableAvailable()` normally looks for a non-disabled Fable row in cached bootstrap or gateway model options. A normal first-party disabled row wins even when a custom pin exists. This predicate controls dynamic family/default behavior and first-party “absent” handling [~130,958–131,083](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L130958).
+2. **Catalog provider mapping.** Picker construction for Bedrock, Vertex, Foundry, Mantle, and the Claude Platform adapters can use the non-null provider entry directly. Thus the advertisement predicate returning false outside first party/gateway is not a provider-support denial.
+3. **Explicit custom pin.** `ANTHROPIC_DEFAULT_FABLE_MODEL` makes the `fable` resolver use the supplied ID and makes canonical-or-exact-pin predicates treat it as Fable for consent, prompt identity, cache control, and refusal fallback.
+
+On the normal first-party endpoint, `/model` force-probes an explicitly selected Fable model when bootstrap says it is absent. On a provider deployment, request success remains the ultimate accessibility test. The retained client cannot establish whether an organization enabled the model, whether a cloud region serves it, or whether a custom gateway maps the ID.
+
+### Custom Fable environment contract
+
+| Environment variable | Client role |
+|---|---|
+| `ANTHROPIC_DEFAULT_FABLE_MODEL` | Concrete model/deployment ID returned by `getDefaultFableModel()` and recognized by exact-pin Fable predicates. |
+| `ANTHROPIC_DEFAULT_FABLE_MODEL_NAME` | Picker label for a custom Fable row. |
+| `ANTHROPIC_DEFAULT_FABLE_MODEL_DESCRIPTION` | Picker description for the custom row. |
+| `ANTHROPIC_DEFAULT_FABLE_MODEL_SUPPORTED_CAPABILITIES` | Comma-separated capability declaration consulted for a matching custom model on providers that do not use first-party model IDs. |
+| `VERTEX_REGION_CLAUDE_FABLE_5` | Model-specific Vertex region override generated from the catalog entry. |
+| `DISABLE_PROMPT_CACHING_FABLE` | Disables prompt caching for canonical or exact-pinned Fable calls only. |
+
+The custom-capability reader checks predicates such as `effort`, `max_effort`, `xhigh_effort`, `thinking`, `adaptive_thinking`, `interleaved_thinking`, `temperature`, and `mid_conversation_system`. It is only consulted when `usesFirstPartyModelIds()` is false; first-party-style IDs use catalog/canonical metadata. An exact pin still activates several Fable-family paths even when the custom capability list is absent, but the list is what lets generic third-party request predicates describe the deployment accurately.
+
+### What `fallback_3p` does—and does not do
+
+`cwy()` builds a table from catalog entries with `fallback_3p`; `uwy()` uses that table only after explicit model validation returns not-found. For Fable it suggests `ANTHROPIC_DEFAULT_OPUS_MODEL` or the catalog's Opus 4.8 provider ID [~500,356–500,390](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L500356).
+
+It does **not** add a Fable tier to `checkBedrockDefaultAvailability()` or `checkVertexDefaultAvailability()`. Those startup probe tables recognize only Sonnet, Opus, and Haiku prefixes [~506,381–506,725](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L506381). It also does not drive the configured overload chain or the post-response refusal-fallback state machine. Those are separate mechanisms documented in [How Fable 5 is supported end to end](model-selection-usage-quota-billing.md#how-fable-5-is-supported-end-to-end).
+
+### Authentication and usage-credit boundary
+
+Fable does not add a new credential type. Once provider selection and model-ID mapping finish, the request uses the same provider-specific OAuth/API-key/WIF/cloud credential lane described below.
+
+The Fable usage-credit consent gate is narrower: it applies to eligible first-party Claude.ai subscriber traffic, not API-key or third-party provider traffic. It is therefore an account/billing decision before dispatch, not part of provider authentication. See [Usage-credit consent is a pre-request gate](model-selection-usage-quota-billing.md#usage-credit-consent-is-a-pre-request-gate).
 
 ## Authentication is a branch matrix, not one precedence list
 
