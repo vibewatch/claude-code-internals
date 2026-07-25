@@ -19,7 +19,8 @@ This page is the canonical source-visible inventory of root flags, command famil
 | PermissionModeFlag | `--permission-mode <mode>` | Session permission mode selector. |
 | ContinueSessionFlag | `-c, --continue` | Continue the most recent conversation in the current directory. |
 | ResumeSessionFlag | `-r, --resume [value]` | Resume by session ID or open picker/search. |
-| RemoteSessionFlag | `--remote [description\|session_id\|url]` | Remote session creation/attach flag. |
+| CloudSessionFlag | `--cloud [description\|session_id\|url]` | Hidden hosted-session creation/attach flag. |
+| RemoteSessionAlias | `--remote [description\|session_id\|url]` | Hidden deprecated alias for `--cloud`. |
 | RemoteControlFlag | `--remote-control [name]` | Remote Control flag. |
 | DoctorCommand | `doctor — Check the health of your Claude Code installation` | Non-interactive installation/settings health check. |
 | UpdateCommandFamily | `update|upgrade` | Update/upgrade command family. |
@@ -38,7 +39,7 @@ This page is the canonical source-visible inventory of root flags, command famil
 | Headless/print | `-p`, `--print` | Runs the scriptable path with stdout result/stream framing. |
 | SDK-style headless | `--sdk-url`, stream/control frames | Exposes structured frames and control requests for external hosts. |
 | Resume/continue | `--continue`, `--resume`, `--session-id` | Restores a local JSONL session into the live envelope. |
-| Remote/teleport/control | `--remote`, `--teleport`, `--remote-control`, `--rc` | Adds bridge/session-ingress control around the same session model. |
+| Cloud/teleport/control | `--cloud` (deprecated `--remote`), `--teleport`, `--remote-control`, `--rc` | Adds hosted-session, import, or bridge control around related session models. |
 | Recovery/accessibility | `--safe-mode`, `--ax-screen-reader` | [Safe mode](../05-hosted-agent-ops/safe-mode-and-recovery.md) isolates broken customizations; [screen-reader mode](accessibility-and-screen-reader-mode.md) selects the classic flat renderer. |
 
 ## Root flag families
@@ -49,13 +50,13 @@ This page is the canonical source-visible inventory of root flags, command famil
 | Headless/SDK output | `-p, --print`, `--output-format`, `--input-format`, `--json-schema`, `--include-partial-messages`, `--include-hook-events`, `--replay-user-messages`, `--forward-subagent-text`, `--prompt-suggestions` | [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md) |
 | Thinking and budget | `--effort`, `--max-budget-usd`, `--fallback-model` | [Model selection, calls, usage, quota, and billing](../02-context-model-loop/model-selection-usage-quota-billing.md) |
 | Tools and permissions | `--tools`, `--allowedTools`, `--allowed-tools`, `--disallowedTools`, `--disallowed-tools`, `--permission-mode`, `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions` | [Tool inventory and schemas](../03-tools-integrations-security/tool-inventory-and-schemas.md) |
-| Prompt and context | `--system-prompt`, `--append-system-prompt`, `--add-dir`, `--exclude-dynamic-system-prompt-sections` | [Prompt assembly scenarios](../02-context-model-loop/prompt-assembly-scenarios.md) |
+| Prompt and context | `--system-prompt`, `--append-system-prompt`, `--add-dir`, `--exclude-dynamic-system-prompt-sections`, `--disable-slash-commands` | [Prompt assembly scenarios](../02-context-model-loop/prompt-assembly-scenarios.md), [Slash commands and automation](../06-agents-automation/slash-commands-and-automation.md) |
 | Sessions | `-c, --continue`, `-r, --resume`, `--fork-session`, `--from-pr`, `--no-session-persistence`, `--session-id`, `--name`, `--bg` | [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md) |
 | Models and auth | `--model`, `--fallback-model`, `--betas` | [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md) |
 | Settings and integrations | `--settings`, `--setting-sources`, `--mcp-config`, `--strict-mcp-config`, `--plugin-dir`, `--plugin-url`, `--agents`, `--agent`, `--ide`, `--chrome`, `--file` | [Settings schema reference](../03-tools-integrations-security/settings-schema-reference.md) |
 | Experimental Agent Teams | raw argv `--agent-teams`; hidden `--teammate-mode`; child-only `--agent-id`, `--agent-name`, `--team-name`, `--agent-color`, `--parent-session-id`, `--plan-mode-required`, `--agent-type` | [Agent Teams](../06-agents-automation/agent-teams.md) |
 | Accessibility | `--ax-screen-reader` | [Accessibility and screen-reader mode](accessibility-and-screen-reader-mode.md) |
-| Remote and deep links | `--remote`, `--teleport`, `--remote-control`, `--rc`, `--remote-control-session-name-prefix`, `--prefill`, `--deep-link-origin` | [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) |
+| Cloud/remote and deep links | `--cloud`, deprecated `--remote`, `--teleport`, `--remote-control`, `--rc`, `--remote-control-session-name-prefix`, `--prefill`, `--deep-link-origin` | [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) |
 
 `--agent-teams` is unusual: `isAgentSwarmsEnabled()` checks for the exact token in raw `process.argv`, but no matching Commander `.option(...)` registration appears in this retained build. It should therefore be treated as an internal/experimental argv signal rather than an advertised help option; `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is the explicit parsed environment opt-in. `--teammate-mode` and the identity flags are registered but hidden, primarily for parent/child teammate launches.
 
@@ -67,13 +68,19 @@ This page is the canonical source-visible inventory of root flags, command famil
 | `mcp` | `McpCommandRegistrar` | Manages MCP servers and can start the Claude Code MCP server. |
 | `mcp serve` | `command("serve")`, line ~9173, byte `0xbf3ccb` | Starts the Claude Code MCP server. |
 | `mcp add-from-claude-desktop` | line ~9173, byte `0xbf44e2` | Imports MCP servers from Claude Desktop config. |
+| `mcp add` OAuth/XAA options | `--client-id`, `--client-secret`, `--callback-port`, `--xaa` | Adds HTTP/SSE OAuth metadata or gated XAA; see [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md#custom-oauth-options-and-xaa). |
+| `mcp xaa setup\|login\|show\|clear` | `command("xaa")` | Manages the gated shared SEP-990 IdP connection and cached token. |
 | `plugin` / `plugins` | `PluginCommandRegistrar` | Manages plugins, marketplaces, local/session plugins, and plugin capabilities. |
+| `plugin eval [target]` / `plugin eval init [name]` | `command("eval [target]")` | Early-access evaluation and suite-authoring harness; see [Plugin lifecycle and configuration](../03-tools-integrations-security/plugin-lifecycle-and-configuration.md#plugin-evaluation-early-access). |
+| `plugin prune` / `plugin autoremove` | `command("prune").alias("autoremove")` | Removes unneeded auto-installed dependencies, with dry-run/confirmation controls. |
 | `project purge [path]` | `H.command("project")` | Deletes project-scoped Claude Code state. |
 | `setup-token` | `H.command("setup-token")` | Sets up a long-lived authentication token flow. |
 | `agents` | `H.command("agents")` | Opens/manages background agents and dispatched sessions. |
 | `ultrareview [target]` | `H.command("ultrareview [target]")` | Runs cloud-hosted multi-agent code review. |
 | `auto-mode` | `config`, `defaults`, `critique`, `reset` | Inspects, critiques, or resets auto-mode classifier configuration. |
 | `remote-control` / `rc` | `H.command("remote-control", {hidden: true}).alias("rc")` | Starts local-session Remote Control. |
+| `gateway --config <path>` | `command("gateway")` | Starts the native-only [enterprise auth, inference, managed-settings, spend, and telemetry gateway](../05-hosted-agent-ops/enterprise-gateway.md). It is registered after the print fast path. |
+| `import-conversations <exportPath>` | hidden registration near ~978,660 | Gated archive import requiring `--cwd`; `--dry-run` plans and checks without writes. See [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md#hidden-conversation-archive-import). |
 | `doctor` | `H.command("doctor")` | Checks auto-updater and related health state. |
 | `update` / `upgrade` | `H.command("update").alias("upgrade")` | Checks for and installs updates. |
 | `install [target]` | `H.command("install [target]")` | Installs a stable/latest/specific native build. |
@@ -173,7 +180,7 @@ Remote mode accepts only thin-client-safe built-in/bundled prompts plus objects 
 | `/permissions` (`/allowed-tools`) | Core TUI | Manages effective allow/ask/deny rules. |
 | `/plugin` (`/plugins`, `/marketplace`) | Core TUI | Manages plugins and marketplaces; see [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md). |
 | `/powerup` | Core TUI | Opens interactive product lessons. |
-| `/privacy-settings` | Consumer-subscriber gated | Views or updates consumer privacy settings. |
+| `/privacy-settings` | Consumer-subscriber gated | Views or updates the account privacy setting and can complete a pending terms decision; see [Consumer terms and privacy policy](../03-tools-integrations-security/settings-policy-and-integrations.md#consumer-terms-and-privacy-policy-grove). |
 | `/radio` | Feature gated | Opens Claude FM in the browser. |
 | `/reload-plugins [--force]` | Core local interactive command | Rebuilds plugin/agent/hook/MCP/LSP runtime state and warns before cache-invalidating MCP changes. |
 | `/reload-skills` | Core local; non-interactive capable | Clears command caches and reports added/removed filesystem skills. |
@@ -260,14 +267,18 @@ These names come from `Lu()` rather than `Hur()`. `Lu()` can extract bundled fil
 |---|---|
 | root `claude upgrade` | root `claude update` |
 | root `claude rc` | root `claude remote-control` |
+| hidden root `--remote [description\|session_id\|url]` | hidden root `--cloud [description\|session_id\|url]` (deprecated alias) |
 | interactive `/rc` | interactive `/remote-control` |
 | `--rc [name]` | `--remote-control [name]` |
 | `--allowed-tools` | `--allowedTools` |
 | `--disallowed-tools` | `--disallowedTools` |
+| `plugin autoremove` | `plugin prune` |
 
 Interactive `/upgrade` is **not** an alias for `/update`: it is the gated subscription-upgrade UI. The disabled interactive `/update` object is a separate relaunch implementation. The alias above applies only to the Commander root command family.
 
 `--permission-mode manual` is accepted as the user-facing spelling of the historical `default` mode; `2.1.215 --help` lists `manual` and the settings schema continues to accept `default`.
+
+`--disable-slash-commands` is registered with the help text `Disable all skills`. During setup it sets the shared `disableSlashCommands` state; command/skill aggregators then return no slash-command entries, prompt suggestions are suppressed, and relaunch/remote setup propagates the flag. It does not silently reinterpret `/name` text as an available command—the command surface is removed for that run.
 
 ## Parse-time optimization
 

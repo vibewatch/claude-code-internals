@@ -9,7 +9,7 @@ Use [Data models and frame schemas](data-models-and-frame-schemas.md) for the ca
 ## Short answer
 
 - A local session is designed as a **durable local JSONL transcript plus a live runtime envelope** addressed by one local UUID. Hosted sessions and Remote Control bridge sessions add distinct service-side IDs.
-- Remote control **does exist**, but the entrypoints are not aliases for one implementation. `--remote` owns a hosted loop, `--teleport` imports hosted history into a local loop, and `--remote-control` / `--rc` expose a running local loop through a resumable hosted bridge.
+- Remote control **does exist**, but the entrypoints are not aliases for one implementation. `--cloud` (deprecated alias `--remote`) owns a hosted loop, `--teleport` imports hosted history into a local loop, and `--remote-control` / `--rc` expose a running local loop through a resumable hosted bridge.
 - API calls are not one neat table in source. `cli.renamed.js` embeds several families: Claude Code cloud/runtime endpoints, Anthropic SDK generated endpoints, MCP JSON-RPC methods, telemetry/OTEL endpoints, and third-party integration endpoints.
 - Events are also plural: hook event names, stream/SDK frames, bridge/control frames, MCP JSON-RPC notifications, telemetry events, and JSONL transcript entries.
 - Internal storage exists and is mostly **file-backed**: ordered per-session JSONL, per-project metadata, file-history/context-collapse/checkpoint records, task/session queues, optional downstream SDK `sessionStore` mirroring, scheduled-task files/locks, debug logs, and caches.
@@ -33,7 +33,8 @@ Use [Data models and frame schemas](data-models-and-frame-schemas.md) for the ca
 | ContextCollapseSnapshotRecorder | `recordContextCollapseSnapshot` | Context-collapse snapshot storage. |
 | SdkSessionStoreAdapter | `sessionStore` | SDK/external storage adapter hook. |
 | SessionStorePersistenceGuard | `sessionStore cannot be used with persistSession: false` | External mirroring depends on local persistence. |
-| RemoteSessionFlag | `--remote [description\|session_id\|url]` | Remote session creation/attach flag. |
+| CloudSessionFlag | `--cloud [description\|session_id\|url]` | Hosted session creation/attach flag. |
+| RemoteSessionAlias | `--remote [description\|session_id\|url]` | Deprecated alias for `--cloud`. |
 | TeleportSessionFlag | `--teleport [session]` | Teleport resume flag. |
 | RemoteControlFlag | `--remote-control [name]` | Remote Control flag. |
 | RemoteControlAliasFlag | `--rc [name]` | Remote Control alias. |
@@ -56,7 +57,7 @@ Use [Data models and frame schemas](data-models-and-frame-schemas.md) for the ca
 | TranscriptRetentionSweep | `async function kIp()` | `mtime`-based local retention cleanup controlled by `cleanupPeriodDays`. |
 | RetentionHousekeeping | `startBackgroundHousekeeping`, `.last-cleanup` | Starts process-local transcript heartbeats and schedules deferred cleanup work. |
 | RemoteControlSse | `from_sequence_num`, `seenSequenceNums`, `H6u` | Remote Control numeric receipt cursor, heuristic numeric-ID tracking, and separate fixed-capacity envelope-UUID filtering. |
-| HostedRemoteSse | `SessionsV2Client`, `catch_up_truncated` | Separate hosted `--remote` sequence/reconnect client. |
+| HostedRemoteSse | `SessionsV2Client`, `catch_up_truncated` | Separate hosted `--cloud` sequence/reconnect client. |
 | PromptSuggestionFrame | `prompt_suggestion` | Predicted next-prompt frame. |
 | MessageDisplayHook | `MessageDisplay` | Display-only assistant-stream transformation; stored/model-visible content is unchanged. |
 
@@ -79,7 +80,7 @@ flowchart TD
     Envelope --> Tools[Tool + permission runtime]
     Envelope --> Hooks[Hook event runtime]
     Envelope --> RemoteControl[Remote Control bridge]
-    Hosted[Hosted --remote session] --> Teleport[Teleport import]
+    Hosted[Hosted --cloud session] --> Teleport[Teleport import]
     Teleport --> Restore
     Envelope --> SDK[Headless / SDK stream]
     Jsonl --> Resume[future continue/resume/fork/rewind]
@@ -98,7 +99,7 @@ This is a reference view, so it records three boundaries without duplicating the
 
 1. `sessionStore` supplements rather than replaces local persistence; the SDK rejects it with `persistSession:false`.
 2. SDK `transcript_mirror` follows a successful local append, while CCR internal-event upload is a separate queue/acknowledgement path.
-3. Remote Control wraps a local envelope; hosted `--remote`, teleport, Direct Connect, and the Chrome bridge remain distinct protocols.
+3. Remote Control wraps a local envelope; hosted `--cloud`, teleport, Direct Connect, and the Chrome bridge remain distinct protocols.
 
 For write ordering, metadata checkpoints, removal, relocation, and hydration, use [Session resume and transcripts](session-resume-and-transcripts.md#persistence-interpretation). For transport retry/cursor behavior, use [Remote control and teleport](remote-control-and-teleport.md).
 
@@ -108,7 +109,8 @@ The visible remote-control features are:
 
 | Surface | Source anchor | Role |
 |---|---|---|
-| `--remote [description|session_id|url]` | line ~19550, byte `0xdcb633` | Create a remote session from a description, or attach by session ID / Claude Code URL. |
+| `--cloud [description|session_id|url]` | root option near ~958,999 | Create a hosted session from a description, or attach by session ID / Claude Code URL. |
+| `--remote [description|session_id|url]` | adjacent hidden option | Deprecated alias for `--cloud`. |
 | `--teleport [session]` | line ~19550, byte `0xdcb5c1` | Resume a teleport session. |
 | `--remote-control [name]` | line ~19550, byte `0xdcb6f2` | Start an interactive session with Remote Control enabled. |
 | `--rc [name]` | line ~19550, byte `0xdcb785` | Alias for `--remote-control`. |
@@ -131,7 +133,7 @@ Remote Control is implemented through bridge/control frames. The high-signal fra
 | `bash_command` | host → runtime | Injects a command into the headless bash path and posts the output back as user-visible content. |
 | `transcript_mirror` | runtime → host/SDK | Mirrors local transcript records to external consumers. |
 
-The callback family confirms that Remote Control is a bidirectional control-plane projection, not screen sharing. This reference intentionally stops at frame/endpoint discovery; bridge identity, numeric receipt cursors, UUID filtering, reconnect, hosted `--remote`, and teleport behavior are canonical in [Remote control and teleport](remote-control-and-teleport.md). The durable `bridge-session` shape is canonical in [Data models and frame schemas](data-models-and-frame-schemas.md#bridge-session-record).
+The callback family confirms that Remote Control is a bidirectional control-plane projection, not screen sharing. This reference intentionally stops at frame/endpoint discovery; bridge identity, numeric receipt cursors, UUID filtering, reconnect, hosted `--cloud`, and teleport behavior are canonical in [Remote control and teleport](remote-control-and-teleport.md). The durable `bridge-session` shape is canonical in [Data models and frame schemas](data-models-and-frame-schemas.md#bridge-session-record).
 
 ## API call surfaces
 
@@ -264,13 +266,13 @@ flowchart LR
     Events --> Jsonl
     Events --> SDK[SDK/headless host]
     Events --> RemoteControl[Remote Control]
-    Hosted[Hosted --remote] --> Teleport[Teleport import]
+    Hosted[Hosted --cloud] --> Teleport[Teleport import]
     Teleport --> Restore
     Envelope --> Storage[metadata, snapshots, queues]
     Storage --> Restore
 ```
 
-The important implementation takeaway: **local session, event, and storage logic are coupled by the local UUID, while remote services add explicit foreign identities and replay cursors**. A local session can become remote-controlled because a bridge is linked to the envelope; a hosted `--remote` session is not thereby the same object.
+The important implementation takeaway: **local session, event, and storage logic are coupled by the local UUID, while remote services add explicit foreign identities and replay cursors**. A local session can become remote-controlled because a bridge is linked to the envelope; a hosted `--cloud` session is not thereby the same object.
 
 ## Caveats
 

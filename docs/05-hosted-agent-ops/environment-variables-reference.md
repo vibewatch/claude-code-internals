@@ -48,6 +48,10 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | DesignOAuthClientEnv | `CLAUDE_CODE_DESIGN_OAUTH_CLIENT_ID` | Overrides the registered OAuth client used by `/design-login`. |
 | SubagentLimitEnv | `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | Session-wide agent spawn budget (default 200). |
 | WebSearchLimitEnv | `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` | Session-wide WebSearch budget (default 200). |
+| GatewayLogEnv | `CLAUDE_GATEWAY_LOG_LEVEL`, `CLAUDE_GATEWAY_ALLOW_LOOPBACK` | Gateway operator logging and security-sensitive loopback override. |
+| PromptHistoryEnv | `CLAUDE_CODE_SKIP_PROMPT_HISTORY` | Suppresses interactive prompt-picker history without disabling transcripts. |
+| AutoModeDecisionEnv | `AUTOMODE_DECISION_LOG` | Exact `1` enables a best-effort local auto-mode JSONL trace. |
+| PluginEvalGateEnv | `CLAUDE_CODE_WALNUT_SPIRE` | Internal/early-access gate for `plugin eval`. |
 
 ## Authentication and credential handoff
 
@@ -59,6 +63,8 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | `CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR` | OAuth token via file descriptor. | [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md) |
 | `CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR` | API key via file descriptor. | [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md) |
 | `CLAUDE_CODE_ENABLE_XAA` | Enables the MCP cross-app access OAuth branch when a server config uses `oauth.xaa`. | [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md) |
+| `MCP_CLIENT_SECRET` | Secret input used when `mcp add --client-secret` configures an HTTP/SSE server. Do not log it; successful storage moves it into the credential store rather than normal MCP JSON. | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md#custom-oauth-options-and-xaa) |
+| `MCP_XAA_IDP_CLIENT_SECRET` | Secret input for `mcp xaa setup --client-secret`; stored through the credential store for the shared IdP connection. | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md#custom-oauth-options-and-xaa) |
 | `CLAUDE_CODE_SESSION_ACCESS_TOKEN` | Remote/session ingress token. | [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) |
 | `CLAUDE_CODE_WEBSOCKET_AUTH_FILE_DESCRIPTOR` | WebSocket auth handoff for bridge/session transports. | [Session API, events, and storage](../04-sessions-persistence-remote/session-api-events-and-storage.md) |
 
@@ -96,6 +102,7 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | `OTEL_LOG_TOOL_DETAILS`, `OTEL_LOG_TOOL_CONTENT`, `OTEL_LOG_USER_PROMPTS` | Controls how much tool/user detail may be logged. | [Telemetry and tracing](telemetry-and-tracing.md) |
 | `OTEL_LOG_ASSISTANT_RESPONSES` | Controls assistant-response content logs; when unset it follows `OTEL_LOG_USER_PROMPTS`. | [Telemetry and tracing](telemetry-and-tracing.md) |
 | `CLAUDE_CODE_OTEL_CONTENT_MAX_LENGTH` | Overrides the default 60 KB OTel content-attribute truncation limit. | [Telemetry and tracing](telemetry-and-tracing.md) |
+| `AUTOMODE_DECISION_LOG` | Exact value `1` appends `{ts,...callerFields}` rows to `<cwd>/.automode_decisions.jsonl`. The writer has no lock, retry, rotation, or error reporting. | [Diagnostics and debug logs](diagnostics-and-debug-logs.md#auto-mode-decision-jsonl) |
 
 ## MCP, plugins, and agents
 
@@ -120,6 +127,7 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | `CLAUDE_CODE_MAX_WEB_SEARCHES_PER_SESSION` | Sets the WebSearch call budget; default 200. | [Tool inventory and schemas](../03-tools-integrations-security/tool-inventory-and-schemas.md) |
 | `CLAUDE_CODE_MCP_AUTO_BACKGROUND_MS` | Changes/disables the foreground duration before a long MCP call becomes a background task. | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
 | `CLAUDE_CODE_PROCESS_WRAPPER` | Corporate launcher prefix for the background supervisor/workers and covered self-spawns. | [Daemon and background service](../01-runtime-lifecycle/daemon-and-background-service.md) |
+| `CLAUDE_CODE_WALNUT_SPIRE` | Internal/early-access opt-in checked by `plugin eval`; source presence is not a stable public feature commitment. | [Plugin lifecycle and configuration](../03-tools-integrations-security/plugin-lifecycle-and-configuration.md#plugin-evaluation-early-access) |
 
 ## Hosted projects, artifacts, and design
 
@@ -129,12 +137,33 @@ This page centralizes environment variables visible in the analyzed runtime and 
 | `CLAUDE_CODE_DISABLE_ARTIFACT` | Hard-disables Artifact eligibility before account, policy, preference, or feature gates are evaluated. | [Artifact publishing and live pages](../03-tools-integrations-security/artifact-publishing-and-live-pages.md) |
 | `CLAUDE_CODE_DESIGN_OAUTH_CLIENT_ID` | Selects the OAuth client used for the separate design credential flow. | [Claude Design and design-system sync](../03-tools-integrations-security/claude-design-and-design-sync.md) |
 
+## Enterprise gateway and remote-runner handoffs
+
+This table deliberately labels process-wiring variables. Only the two `CLAUDE_GATEWAY_*` entries are ordinary gateway-operator controls; the remaining names coordinate a hosted runner and should not be treated as a stable local configuration API.
+
+| Variable | Classification | Effect | Owner |
+|---|---|---|---|
+| `CLAUDE_GATEWAY_LOG_LEVEL` | Gateway operator | Selects `debug`, `info`, `warn`, or `error` stderr output; absent/invalid uses `info`. | [Enterprise gateway server](enterprise-gateway.md#operator-environment-variables) |
+| `CLAUDE_GATEWAY_ALLOW_LOOPBACK` | Gateway operator, security-sensitive | Allows loopback/unspecified outbound targets normally rejected by gateway SSRF checks. It does not make metadata/link-local targets generally safe. | [Enterprise gateway server](enterprise-gateway.md#network-and-response-hardening) |
+| `CLAUDE_CODE_REMOTE` | Host mode signal | Activates remote-runner initialization, including eligible proxy setup. | [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md#activation-and-internal-environment) |
+| `CCR_AGENT_PROXY_ENABLED` | Host-internal gate | Enables the remote agent-proxy branch. | [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md#agent-proxy-activation) |
+| `AGENT_PROXY_URL` | Sensitive host handoff | Overrides the relay base in standalone mode and is immediately removed from process env after read. | [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md#agent-proxy-activation) |
+| `AGENT_PROXY_AUTH_TOKEN` | Secret host handoff | Supplies relay auth when present and is immediately removed from process env after read. Never capture its value. | [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md#agent-proxy-activation) |
+| `CLAUDE_CODE_AGENT_PROXY_GIT_CONFIG`, `CLAUDE_CODE_AGENT_PROXY_GH_SHIM` | Internal deployment arms | Select tool-scoped governed Git config and/or the per-session `gh` shim. | [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md#governed-git-and-gh) |
+| `CLAUDE_CODE_DISABLE_WORKING_SYNC` | Internal kill switch | Prevents the eligible remote SDK runner from starting working-file synchronization. | [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md#background-working-sync) |
+| `CLAUDE_CODE_ENVIRONMENT_KIND` | Host runner classification | Suppresses working sync and synced-file staging on specialized runner kinds. | [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md#uploads-filestore-staging) |
+| `CLAUDE_CODE_WORKER_EPOCH` | Host protocol field | Included in synchronized-file PUT requests. | [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md#working-file-namespaces) |
+| `CLAUDE_STAGE_FILE_ROOT` | Host stage-root override | Selects ordinary stage destination behavior; an explicit value disables the implicit read-only-mount no-op. | [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md#uploads-filestore-staging) |
+| `CLAUDE_CODE_REMOTE_MEMORY_DIR` | Host memory-root handoff | Remaps user and local Agent-memory roots in hosted environments; project scope remains in the working tree. | [Persistent scoped Agent memory](../02-context-model-loop/prompt-context-memory.md#persistent-scoped-agent-memory) |
+
 ## Feature, context, UI, and update gates
 
 | Variable | Effect | Owner |
 |---|---|---|
 | `CLAUDE_CODE_DISABLE_CRON` | Disables scheduled tasks / Kairos cron paths. | [Cron and scheduled tasks](../06-agents-automation/cron-and-scheduled-tasks.md) |
 | `CLAUDE_CODE_SAFE_MODE` | Environment equivalent of `--safe-mode`; disables user/project customizations but not managed policy. | [Safe mode and recovery](safe-mode-and-recovery.md) |
+| `CLAUDE_CODE_SKIP_PROMPT_HISTORY` | Skips `history.jsonl`/paste-history recording for interactive prompts; main session transcript persistence is unaffected. | [Terminal UI renderer and input lifecycle](../01-runtime-lifecycle/terminal-ui-renderer-and-input.md#prompt-history-and-pasted-text-storage) |
+| `CLAUDE_IMPORT_CONVERSATIONS` | Internal migration gate for hidden `import-conversations`; not an advertised public command toggle. | [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md#hidden-conversation-archive-import) |
 | `CLAUDE_AX_SCREEN_READER` | Overrides the `axScreenReader` setting and `--ax-screen-reader` selection. | [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md) |
 | `CLAUDE_CODE_DISABLE_MOUSE_CLICKS` | Disables click/drag/hover while retaining wheel scrolling. | [Feature gates reference](feature-gates-reference.md) |
 | `CLAUDE_CLIENT_PRESENCE_FILE` | Marker file that suppresses mobile push notifications while the user is present at the machine. | [Feature gates reference](feature-gates-reference.md) |

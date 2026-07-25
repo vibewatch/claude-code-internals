@@ -35,6 +35,7 @@ This page reverse-engineers the local session and transcript paths that explain 
 | RenameConversationCommand | `performRename()`, `Jcr()` | Persists an explicit or generated session name locally and to eligible bridge metadata [~556,100–556,235](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L556100). |
 | BranchConversationCommand | `createFork()`, `branchAndResume()` | Rewrites the selected chain under a new session ID and reconnects it as a resumable branch [~558,800–559,075](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L558800). |
 | RecapCommand | `Otn()`, `Rqy` | Runs a one-turn, no-tool fork to generate a short session recap [~563,450–563,760](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L563450). |
+| ConversationArchiveImport | `import-conversations <exportPath>`, `CLAUDE_IMPORT_CONVERSATIONS` | Hidden, gated archive-to-local-JSONL import [~976,900–977,353](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L976900), registered at [~978,660](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L978660). |
 
 ## Bundle module in `cli.renamed.js`
 
@@ -136,9 +137,27 @@ With no argument, the runtime asks for a 2–4 word kebab-case name. A feature-g
 
 The command returns the helper text directly. An API error can be rendered as the command result, an abort returns `Recap cancelled`, and a session with no turn returns `Nothing to recap yet`. The same helper also powers automatic away summaries; eligible Remote Control sessions can publish the result as `recap` metadata, but the explicit command itself is only a read-only summary operation.
 
+## Hidden conversation archive import
+
+`claude import-conversations <exportPath> --cwd <dir> [--dry-run]` is registered as a hidden command and refuses to run unless `CLAUDE_IMPORT_CONVERSATIONS` is enabled. It is an internal/migration surface in this build, not an advertised replacement for `--resume`.
+
+The importer accepts either a JSON export file or a `.zip` no larger than **1 GiB**. ZIP input must contain `manifest.json`, `conversations.json`, and `projects.json`; only `files/` members whose basenames match `[A-Za-z0-9_-]+` enter the attachment map. These are concrete admission checks, not a versioned public archive-schema guarantee.
+
+The requested `--cwd` is canonicalized and becomes the project/session anchor. In write mode the importer creates owner-only transcript/project/file directories, then:
+
+1. maps each source conversation UUID deterministically into a Claude Code session UUID;
+2. converts human/assistant messages to local JSONL records with `version` and model set to `claude-export-import`;
+3. recreates project directories, optional `CLAUDE.md`, project documents, and file blobs under sanitized names;
+4. enriches eligible non-audio attachments through the normal attachment generator after read-permission checks; and
+5. creates each transcript with exclusive `wx` semantics, counting an existing target as skipped rather than overwriting it.
+
+Imported assistant usage is zero-filled because the archive does not reconstruct provider billing metadata. Parent links are remapped, and synthesized attachment records can extend the local chain. This produces resume-shaped JSONL, but dry-run/import success is not proof that every old product feature has a current equivalent.
+
+`--dry-run` performs archive parsing, path/ID planning, count calculation, attachment mapping, and manifest comparison without creating directories or files. Both modes print a structured summary containing session IDs, titles, JSONL paths, projects, conversation/project links, attachment files, and counts. A mismatch between manifest counts and planned/imported counts is printed to stderr and exits 1; otherwise the command exits 0.
+
 ## Persistence interpretation
 
-The `local-jsonl` and `${sessionId}.jsonl` anchors show that local sessions are durable, append-oriented JSONL transcript files. They are not strictly append-only: queued UUID removal can truncate and rewrite a file. `SessionDiscovery` and `SessionRestore` then form the semantic pair for session discovery and restore. The root action routes `--continue`, `--resume`, PR resume, teleport, and picker fallback into these restoration surfaces before entering `InteractiveSessionLoop` or `HeadlessRunner`; hosted `--remote` has its own runtime rather than first becoming a local resume.
+The `local-jsonl` and `${sessionId}.jsonl` anchors show that local sessions are durable, append-oriented JSONL transcript files. They are not strictly append-only: queued UUID removal can truncate and rewrite a file. `SessionDiscovery` and `SessionRestore` then form the semantic pair for session discovery and restore. The root action routes `--continue`, `--resume`, PR resume, teleport, and picker fallback into these restoration surfaces before entering `InteractiveSessionLoop` or `HeadlessRunner`; hosted `--cloud` (deprecated alias `--remote`) has its own runtime rather than first becoming a local resume.
 
 ### Append and mirror ordering
 

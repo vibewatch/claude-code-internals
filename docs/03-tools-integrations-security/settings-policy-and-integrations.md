@@ -43,6 +43,8 @@ Use [Settings schema reference](settings-schema-reference.md) for the canonical 
 | StatusLineRuntime | `executeStatusLineCommand`, `pNb`, `fNb`, `Juf` | Separate runtime path sends JSON to the configured command, refreshes/cancels it, and renders successful stdout [~577,937](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L577937), [~831,800](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L831800). |
 | RemoteEnvironmentSetting | `remote.defaultEnvironmentId`, `/remote-env` | Clears a local override and writes the selected hosted-environment ID at user scope [~813,295–813,790](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L813295). |
 | WebGitHubCredentialSetup | `/web-setup`, `/v1/code/github/import-token` | Confirms hosted use of the local GitHub CLI token and imports it through the authenticated remote API [~828,230–828,760](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L828230). |
+| GroveAccountPolicy | `alr()`, `aEo()`, `Rpd()` | Caches and enforces consumer terms/privacy decision state across interactive and headless startup [~505,640–505,837](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L505640). |
+| PrivacySettingsCommand | `/privacy-settings`, `GroveDialog`, `PrivacySettingsDialog` | Presents pending terms choices or the current model-improvement toggle [~810,979–811,439](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L810979). |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -265,6 +267,42 @@ See [Plugin marketplace lifecycle](mcp-plugins-hooks.md#plugin-marketplace-lifec
 ## Configuration command mechanisms
 
 The complete name/gate inventory is in the [built-in interactive-command registry](../01-runtime-lifecycle/command-line-reference.md#built-in-interactive-command-registry). The commands below matter here because they read or mutate settings/configuration through additional safety boundaries rather than being simple UI shortcuts.
+
+### Consumer terms and privacy policy (Grove)
+
+The source names this account-policy flow “Grove.” It applies only to a Claude.ai **consumer subscriber** (`pro` or `max`) with an OAuth account UUID. API-key, team, and enterprise authentication do not enter this gate through `isConsumerSubscriber()`.
+
+The flow uses four first-party endpoints:
+
+| Request | Purpose |
+|---|---|
+| `GET /api/oauth/account/settings` | Reads `grove_enabled` and the last viewed timestamp. |
+| `PATCH /api/oauth/account/settings` | Writes `{grove_enabled: true|false}`. |
+| `POST /api/oauth/account/grove_notice_viewed` | Marks the current notice as viewed. |
+| `GET /api/claude_code_grove` | Reads notice state, grace/reminder policy, and domain exclusion. |
+
+Each fetch has a three-second timeout. The startup eligibility helper stores only `{grove_enabled, timestamp}` in `~/.claude.json`'s account-keyed `groveConfigCache`, with a **24-hour** TTL:
+
+- no cache: start a background refresh and skip the dialog/check for this session;
+- stale cache: return its boolean and refresh in the background; and
+- fresh cache: return its boolean directly.
+
+The cached boolean only decides whether startup should perform the live policy fetch. The dialog/block decision then requires successful settings and notice responses and ordinarily requires `grove_enabled === null`. A grace-period notice respects `grove_notice_viewed_at` plus `notice_reminder_frequency`; a mandatory notice is shown regardless of the prior view timestamp. `/privacy-settings` can force the pending-decision dialog even after it was viewed.
+
+Interactive startup opens `GroveDialog`. Grace mode offers **Not now**; mandatory mode does not. Escape/defer closes the flow, and escaping a mandatory startup dialog causes a clean process exit rather than continuing without a choice. The dialog marks the notice viewed when it renders—not only after acceptance.
+
+Headless startup cannot collect the choice:
+
+| Notice mode | Headless behavior |
+|---|---|
+| Grace period | Prints a reminder, marks it viewed, and continues. |
+| Mandatory | Prints `[ACTION REQUIRED]`, tells the user to run interactive `claude`, and exits 1. |
+
+`domain_excluded` does not suppress the policy check. It removes the opt-in choice and presents a forced-OFF acceptance/current setting for email addresses covered by that domain policy.
+
+`/privacy-settings` is a consumer-only Ink command. When cached Grove state activates the local flow and `grove_enabled` is still `null`, it reuses `GroveDialog`; otherwise it renders a direct ON/OFF toggle. Ineligible/unavailable states—and an eligible account whose local Grove cache has not been populated yet—fall back to the claude.ai data-privacy URL rather than exposing an inert switch. The cold-cache call simultaneously starts the background refresh, so a later invocation can take the local path.
+
+Both update and mark-viewed helpers log/telemetry failures but swallow them so a network problem does not crash the TUI. After dialog completion, `/privacy-settings` refetches account settings and reports the observed value; a failed refetch says it cannot retrieve the updated setting. Therefore UI completion is not a durable-commit acknowledgement, and the source-visible client does not establish server retention/training semantics beyond the displayed policy copy.
 
 ### `/config`: panel versus shorthand
 

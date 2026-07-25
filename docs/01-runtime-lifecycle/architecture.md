@@ -160,7 +160,7 @@ The action is async, but setup work is intentionally overlapped in places. Downs
 | Exact version-only argv | Version fast path | `ZIS()` prints version/commit without importing `UkS()`. |
 | Internal host/helper flags, daemon/background operations, bridge aliases, eligible agent-view or tmux/worktree invocations | Dedicated pre-main process path | These are process roles or operational surfaces, not root-action modes. |
 | `--print` / `-p`, `--init-only`, `--sdk-url`, or non-TTY stdout | `HeadlessRunner` / `HeadlessControlLoop` | Scriptable single-run mode with stream-JSON capability. |
-| `--remote`, `--teleport`, `--remote-control`/`--rc` | Remote/teleport/Remote Control | Local or hosted bridge variants; reuse interactive loop projection. |
+| `--cloud` (deprecated `--remote`), `--teleport`, `--remote-control`/`--rc` | Cloud/teleport/Remote Control | Hosted, imported, or bridged variants; reuse related session projections. |
 | Otherwise (TTY) | `InteractiveSessionLoop` or `InteractiveResumePicker` fallback | Default human-in-the-loop path. |
 
 The order matters: `ZIS()` routes process-specialized invocations before importing `UkS()`; `jkS()` then preserves a print-only parse shortcut before registering heavier utility commands; finally the root action distinguishes headless from interactive/session-restore variants. This artifact has no root `--server`, `--headless`, or `--acp` mode and no `startServerMode`/`startACPMode` handler.

@@ -11,7 +11,7 @@ The review was run on 2026-07-25 against:
 | Git SHA | `316ce99628e89900bf0b1328fed3b8fec0c0c92d` |
 | Primary behavioral source | [`cli.renamed.js`](../../claude-code-pkg/src/entrypoints/cli.renamed.js) |
 | Audit mode | Full analysis, repository-wide |
-| Current canonical mechanism-page count | 61 |
+| Current canonical mechanism-page count | 63 |
 
 `source-atlas/` was intentionally left untouched. This was not a package delta, and the retained readable bundle supplied enclosing control flow for every promoted finding.
 
@@ -33,8 +33,8 @@ Strings, generated prompt shards, SDK declarations, and module-atlas hits were d
 | Runtime lifecycle | Bootstrap, modes, daemon, commands, accessibility, termination, shutdown were deep. | The ordinary terminal renderer/input pipeline had no owner: classic/fullscreen selection, raw input, alternate screen, resize/suspend, `/tui` relaunch, and cleanup were scattered. | Created [Terminal UI renderer and input lifecycle](../01-runtime-lifecycle/terminal-ui-renderer-and-input.md). |
 | Context and model loop | Prompt/context, memory, compaction, providers/auth, Fable, usage/quota, and headless streaming were deep. | No missing lifecycle page. One generic compatibility gap remained around historical per-turn effort statements and thinking-type retries. | Expanded [Model selection, calls, usage, quota, and billing](../02-context-model-loop/model-selection-usage-quota-billing.md#per-turn-effort-and-thinking-compatibility). |
 | Tools, integrations, and security | Tool boundary, MCP/plugins/hooks, settings, sandbox, status line, computer use, hosted tools, and skills were deep. | Claude in Chrome had only references/generated prompts; IDE dynamic MCP and plugin LSP had only a short synthesis. Both are independent, substantial lifecycles. | Created [Browser automation and Claude in Chrome](../03-tools-integrations-security/browser-automation-and-claude-in-chrome.md) and [IDE integration and LSP diagnostics](../03-tools-integrations-security/ide-integration-and-lsp-diagnostics.md). Added a bounded deferred-plugin-refresh note. |
-| Sessions, persistence, and remote | Transcript chains, resume/fork/rewind, bridge/CCR, teleport, SDK/session APIs, hosted projects, onboarding, recording, and schemas were deep. | No new page. Worktree persistence was documented here but creation/ownership/cleanup belonged to agents; its global-config store wording needed precision. | Linked the new worktree owner and clarified `activeWorktreeSession` lives in the current-project entry of `~/.claude.json`. |
-| Operations and native support | Diagnostics, telemetry, feature gates, updater/doctor, safe mode, environment inventory, voice, and native media were deep. | No material source-answerable gap found for this artifact/platform. | No new mechanism page. |
+| Sessions, persistence, and remote | Transcript chains, resume/fork/rewind, bridge/CCR, teleport, SDK/session APIs, hosted projects, onboarding, recording, and schemas were deep. | The original pass found no new page and clarified worktree ownership. A later independent string-surface pass found the remote-runner egress/sync/staging data plane hidden behind proxy/file literals. | Linked the worktree owner and later created [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md). |
+| Operations and native support | Diagnostics, telemetry, feature gates, updater/doctor, safe mode, environment inventory, voice, and native media were deep. | The original theme-led pass found no material gap. The later string-surface pass traced the root `gateway` command into a complete embedded server lifecycle. | Created [Enterprise gateway server](../05-hosted-agent-ops/enterprise-gateway.md). |
 | Agents and automation | Agents/tasks, messaging, teams, observers, scheduling, workflows, slash commands, cron, Monitor, and RemoteTrigger were deep. | Worktree isolation was spread across Agent prose, hooks, session persistence, settings, and generated tool prompts without one lifecycle owner. | Created [Worktree isolation and handoffs](../06-agents-automation/worktree-isolation-and-handoffs.md). |
 
 ## Promoted gaps
@@ -140,15 +140,32 @@ Independent audit reports were treated as hypotheses. Direct source reads correc
 5. **Original source architecture:** semantic symbols are reconstructed from a generated bundle; no original TypeScript module tree/source map is claimed.
 6. **Future versions:** thresholds, tool schemas, gates, and minified anchors are pinned to `2.1.215`.
 
-Within those boundaries, the complete post-change pass found no remaining source-answerable subsystem that both lacks an owner and warrants another mechanism page.
+Within those boundaries, the original theme/page-led post-change pass found no remaining source-answerable subsystem that both lacked an owner and warranted another mechanism page. The independent string-surface follow-up below supersedes that absolute conclusion: it found two owners that the original inventories did not classify as standalone mechanisms.
 
 ## Information-architecture follow-up
 
 The coverage review originally counted 62 mechanism pages. A later [documentation structure and duplication review](documentation-structure-review.md) found that `commands-and-flags.md` duplicated both the `cli-main-paths.md` routing narrative and the more complete `command-line-reference.md` inventory. Retiring it reduced the canonical count to **61** without removing any source-confirmed behavior.
 
-That review also narrowed `agent-runtime-scheduling-and-completion.md` into [Agent steering, interruption, and completion](../06-agents-automation/agent-steering-interruption-and-completion.md), removed repeated session persistence/reconciliation algorithms from architecture/reference pages, and renamed the reader-facing operations chapter while preserving its stable route. Coverage conclusions and retained-artifact boundaries are unchanged.
+That review also narrowed `agent-runtime-scheduling-and-completion.md` into [Agent steering, interruption, and completion](../06-agents-automation/agent-steering-interruption-and-completion.md), removed repeated session persistence/reconciliation algorithms from architecture/reference pages, and renamed the reader-facing operations chapter while preserving its stable route. Those ownership rules and retained-artifact boundaries remain valid.
 
-## Validation
+## Independent string-surface follow-up
+
+The later [Disassembled string-surface review](disassembled-string-surface-review.md) deliberately did not start from module themes or existing page names. It compared executable string categories and actual Commander registrations against authored docs, then traced surviving candidates through enclosing setup, state, failure, and cleanup code.
+
+That pass promoted two independent lifecycle owners:
+
+1. [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md) — local CONNECT-over-WebSocket relay, CA/tool trust, governed Git/`gh`, optimistic `/working` synchronization, `/uploads` filestore staging, and staged MCP file lanes.
+2. [Enterprise gateway server](../05-hosted-agent-ops/enterprise-gateway.md) — native `gateway --config`, strict YAML/interpolation, Postgres migrations/retention, OIDC device auth, provider inference routing, managed settings, spend administration/metering, OTLP relay, health/readiness, and network hardening.
+
+It also deepened existing owners for plugin evaluation, persistent Agent memory, Grove terms/privacy, prompt/paste history, `adopt.json`, hidden conversation import, auto-mode decision JSONL, MCP OAuth/XAA, CLI aliases/options, and operator/internal environment variables.
+
+The follow-up rejected Frame as an Artifact alias, `/api/eval*` as GrowthBook rather than plugin eval, inactive ignore-pattern filenames as storage evidence, and thousands of telemetry/vendor/generated strings as independent mechanisms. Native binary review found no additional readable-source gap.
+
+The canonical count is now **63**: 10 runtime + 8 context/model + 15 tools/security + 10 sessions/remote + 10 operations/native + 10 agents/automation. The information-architecture rule remains unchanged: a finding extends an existing owner unless it has a materially independent activation, state, authority, failure, and cleanup lifecycle.
+
+## Original full-system validation
+
+The metrics in this section describe the original full-system/IA pass before the later string-surface follow-up. The follow-up has its own fresh validation record in [Disassembled string-surface review](disassembled-string-surface-review.md#validation).
 
 - Four independent source-versus-document reviews checked the terminal, Chrome, IDE/LSP, and worktree pages. Source-supported corrections were applied; contradictory suggestions (for example, relocating the already-correct worktree hook/relocation anchors) were rechecked and rejected.
 - Editor diagnostics reported no errors across the final workspace changes.

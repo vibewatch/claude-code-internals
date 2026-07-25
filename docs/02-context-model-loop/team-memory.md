@@ -54,6 +54,8 @@ The two configuration lanes converge on the same descriptor and mirror machinery
 
 Personal `CLAUDE.md`, project rules, and auto-memory do not become team stores. They continue through the ordinary memory pipeline documented in [Prompt, context, and memory](prompt-context-memory.md).
 
+Persistent Agent-definition memory is also separate. An Agent with `memory: user|project|local` reads a per-agent `MEMORY.md` below `agent-memory/` or `agent-memory-local/`; it does not acquire a team-store descriptor, service backend, `.memory-sync` manifest, or organization mount. Conversely, the `yji()`/`o4c()` service-key and mirror-containment guarantees on this page must not be attributed to Agent memory. See [Persistent scoped Agent memory](prompt-context-memory.md#persistent-scoped-agent-memory).
+
 ## Control plane: explicit and discovered stores
 
 ### Explicit descriptors

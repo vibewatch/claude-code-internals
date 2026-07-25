@@ -11,7 +11,7 @@ This module owns the **state plane** of the agent runtime. It treats a session a
 1. Local persistence (JSONL transcripts under the Claude config directory).
 2. CLI restore/fork/rewind paths.
 3. Headless/SDK transports that need to refer to a session by ID.
-4. Remote variants that either bridge a local envelope (Remote Control), operate a hosted session (`--remote`), or import hosted history into a local envelope (`--teleport`).
+4. Remote variants that either bridge a local envelope (Remote Control), operate a hosted session (`--cloud`, deprecated alias `--remote`), or import hosted history into a local envelope (`--teleport`).
 
 ## Architecture thesis
 
@@ -58,7 +58,7 @@ flowchart TD
     Resolver -->|--from-pr| DiscoveryExplicit
     Resolver -->|--teleport| Teleport[Hosted event fetch + local import]
     Resolver -->|--connect| DirectConnect[Direct Connect HTTP + WebSocket]
-    Resolver -->|--remote| Hosted[Hosted Sessions V2 client]
+    Resolver -->|--cloud / --remote alias| Hosted[Hosted Sessions V2 client]
     Resolver -->|--session-id| Pinned[Pinned id]
 
     Fresh --> Envelope[In-memory session envelope]
@@ -83,12 +83,12 @@ flowchart TD
 
 | Sub-component | Responsibility |
 |---|---|
-| Target resolver | Maps local selectors (`--continue`, `-r`, `--from-pr`, `--session-id`, picker) to restore targets and dispatches Direct Connect, teleport, hosted `--remote`, and Remote Control to their distinct transport/import paths. |
+| Target resolver | Maps local selectors (`--continue`, `-r`, `--from-pr`, `--session-id`, picker) to restore targets and dispatches Direct Connect, teleport, hosted `--cloud`/deprecated `--remote`, and Remote Control to their distinct transport/import paths. |
 | `SessionRestore` | Applies already-discovered conversation, permission, model, agent, deferred-tool, worktree, and compatible bridge state to the envelope. |
 | `SessionDiscovery` | Locates and loads "latest" or matching sessions from the project's JSONL directories, then normalizes the restore object. |
 | Envelope | The live runtime view: session ID, working dir, model, permission mode, agent set, tool registry, hooks, and event sink. |
 | Persistence sink | Queues records per file, appends ordered JSONL batches, then notifies mirrors; respects `--no-session-persistence`. |
-| Bridge plane | Remote Control wraps a local envelope with bridge state, hosted identity, sequence replay, and remote permission flow. `--remote` and teleport have separate hosted-session clients. |
+| Bridge plane | Remote Control wraps a local envelope with bridge state, hosted identity, sequence replay, and remote permission flow. `--cloud` and teleport have separate hosted-session clients. |
 | `InteractiveResumePicker` | Interactive fallback when `--resume` value is ambiguous. |
 
 ## Public interface
@@ -105,7 +105,7 @@ flowchart TD
 | `--resume-session-at <message id>` | Truncate restored history (headless only). |
 | `--rewind-files <user-message-id>` | Restore files to a prior state and exit; no model turn. |
 | `--from-pr <ref>` | PR-based resume path classified through the same resolver. |
-| `--connect`, `--remote`, `--teleport`, `--remote-control` / `--rc` | Select distinct paths: Direct Connect creates and streams a server session, hosted remote owns a hosted loop, teleport imports hosted history into local restore, and Remote Control bridges a local envelope. |
+| `--connect`, `--cloud` (deprecated `--remote`), `--teleport`, `--remote-control` / `--rc` | Select distinct paths: Direct Connect creates and streams a server session, cloud owns a hosted loop, teleport imports hosted history into local restore, and Remote Control bridges a local envelope. |
 | `cleanupPeriodDays` setting | Bounds the durable layer's retention window. |
 | Managed setting `disableRemoteControl` | Blocks Remote Control activation at the policy boundary. |
 
@@ -140,7 +140,7 @@ flowchart TD
 4. **Fork is a first-class operation.** `--fork-session` separates "I want to continue" from "I want a divergent copy" so transcripts are not silently overwritten.
 5. **Rewind is its own subcommand-like flag.** `--rewind-files` is a file-restore-only path that cannot run a turn; this prevents accidental model runs against an inconsistent file tree.
 6. **No-persistence is opt-in, not the default.** Persistence by default keeps resume reliable; explicit opt-out exists for ephemeral pipelines.
-7. **Remote surfaces are not interchangeable transports.** Remote Control drives a local loop through a resumable bridge. `--remote` drives a hosted session through its own SSE client. Teleport fetches hosted logs (with an endpoint fallback), validates repository compatibility, and resumes them locally. The Chrome `BridgeClient` is yet another transport used by browser tools.
+7. **Remote surfaces are not interchangeable transports.** Remote Control drives a local loop through a resumable bridge. `--cloud` drives a hosted session through its own SSE client. Teleport fetches hosted logs (with an endpoint fallback), validates repository compatibility, and resumes them locally. The Chrome `BridgeClient` is yet another transport used by browser tools.
 8. **Picker is a UX fallback, not a separate path.** `InteractiveResumePicker` is invoked when resolver input is ambiguous; it ultimately returns into the same `SessionDiscovery`/`SessionRestore` flow.
 9. **Retention is active lifecycle behavior.** The default is 30 days (minimum configured value: 1). The sweep compares filesystem `mtime`, removes stale transcripts, recordings and sidecars, and recursively cleans associated session/subagent/workflow/remote-agent state. It pauses when disabled or invalid settings sources make the configured period unknowable.
 
@@ -167,7 +167,7 @@ The exact queue timing, chunk/checkpoint thresholds, UUID-cache behavior, reloca
 | Live envelope (session ID, permissions, agents, tools, hooks, model) | Process | This module |
 | Durable JSONL transcript | Across process restarts; subject to retention or explicit deletion | This module |
 | Remote Control bridge state | Connection plus persisted bridge ID/highest received numeric SSE ID | This module + Remote Control transport |
-| Hosted `--remote` state | Hosted session lifetime | Sessions API/SSE client |
+| Hosted `--cloud` state | Hosted session lifetime | Sessions API/SSE client |
 | Telemetry/log files | Configured window | Ops module |
 
 This separation is what lets resume, fork, and rewind operate without touching other modules' state.
@@ -182,7 +182,7 @@ This separation is what lets resume, fork, and rewind operate without touching o
 | Permission mode mismatch on resume | Warning is surfaced before the loop starts. |
 | Disk full / JSONL write error | The drain logs the error and emits `tengu_transcript_write_failed`; queued callers are released and execution can continue, but those records may be absent from disk and mirrors. There is no source-visible automatic switch that disables all later writes. |
 | Remote Control bridge disconnect | The worker SSE transport resumes after its highest received numeric ID, logs but still dispatches duplicate sequence IDs, refreshes/rebuilds selected credential failures, and exposes bridge-state changes. Separate bounded UUID rings suppress send-attempt echoes and type-accepted inbound `user` redelivery; eligible control frames route before that UUID check. |
-| `--remote` disconnect | `SessionsV2Client` resumes by sequence but stops after five reconnect attempts; a `catch_up_truncated` event explicitly reports an unrecoverable transcript gap. |
+| `--cloud` disconnect | `SessionsV2Client` resumes by sequence but stops after five reconnect attempts; a `catch_up_truncated` event explicitly reports an unrecoverable transcript gap. |
 | Managed policy changes | Static source proves activation gates. It does not prove that an already-running bridge is synchronously revoked when policy changes elsewhere. |
 | Concurrent writers to the same session file | In-process queues serialize their own writes, but the artifact exposes no cross-process lock. Cross-process ordering and atomic multi-record semantics remain unspecified. |
 | Transcript relocation failure | Buffered transcript writes replay in `finally`, but the auxiliary buffer covers only the exact old main JSONL; direct associated-tree and CCR-tip writers remain outside it. Main-file move, associated-directory move, relocation metadata, sidecar placement, and symlink repointing are independent. Partial relocation, split associated state, orphan tips, and duplicate copy/delete artifacts are not rolled back. |

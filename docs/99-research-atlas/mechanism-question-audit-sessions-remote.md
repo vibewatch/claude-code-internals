@@ -439,3 +439,21 @@ A final remote-command round distinguished three superficially similar UI entrie
 | Does `/session` mutate or attach the hosted session? | No. It reads `remoteSessionUrl`, renders a text URL and optional QR code, suppresses QR rendering for screen readers, and logs/omits failed QR generation. | Classified it as a read-only remote-mode display. |
 
 The follow-up reread found no additional session-lifecycle command with an undocumented persistence transition; `/copy`, `/export`, and the remaining UI-only selectors stay cataloged without being misrepresented as transcript storage mechanisms. **Follow-up status: edited and converged.**
+
+## Disassembled string-surface follow-up — 2026-07-25
+
+An independent executable-string review found one substantial sessions/remote mechanism outside the original nine-page manifest: the hosted runner's egress proxy and working/file-staging data plane. Generated proxy guidance and a startup call existed, but no owner joined activation, transport, file state, safety, failure, and cleanup.
+
+The focused trace confirmed:
+
+| Question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Is the agent proxy an ordinary user HTTP proxy? | No. Remote startup can create a local HTTPS CONNECT listener whose streams are framed over `/v1/code/agent-proxy/ws`; it has remote/session/token gates, relay CA acquisition, bounded open/buffer/pool/FIN behavior, and cleanup. | Created [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md). |
+| How do tools trust and use it? | Child env supplies `HTTPS_PROXY`, CA variables, optional JVM trust, and guarded placeholder cloud/GitHub credentials. Best-effort system/JVM/Bazel/NSS/Boto/profile setup and optional governed Git/`gh` routing have independent failure paths. | Documented environment, trust, Git/`gh`, and host-internal variable boundaries. |
+| Is working sync transcript persistence? | No. `/mnt/user-data/working` maps to remote `/working` rows through optimistic ETags, 25 MiB files, 4,096-entry scans, four concurrent pushes, five-second polling, and two-minute retry backoff. | Kept it separate from JSONL transcript/CCR reconciliation. |
+| What does `/uploads` staging guarantee? | It contains absolute mount paths, mints filestore credentials, remints once after 401, aborts after 60 seconds without bytes, checks truncation, and publishes by temp/rename. Read-only mount is a conditional no-op. | Added filestore/stage lifecycle and caveats. |
+| How do staged MCP files work? | Declared `/working` lanes become `{{in:NAME}}`/`{{out:NAME}}` temp paths; outputs pass realpath, regular-file, hard-link, 25 MiB, and stable-read checks before optimistic lane writes. Temp state is removed in `finally`; multiple outputs are not one transaction. | Added the staged MCP protocol and cleanup boundary. |
+
+The new page is a tenth sessions/remote mechanism owner. A full post-write reread found no additional source-answerable question within its declared egress/sync/stage/MCP scope; server-side policy, filestore/JWT implementation, and row retention remain outside the client artifact.
+
+**Updated sessions/remote manifest: 10 canonical mechanism pages. String-surface follow-up status: complete and converged.**

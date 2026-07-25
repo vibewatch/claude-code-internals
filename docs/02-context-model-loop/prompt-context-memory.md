@@ -30,6 +30,8 @@ This page reverse-engineers the main sources that can become model-visible conte
 | FileIndexCache | `createFileIndexCache()`, `resetFileIndexCache()` | Session-scoped cache state and generation invalidation. |
 | FileIndexRefresh | `startBackgroundCacheRefresh()`, `getPathsForSuggestions()` | Freshness checks and asynchronous tracked/config path indexing. |
 | FileSuggestions | `generateFileSuggestions()`, `applyFileSuggestion()` | Local/remote/custom suggestion production and input replacement. |
+| PersistentAgentMemory | `memory: user|project|local`, `U4r()` | Per-agent filesystem memory appended to that agent's system prompt. |
+| AgentMemoryPathClass | `KYt()`, `KXh()`, `s0t()` | Resolves scoped roots and classifies contained agent-memory paths. |
 
 ## Current implementation clusters in `cli.renamed.js`
 
@@ -71,6 +73,38 @@ flowchart TD
 | Output styles | `outputStyles` schema | Plugins or settings can contribute output-style definitions. |
 | Slash commands and skills | `slashCommands`, `skills`, `Skill` tool constant | Commands and skills are context and automation surfaces; they can also trigger tool/agent behavior. |
 | Custom agents | `--agents <json>` | Session can receive custom agent definitions with descriptions/prompts/tools. |
+
+## Persistent scoped Agent memory
+
+An Agent definition can opt into a separate per-agent memory directory with:
+
+```yaml
+memory: user | project | local
+```
+
+This field is present in both Markdown/frontmatter and programmatic Agent schemas. It does not select the ordinary AutoMem content type. Instead, the runtime sanitizes the agent type into a directory name and resolves one root:
+
+| Scope | Normal root | Intended boundary |
+|---|---|---|
+| `user` | `~/.claude/agent-memory/<agentType>/` | General learnings reusable across projects. |
+| `project` | `<cwd>/.claude/agent-memory/<agentType>/` | Project-specific memory that can be shared through version control. |
+| `local` | `<cwd>/.claude/agent-memory-local/<agentType>/` | Project/machine-specific memory not intended for version control. |
+
+In a hosted remote environment, the global Claude root can be remapped by `CLAUDE_CODE_REMOTE_MEMORY_DIR`. User-scoped Agent memory follows that global root. Local scope gets a project-keyed remap below `<remote-memory-dir>/projects/<sanitized-project>/agent-memory-local/<agentType>/`. Project scope remains under the working tree. The environment variable is host integration state rather than a recommendation to relocate normal local memory manually.
+
+`U4r(agentType, scope)` ensures the selected directory exists and builds a `Persistent Agent Memory` prompt addendum. It reads that directory's `MEMORY.md` as the index. Missing/empty index state is stated explicitly; populated content passes the shared normalizer, capped at 200 lines and 25,000 string units with a truncation notice. Additional prompt guidance tells the agent which scope it owns and how broadly its learnings should apply.
+
+The addendum is built per Agent definition, not injected into every model request globally. Source-confirmed callers include a main-thread custom Agent, ordinary subagents, and in-process teammates; telemetry distinguishes those sources with `tengu_agent_memory_loaded`. Nested agents only receive memory when their own resolved definition carries a scope (or an explicit propagation branch supplies it); the parent directory is not universally inherited.
+
+Internal path classification gives reads below recognized agent-memory roots an allow result and gives writes an allow result only for `.md` targets. That classification normalizes and checks a recognized root/dangerous-subpath predicate, but it is simpler than team memory's service-key and mirror-symlink validators. It should not be generalized into a separate sandbox or a guarantee against every out-of-process filesystem race.
+
+Three similarly named systems therefore remain distinct:
+
+| System | Identity and storage |
+|---|---|
+| Ordinary AutoMem | General personal/project memory selected by the main memory pipeline. |
+| Team memory | Explicit/discovered service stores synchronized into per-mount mirrors. |
+| Persistent Agent memory | One local filesystem directory per agent type and declared scope, injected only for that Agent. |
 
 ## Prompt/template extraction catalog
 

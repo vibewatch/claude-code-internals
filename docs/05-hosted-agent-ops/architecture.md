@@ -1,12 +1,12 @@
 # Operations and native-support architecture
 
-This page is the architecture analysis for the hosted-agent-ops module. It complements the implementation pages by focusing on **how diagnostics, telemetry, updates, and native helpers are invoked around and alongside the main runtime without owning the model loop** rather than re-listing each event name.
+This page is the architecture analysis for the hosted-agent-ops module. It complements the implementation pages by focusing on **how diagnostics, telemetry, the enterprise gateway, updates, and native helpers are invoked around and alongside the main runtime without owning the local agent loop** rather than re-listing each event name.
 
-Scope: debug logs, telemetry/traffic gates, feature flags, doctor/update tooling, crash and error reporting, hosted review signals, and embedded image/audio native helpers. Implementation specifics live in [Diagnostics and debug logs](diagnostics-and-debug-logs.md), [Telemetry and tracing](telemetry-and-tracing.md), [Feature gates reference](feature-gates-reference.md), [Updater and doctor](updater-and-doctor.md), and [Media native modules](media-native-modules.md).
+Scope: debug logs, telemetry/traffic gates, feature flags, the native-only enterprise gateway server, doctor/update tooling, crash and error reporting, hosted review signals, and embedded image/audio native helpers. Implementation specifics live in [Diagnostics and debug logs](diagnostics-and-debug-logs.md), [Telemetry and tracing](telemetry-and-tracing.md), [Enterprise gateway server](enterprise-gateway.md), [Feature gates reference](feature-gates-reference.md), [Updater and doctor](updater-and-doctor.md), and [Media native modules](media-native-modules.md).
 
 ## Module purpose
 
-This module owns **operational mechanisms that do not own a model turn**. Some are observational (debug logs and telemetry), some are startup-critical setup (network and sink initialization), some are foreground maintenance operations (install/update/doctor), and some transform input before it reaches the model loop (image and voice helpers).
+This module owns **operational mechanisms outside the local agent turn owner**. Some are observational (debug logs and telemetry), some are startup-critical setup (network and sink initialization), one is a standalone auth/inference/policy gateway process, some are foreground maintenance operations (install/update/doctor), and some transform input before it reaches the model loop (image and voice helpers).
 
 It deliberately does *not* own:
 
@@ -40,6 +40,7 @@ Ops is a **mixed control and observation plane**: it surfaces structured events,
 | StatusLineRuntimes | `executeStatusLineCommand`, `pNb`, `fNb`, `Gyf`, `SBa` | Main prompt-line and separate subagent-row command protocols; see [Status line runtime and command protocol](../03-tools-integrations-security/status-line.md). |
 | OpsNotificationStateFlags | `markFirstTeleportMessageLogged`, `isSessionPersistenceDisabled`, `isUserActiveForNotifications` | Cross-cutting state flags observed by ops/notifications. |
 | MediaNativeJsShims | `require("/$bunfs/root/*.node")` | JS shims for embedded native helpers; the extraction script also recovers the gitignored `.node` payloads for inspection. |
+| EnterpriseGateway | `command("gateway")`, `startGateway()` | Native-only OIDC/inference/managed-settings/spend/OTLP server process [~973,797](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L973797). |
 
 ## Internal decomposition
 
@@ -50,6 +51,7 @@ flowchart TD
     Runtime --> Errors[Error reporter / breaker]
     Runtime --> Doctor[/doctor diagnostics]
     Runtime --> Updater[Native auto updater]
+    Runtime --> Gateway[Enterprise gateway server]
     Runtime --> Hosted[Hosted review signals]
     Runtime --> Statusline[Status line / subagent status line]
     Runtime --> Native[Image / audio native helpers]
@@ -58,6 +60,7 @@ flowchart TD
     Telemetry --> Sink[first-party / Datadog / OTel routes]
     Errors --> Sink
     Updater --> Channel[release channel: latest / stable / rc]
+    Gateway --> GatewayState[Postgres / OIDC / upstreams / managed policy]
     Hosted --> Preflight[/v1/ultrareview/preflight]
     Native --> Attach[image / audio attachment inputs]
 
@@ -77,6 +80,7 @@ flowchart TD
 | Hosted review signals | `ultrareview`-adjacent preflight and result hooks; gated by hosted settings/policy. |
 | Status line / subagent status line | Optional command-derived prompt line and JSONL task-row decorations. The focused lifecycle belongs to [Status line runtime and command protocol](../03-tools-integrations-security/status-line.md). |
 | Native helpers | Original payload includes `image-processor.node` and `audio-capture.node` loaded via JS shims; local extraction retains gitignored copies of both binaries. |
+| Enterprise gateway | Runs a separate Bun server process that owns OIDC device auth, Postgres state, Messages API routing, managed settings, spend enforcement, and OTLP relay. |
 
 ## Public interface
 
@@ -90,6 +94,7 @@ flowchart TD
 | `OTEL_*` env | Wire OTEL sinks if configured. |
 | `claude doctor` | Run the diagnostics path. |
 | `claude update`, `claude install` | Manual updater entry. |
+| `claude gateway --config <path>` | Starts the native-only enterprise gateway from a strict YAML configuration. |
 | Settings: `cleanupPeriodDays`, `statusLine`, `subagentStatusLine`, `auto-update` channel/min version | Persistent ops configuration. |
 | Managed policy: `disableAllHooks`, `disableRemoteControl`, `disableAgentView`, `disableSkillShellExecution` | Capability/policy switches surfaced through ops UX. |
 
@@ -104,6 +109,7 @@ flowchart TD
 | Crash/error reports | Error sink (when enabled). |
 | Status-line strings | Terminal UX. |
 | Image/audio buffers | Attachment paths in the context/model loop. |
+| Gateway OAuth/API/health endpoints | Enterprise clients, administrators, and upstream provider adapters. |
 
 ## Internal collaborators
 
@@ -126,6 +132,7 @@ flowchart TD
 5. **Native helpers are isolated behind JavaScript façades.** The readable source establishes addon loading, method calls, disposal, recorder selection, and downstream use. Export tables and binary strings alone do not establish native scheduling, cleanup, or error propagation.
 6. **Error reporting is opt-in / opt-out at a coarse grain.** `DISABLE_ERROR_REPORTING` short-circuits the reporter rather than reshaping individual call sites.
 7. **Profiling marks are part of the lifecycle, not a separate framework.** `import_time`, `cli_entry`, `main_function_start`, `run_function_start`, `preAction_*` marks all flow through the same logger so support can read a single timeline.
+8. **The gateway is an operational server role, not the local agent loop.** It proxies provider Messages requests and serves auth/policy/telemetry, but does not assemble or execute a developer's local tool-using turn.
 
 ## Operational seams
 
@@ -152,6 +159,7 @@ flowchart TD
 | Main status-line command errors | The custom line is suppressed; the loop continues. Subagent-decoration errors instead fall back to built-in task rows. |
 | Event-loop stall detector triggers | Diagnostic events emitted; runtime continues. |
 | Hosted review preflight rejects | UX surfaces the result; local workflow is not blocked. |
+| Gateway configuration/store startup fails | The gateway command exits before listening; an already-running local Claude Code session is a separate process. |
 
 ## Extension points
 
@@ -179,6 +187,7 @@ flowchart TD
 - [Updater and doctor](updater-and-doctor.md)
 - [Media native modules](media-native-modules.md)
 - [Audio capture and voice mode](audio-capture-and-voice.md)
+- [Enterprise gateway server](enterprise-gateway.md)
 - [System architecture](../00-start-here/system-architecture.md)
 - [Runtime lifecycle architecture](../01-runtime-lifecycle/architecture.md)
 - [Session and remote-control architecture](../04-sessions-persistence-remote/architecture.md)

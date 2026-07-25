@@ -38,6 +38,7 @@ Short version: the daemon is the **long-lived local supervisor process** used by
 | CorporateProcessWrapper | `processWrapper`, `CLAUDE_CODE_PROCESS_WRAPPER` | Required launcher prefix for the supervisor, workers, and covered background self-spawns. |
 | BackgroundSessionCommand | `name: "background"`, `spawnBackgroundFork()`, `spawnBgSession()` | Flushes/snapshots the live session and dispatches a resumable daemon worker [~768,500–769,300](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L768500). |
 | StopBackgroundCommand | `name: "stop"`, `lxo()`, `daemonDetachApc()` | Marks the current job stopped, detaches its host, and shuts the worker down without deleting retained state [~564,789–564,860](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L564789). |
+| AdoptionCarrier | `adopt.json`, `Upr()`, `Yqd()` | Bounded background/exit handoff document, claimed by process-specific rename and removed after read [~628,072–628,307](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L628072). |
 
 ## Bundle modules in `cli.renamed.js`
 
@@ -306,6 +307,34 @@ The interactive `/background [prompt]` command (alias `/bg`) is a handoff from t
 6. After a successful daemon dispatch, carryable tasks are disowned by the parent and the foreground process exits with a short ID plus reattach hints. Failed dispatch retains/queues recovery state only in the explicit source-visible branches; it is not reported as a successful background session.
 
 When the parent must remain live (the separate background-fork path), the implementation allocates a new session ID, copies the transcript to the job directory as `parent-transcript.jsonl`, and resumes the copy. Ordinary `/background` exits the parent after handoff instead.
+
+### `adopt.json`: bounded handoff, not durable queue
+
+Transferable work crosses the parent/worker boundary through `<jobDir>/adopt.json`. The top-level payload contains:
+
+| Field | Shape |
+|---|---|
+| `writtenAtMs` | Required number used for freshness checks. |
+| `origin` | Optional `background` or `exit`. |
+| `shells` | Detached shell/monitor records carrying task/PID/process-start identity, command/description, contained output path, line cursor, and optional tool/agent IDs. |
+| `cron` | Session cron records with ID, expression, prompt, creation time, recurrence, optional agent ID, and optional `kind:"loop"`. |
+| `agents` | Optional checkpointed agent records with constrained ID plus type/description/tool/depth/start/transcript/parent metadata. |
+| `workflows` | Optional workflow records with constrained task/run IDs, script path/hash, serialized args, description/start time, and transcript directory. |
+| `prefill` | Optional `{text, boundaryUuid?}` prompt handoff. |
+
+Adopt paths pass a root-containment resolver before the schema accepts them. Shell output is limited to the project temp root (plus the explicitly supplied merge output root); agent/workflow paths are normalized separately during resume. This is path admission for the handoff, not a statement that every later process access is race-free.
+
+`Upr()` best-effort reads an existing file before writing the new payload. It considers the old document for merge only when the text is at most **1,000,000 characters**, validates against the selected schema, and the old document contains at most **256** total shell/cron/agent/workflow entries. Dedupe keys are shell PID, cron ID, agent ID, and workflow task ID. New `writtenAtMs`, optional new `origin`, and optional new `prefill` win. The function checks the old candidate's count before merging; this source slice does **not** re-check the final merged count.
+
+The worker claims the carrier by renaming:
+
+```text
+adopt.json → adopt.json.<claiming-pid>
+```
+
+An optional wait polls an absent source at 250 ms intervals. Busy/error outcomes are classified and return no payload. After a successful claim, the worker reads and validates the renamed file. A non-`exit` payload older than **120 seconds** is rejected; `origin:"exit"` is deliberately exempt from that freshness test so an exit handoff can survive longer startup delay. Schema/read/parse/freshness failure returns `null` rather than adopting partial entries.
+
+The claimed `adopt.json.<pid>` is best-effort unlinked in `finally`, on both success and failure. There is no `.expired` recovery rename in this claim path. Rename makes one reader the claimant, but the overall lifecycle remains best-effort: producer write, transcript checkpoint, daemon dispatch, and per-task resume are not one crash-atomic transaction. Unresumed agents/workflows are retained in a process-local carryover long enough to produce failure/recovery messaging; they are not silently reported as live.
 
 ### Stopping from inside the worker
 

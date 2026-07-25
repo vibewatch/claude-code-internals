@@ -17,20 +17,37 @@ Exact duplicated paragraphs were not the deciding signal. Parallel pages can res
 
 ## Structural result
 
-The wiki now has **61 canonical mechanism pages** across the six runtime domains. This is the union of the pages in the six final domain-audit manifests, not the total number of Markdown files and not a suffix-based rule. Section guides, orientation pages, generated prompt artifacts, research records, and lookup-only references remain first-class documentation but are outside that mechanism count unless a domain ledger explicitly audited their behavior. For example, `settings-schema-reference.md` is counted because the tools/security follow-up audited its runtime configuration boundaries, while `command-line-reference.md` remains a lookup owner outside the runtime mechanism ledger.
+The wiki now has **63 canonical mechanism pages** across the six runtime domains. This is the union of the pages in the six final domain-audit manifests plus their recorded follow-ups, not the total number of Markdown files and not a suffix-based rule. Section guides, orientation pages, generated prompt artifacts, research records, and lookup-only references remain first-class documentation but are outside that mechanism count unless a domain ledger explicitly audited their behavior. For example, `settings-schema-reference.md` is counted because the tools/security follow-up audited its runtime configuration boundaries, while `command-line-reference.md` remains a lookup owner outside the runtime mechanism ledger.
 
 | Domain | Canonical mechanism pages | Count manifest | Structure decision |
 |---|---:|---|---|
 | Runtime and startup | 10 | [Runtime audit scope](mechanism-question-audit-runtime.md#purpose-and-scope) plus its terminal follow-up | Retired one duplicate command narrative; routing and command inventory now have separate canonical owners. |
 | Context and model loop | 8 | [Context/model audit scope](mechanism-question-audit-context-model.md#scope-and-exclusions) | Kept source discovery, assembly scenarios, compaction, model/provider, stream, and generated prompt artifacts separate. |
 | Tools, integrations, and security | 15 | [Tools/security final convergence table](mechanism-question-audit-tools-security.md#final-convergence-result) | Retained the intentional map → inventory → behavior/deep-dive layers. |
-| Sessions, persistence, and remote | 9 | [Sessions/remote audit scope](mechanism-question-audit-sessions-remote.md#scope-and-constraints) | Kept lifecycle, API/storage inventory, and schema references separate, but removed repeated algorithms from secondary pages. |
-| Operations and native support | 9 | [Operations/native audit scope](mechanism-question-audit-operations-native.md#scope-and-exclusions) | Retained observability, maintenance, configuration references, consumer lifecycle, and native-artifact analyses as separate layers. |
+| Sessions, persistence, and remote | 10 | [Sessions/remote audit scope](mechanism-question-audit-sessions-remote.md#scope-and-constraints) plus its string-surface follow-up | Kept lifecycle, API/storage inventory, and schema references separate; added a distinct remote-runner egress/sync/staging owner without merging it into hosted-session transport. |
+| Operations and native support | 10 | [Operations/native audit scope](mechanism-question-audit-operations-native.md#scope-and-exclusions) plus its string-surface follow-up | Retained observability, maintenance, configuration references, consumer lifecycle, native-artifact analyses, and the independent enterprise gateway server. |
 | Agents and automation | 10 | [Agents/automation final convergence table](mechanism-question-audit-agents-automation.md#final-convergence-result) plus messaging/Teams follow-ups | Narrowed the overbroad scheduling page to steering/interruption/completion and delegated task/cron/workflow concerns to their owners. |
 
 The count decreased from 62 to 61 without losing a mechanism: `commands-and-flags.md` duplicated the routing narrative in `cli-main-paths.md` and the surface tables in `command-line-reference.md`.
 
+A later independent [string-surface review](disassembled-string-surface-review.md) increased the count from 61 to 63 by promoting two lifecycle owners that the original theme-led inventory missed. This is not a reversal of the consolidation rule: both new pages have independent activation, state, authority, failure, and cleanup. Other discovered clusters were absorbed by existing owners.
+
 ## Changes made
+
+### String-surface follow-up
+
+The follow-up applied the same canonical-owner test to source-confirmed string clusters:
+
+| Discovery | Structure decision |
+|---|---|
+| Enterprise `gateway --config` server | New [Enterprise gateway server](../05-hosted-agent-ops/enterprise-gateway.md) page. It is a standalone Bun/Postgres/OIDC/inference/policy/spend/OTLP server role, not another paragraph in client-side provider auth. |
+| Remote agent proxy + working sync + `/uploads` + staged MCP | New [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md) page. These form one hosted-runner data plane but are not the hosted-session replay/control transport. |
+| Plugin evaluation | Extended [Plugin lifecycle and configuration](../03-tools-integrations-security/plugin-lifecycle-and-configuration.md#plugin-evaluation-early-access); target resolution, suite execution, sandbox, grading, and reports are one plugin operational surface. |
+| Persistent scoped Agent memory | Extended [Prompt, context, and memory](../02-context-model-loop/prompt-context-memory.md#persistent-scoped-agent-memory); a separate page would compete with the existing memory-source owner. |
+| Grove terms/privacy | Extended [Settings, policy, and integrations](../03-tools-integrations-security/settings-policy-and-integrations.md#consumer-terms-and-privacy-policy-grove), with command/startup cross-links. |
+| Prompt history, `adopt.json`, archive import, decision JSONL, MCP OAuth/XAA | Added focused sections to their existing input, daemon, transcript, diagnostics, and MCP owners. |
+
+The two new filenames use mechanism noun phrases and state their non-equivalences up front. No page named only `gateway`, `proxy`, `memory`, or `eval` was introduced, because those terms already identify several unrelated client/server/runtime concepts.
 
 ### Runtime command documentation
 
@@ -83,7 +100,7 @@ Detailed queue timing, chunk thresholds, relocation steps, hydration guards, and
 
 ### Reader-facing operations name
 
-The chapter previously displayed as “Hosted agent ops,” but most of its content concerns local diagnostics, telemetry, updates, safe-mode recovery, environment gates, and native media artifacts. Its reader-facing title is now **Operations and native support**. The directory/route `05-hosted-agent-ops` remains stable to avoid broad link churn and broken external URLs.
+The chapter previously displayed as “Hosted agent ops,” but most of its content concerns local diagnostics, telemetry, updates, safe-mode recovery, environment gates, the enterprise gateway, and native media artifacts. Its reader-facing title is now **Operations and native support**. The directory/route `05-hosted-agent-ops` remains stable to avoid broad link churn and broken external URLs.
 
 ### Source and catalog wording
 
@@ -136,6 +153,7 @@ The large generated prompt files are artifacts, not tutorials. Their category-st
 | Updater/doctor and safe mode/recovery | Maintenance/health commands versus startup customization isolation. |
 | Feature gates and environment-variable reference | Decision logic versus operator-facing variable inventory. |
 | Media native modules, audio capture/voice, audio native, image native | Payload inventory, consumer feature lifecycle, and per-binary artifact analysis. |
+| Enterprise gateway and client gateway auth | Standalone operator server lifecycle versus developer CLI credential/provider routing. |
 
 ### Research atlas
 
@@ -174,16 +192,18 @@ Similarity is a triage signal, not a merge threshold. The post-change candidates
 5. Do not copy algorithm steps into architecture, inventory, or schema pages; summarize invariants and link to the owner.
 6. Keep generated filenames synchronized with their generators.
 7. Prefer reader-facing title corrections over route churn when an established path has many inbound/external links.
-8. Treat audit/history mentions of retired paths as historical records, not live navigation.
+8. Treat audit/history mentions of retired paths or superseded conclusions as historical records, not live navigation.
 
-## Validation
+## Original structure-review validation
+
+The metrics below describe the completed 61-page structure review before the later string-surface follow-up added three Markdown sources and two mechanism owners. They remain as historical evidence for that consolidation pass; current post-follow-up metrics are recorded separately after fresh validation.
 
 - Three independent final reviews checked the global information architecture, command/agent consolidation, and session de-duplication. All substantive redesigns converged; the only material clarification was to make the mechanism-count manifests explicit.
 - The final inventory contains **97 Markdown sources** with **97 unique H1 titles**. `docs/SUMMARY.md` resolves all **96** other page targets.
 - All **2,191 authored relative Markdown targets** resolve across the 88 non-generated Markdown files. The nine generated prompt shards are validated as generated pages rather than as wiki link sources because their verbatim fenced prompt bodies intentionally contain example/pseudo-repository Markdown links.
 - All **88** configured sidebar routes resolve to source pages with no duplicate route.
 - The filename/title audit found only four low-overlap names, all expected section-scoped `architecture.md` files whose H1 supplies the domain. No unexplained filename/H1 mismatch remains.
-- The current mechanism arithmetic is **10 + 8 + 15 + 9 + 9 + 10 = 61**, with each count linked to its domain ledger above.
+- At that review point, the mechanism arithmetic was **10 + 8 + 15 + 9 + 9 + 10 = 61**. After the string-surface follow-up, the current arithmetic is **10 + 8 + 15 + 10 + 10 + 10 = 63**.
 - `git diff --check` passed before the production build.
 - Astro/Starlight loaded **97** docs and generated **98** static pages. Pagefind indexed all 98 HTML files and sitemap generation completed.
 - Generated-route assertions confirmed that `/01-runtime-lifecycle/commands-and-flags/` and `/06-agents-automation/agent-runtime-scheduling-and-completion/` are absent, while the replacement agent page and this structure review are present with all referenced heading fragments.

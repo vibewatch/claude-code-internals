@@ -225,3 +225,22 @@ The broad command inventory found two diagnostics mechanisms that the original f
 - `/heapdump` is a hidden support command. It writes an owner-only V8 `.heapsnapshot` and a diagnostics JSON file to the Desktop when available or the home directory otherwise. The JSON separates JS heap from external/unaccounted native memory and includes V8 spaces, resource usage, active handles/requests, file descriptors, optional `/proc` data, JSC counts, and heuristic leak indicators.
 
 `diagnostics-and-debug-logs.md` now owns both paths. Neither command is described as an external upload, automatic cleanup, or universal crash dump; those guarantees are absent from the retained client. The follow-up reread produced zero new source-answerable diagnostics-command questions. **Follow-up status: edited and converged.**
+
+## Disassembled string-surface follow-up — 2026-07-25
+
+The independent executable-string review found one substantial operations mechanism outside the original nine-page manifest. `gateway` appeared in the root command map and long embedded protocol text, but no canonical page owned the bundled server's executable lifecycle.
+
+The focused trace confirmed:
+
+| Question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Is `claude gateway` only client auth vocabulary? | No. `gateway --config <path>` lazily starts a native Bun server; npm-only execution is rejected. | Created [Enterprise gateway server](../05-hosted-agent-ops/enterprise-gateway.md) and kept client-side gateway auth in the model/provider owner. |
+| What controls startup and state? | YAML is recursively interpolated from `${ENV}` and absolute `${file:...}`, then parsed by a strict schema. Postgres opens through `Bun.SQL`; advisory lock `6775156` serializes migrations 1–6, and timers clean expiring/retained rows. | Added startup, schema, migration, retention, and failure behavior. |
+| What services does it expose? | OIDC device authorization/callback/token refresh, role-matched managed settings, Desktop bootstrap, `/v1/models`, Messages/count-tokens proxying, spend-limit/admin APIs, usage metering, OTLP relay, `/healthz`, and store-backed `/readyz`. | Added route and authority boundaries without treating embedded protocol prose as proof. |
+| Which provider routes are executable? | Anthropic, Bedrock, Anthropic AWS, Vertex, and Foundry adapters are constructed; explicit/built-in mappings and role `availableModels` constrain routing. | Added model/upstream behavior and deployment caveats. |
+| What hardening is visible? | Public URL is required off loopback; outbound requests block metadata/link-local/unsafe loopback and validate DNS results; inbound CIDR/size/rate/TLS/security-header controls apply. `CLAUDE_GATEWAY_ALLOW_LOOPBACK` is an explicit security-sensitive override. | Added SSRF/TLS/operator-env and response-hardening sections. |
+| What does shutdown prove? | `startGateway()` returns `stop()` to stop Bun and close store timers. No gateway-specific signal handler was found in the focused path. | Documented the closure API without inventing signal wiring. |
+
+The new page is a tenth operations/native mechanism owner. A full post-write reread found no additional source-answerable question within its config/auth/store/inference/policy/spend/relay scope; upstream cloud service and deployment-package behavior remain outside the bundle.
+
+**Updated operations/native manifest: 10 canonical mechanism pages. String-surface follow-up status: complete and converged.**

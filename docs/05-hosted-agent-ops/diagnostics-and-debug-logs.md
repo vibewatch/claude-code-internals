@@ -18,6 +18,7 @@ Use [Telemetry and tracing](telemetry-and-tracing.md) for traffic/telemetry/OTEL
 | HeapDumpCommand | `heapdump`, `performHeapDump()`, `captureMemoryDiagnostics()` | Hidden support command that writes a V8 snapshot plus diagnostics JSON [~560,096–560,350](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L560096). |
 | EventLoopStallDetector | `startEventLoopStallDetector` | Optional event-loop stall diagnostic. |
 | StartupProfilingMarkers | `import_time`, `cli_entry`, `main_tsx_imports_loaded` | Startup profiling markers. |
+| AutoModeDecisionLog | `AUTOMODE_DECISION_LOG=1`, `.automode_decisions.jsonl` | Enables a best-effort local classifier decision trace [~446,940](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L446940). |
 | ShutdownErrorFlushCoordinator | `recordUncaughtAndCheckBreaker`, `gracefulShutdown`, `flushAnalyticsSinks` | Error/crash recording and shutdown flush coordination. |
 
 ## Bundle modules in `cli.renamed.js`
@@ -71,6 +72,18 @@ The writer uses a one-second flush interval and a maximum buffer of 100 entries,
 After a write, `maybeRotateDebugLog()` tracks the file size. Once it exceeds 10 MiB, the current file is renamed to `<name>.1.txt` (or `<name>.1` for a non-`.txt` path), replacing or removing an older single rotated generation if necessary. Rotation failure is swallowed to avoid turning diagnostics into a runtime failure. The writer then refreshes a sibling `latest` symlink to the active path on a best-effort basis.
 
 This is a support log, not a durability guarantee: directory creation, fallback, rotation, and symlink errors are deliberately non-fatal.
+
+### Auto-mode decision JSONL
+
+`AUTOMODE_DECISION_LOG` is a narrower classifier diagnostic, independent of the normal debug writer. Only the exact value `1` enables it. The first lookup caches this process-local decision and resolves the destination as:
+
+```text
+<current working directory>/.automode_decisions.jsonl
+```
+
+Each call appends one line shaped as `{ "ts": <Date.now()>, ...callerFields }`. The source does not define one universal caller payload schema, so readers should treat additional fields as build-specific classifier evidence.
+
+The append is intentionally fire-and-forget: there is no lock, retry, rotation, flush registration, or error report, and `appendFile` rejection is swallowed. Multiple processes can interleave writes. This is a local best-effort investigation aid, not an audit log or supported automation interface.
 
 ## Startup and runtime diagnostics
 

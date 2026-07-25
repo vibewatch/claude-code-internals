@@ -11,6 +11,8 @@ Specialized dynamic MCP integrations have separate owners: [Browser automation a
 | Semantic alias | String or symbol | Meaning |
 | --- | --- | --- |
 | McpCommandRegistrar | `function rR4(H)` | Registers the `mcp` command family. |
+| McpAddOAuthOptions | `--client-id`, `--client-secret`, `--callback-port`, `--xaa` | Configures remote HTTP/SSE OAuth metadata and optional XAA per server [~620,000](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L620000). |
+| McpXaaCommands | `mcp xaa setup|login|show|clear` | Configures the shared SEP-990 IdP connection and cached identity token. |
 | McpServeCommand | `command("serve")` | Starts the Claude Code MCP server. |
 | McpListCommand | `command("list")` | Lists configured MCP servers. |
 | McpDesktopImportCommand | `command("add-from-claude-desktop")` | Imports MCP servers from Claude Desktop. |
@@ -93,6 +95,28 @@ flowchart TD
 | `add-from-claude-desktop` | Imports MCP servers from Claude Desktop on supported platforms. |
 | `reset-project-choices` | Clears project-scoped approve/reject choices for `.mcp.json` servers. |
 | `login <name>` / `logout <name>` | Authenticates or clears one MCP server without opening the interactive `/mcp` menu; `--no-browser` supports SSH/manual completion. |
+| `xaa setup|login|show|clear` | Early/gated SEP-990 IdP configuration and login cache shared by MCP servers whose config sets `oauth.xaa`. |
+
+### Custom OAuth options and XAA
+
+`mcp add` has four OAuth-related options for HTTP/SSE transports:
+
+| Option | Persisted/runtime effect |
+|---|---|
+| `--client-id <id>` | Adds `oauth.clientId` to the server config. |
+| `--client-secret` | Prompts/reads the MCP server's OAuth client secret and stores it through secure storage; `MCP_CLIENT_SECRET` is the noninteractive environment source. |
+| `--callback-port <port>` | Adds a fixed callback port after validating the integer range `1..65535`. |
+| `--xaa` | Adds `oauth.xaa:true`; hidden unless XAA is enabled and requires client ID, client secret, and shared IdP setup. |
+
+These options apply only to `http` and `sse`. Supplying them for a stdio server prints a warning and ignores them. A server can still be added if secure secret storage fails; the CLI says that config was written but asks the user to rerun `--client-secret` once storage is available. This separates non-secret config persistence from secret persistence rather than embedding the secret in `.mcp.json`.
+
+XAA (SEP-990) adds a shared identity-provider layer before per-server authorization. `--xaa` first checks `CLAUDE_CODE_ENABLE_XAA`, then requires `--client-id`, `--client-secret`, and `settings.xaaIdp` from `claude mcp xaa setup`.
+
+`mcp xaa setup` requires an issuer and Claude Code IdP client ID. Issuers must use HTTPS, except loopback HTTP for local testing. Optional callback port uses the same `1..65535` check. `--client-secret` reads `MCP_XAA_IDP_CLIENT_SECRET`, writes only issuer/client ID/callback port to user settings, and stores the secret in the keychain. Changing issuer or client ID clears prior cached token/secret state for the old identity.
+
+`mcp xaa login` runs OIDC browser login and caches an IdP `id_token`; `--force` ignores a still-valid cache, while hidden/testing-oriented `--id-token` stores a pre-obtained JWT directly. `show` reports config plus whether a secret and valid token are cached without printing either value. `clear` removes user settings and both cached identity artifacts.
+
+XAA setup authenticates Claude Code to the common IdP; the per-server `--client-id`/secret still identifies the MCP server's own authorization-server client. The two client IDs are not interchangeable.
 
 ## Plugin surfaces
 

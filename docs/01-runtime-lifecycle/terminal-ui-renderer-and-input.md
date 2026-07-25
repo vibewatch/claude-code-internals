@@ -47,6 +47,7 @@ The two renderer names mean:
 | TuiCommand | [~827,500–827,650](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L827500) | `/tui <default|fullscreen>`, `relaunchInto()` | Persists the renderer choice and optionally relaunches/resumes. |
 | FocusCommand | [~562,143](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L562143) | `name: "focus"` | Focus view depends on the fullscreen renderer. |
 | TerminalEmergencyRestore | [~309,900](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L309900) | `restoreTerminalModes` | Synchronous best-effort reset for cursor, mouse/focus modes, and alternate screen. |
+| PromptHistoryStore | [~504,851–505,200](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L504851) | `history.jsonl`, `paste-cache`, `CLAUDE_CODE_SKIP_PROMPT_HISTORY` | Persists submitted prompt history and externalizes large pasted text. |
 
 ## Renderer decision order
 
@@ -130,6 +131,25 @@ The last release removes the listener, unreferences stdin, restores cooked mode 
 | Keyboard | Focused element/keybinding-scope dispatcher. |
 
 The keybinding registry supports nested scopes, preemptive scopes, focus claims, chords, remaps, and fallback hints. Individual default bindings and customization belong in the command/keybinding references; this page documents the transport from terminal bytes to that registry.
+
+## Prompt history and pasted-text storage
+
+Submitted interactive prompts have a second persistence path that is independent of session transcripts. `history.jsonl` under the Claude configuration root powers prompt-history search/navigation; it is **not** the `${sessionId}.jsonl` conversation record used by resume.
+
+Each queued history row carries the display text, non-media pasted-content descriptors, current timestamp, project root, and session ID. Consecutive identical plain prompts in the same project/session are coalesced. History readers yield still-queued rows first, then stream disk rows, deduplicating by `timestamp + sessionId`; malformed individual lines are logged and skipped. Project/session/everywhere views retain at most 100 distinct display entries.
+
+Text paste bodies use two storage forms:
+
+| Paste size | Stored representation |
+|---|---|
+| At most 1,024 JavaScript string units | Inline `content` in `history.jsonl`. |
+| Larger | `contentHash`, the first 16 hex characters of SHA-256, plus `paste-cache/<hash>.txt`. |
+
+Images and audio are not copied into prompt history by this path. A large paste is first tracked in process memory while its cache write runs; a failed cache write falls back to a bounded in-memory cache for the process. On a later history read, the runtime resolves the hash from pending memory, fallback memory, or disk. If all copies are gone, it replaces the matching display marker with `content no longer available` and records a loss signal rather than inventing the old text. Expansion back into the editor refuses recovered text above 100,000 string units.
+
+`rpd()` ensures `history.jsonl` exists, obtains a file lock with a 10-second stale threshold and three lock retries (minimum 50 ms delay), appends the queued JSONL batch, and releases the lock in `finally`. If lock acquisition fails, the outer queue performs an initial attempt plus at most five delayed retries at 500 ms intervals while rows remain. A failure after the queue has been handed to the append is logged but is not a transactional retry guarantee.
+
+History recording is skipped when `CLAUDE_CODE_SKIP_PROMPT_HISTORY` parses true or when the process is a nested interactive Claude session. The variable suppresses this prompt-picker history only; it does not imply `--no-session-persistence` and does not disable the main transcript.
 
 ## Suspend, resize, and cleanup
 

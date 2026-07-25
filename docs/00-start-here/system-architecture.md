@@ -32,6 +32,7 @@ The design resembles the `copilot-cli-internals` documentation model in one impo
 | Headless loop | `HeadlessLoop` | `function runHeadlessStreamingForTesting` | Multiplexes model output, control requests, MCP status, bridge state, task notifications, and final results. |
 | Interactive loop | `InteractiveSessionLoop` | `async function qkS()`, `launchRepl` | Runs fresh, continue, resume, picker, teleport, remote, and TUI/session paths. |
 | Background supervisor | `DaemonSupervisor` | `krm()`, `daemonMain`, `BG_PROTO = 1` | Owns local background workers and a versioned newline-delimited control-socket protocol. |
+| Enterprise gateway | `GatewayServer` | `command("gateway")`, `startGateway()` | Separate native Bun server role for enterprise auth, inference routing, managed settings, spend control, and telemetry. |
 | Shutdown | `ShutdownCoordinator` | `gracefulShutdown`, `gracefulShutdownSync`, `Uut`, class `bsi` | Single-claim ordered process shutdown over snapshot-and-clear disposer registries and output drains. |
 | Context sources | `ContextInputs` | `CLAUDE.md`, `.claude/settings.json`, `--system-prompt`, `--append-system-prompt`, `--exclude-dynamic-system-prompt-sections` | Confirms layered prompt/context inputs and stable-vs-dynamic prompt boundaries. |
 | Provider/auth | `ProviderClassifier` | `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_MANTLE`, `CLAUDE_CODE_USE_ANTHROPIC_AWS` | Confirms credential and provider-routing surfaces. |
@@ -46,7 +47,8 @@ The design resembles the `copilot-cli-internals` documentation model in one impo
 | Plugins | `PluginCommand` | `Mep()`, `.command("plugin")`, `--plugin-dir`, `--plugin-url`, `outputStyles` | Plugin/session-extension input surfaces. |
 | Session restore | `SessionRestorer` | `loadConversationForResume`, `restoreSessionMetadata`, `applyEndedByModelOnResume` | Loads resumable session state and applies it to the current runtime envelope. |
 | Session events | `SessionProjection` | `transcriptPath`, `transcript_mirror`, `session_state_changed` | Shows transcript-backed state plus live SDK/headless projections. |
-| Remote/teleport/control | `RemoteBridge` | `--remote`, `--teleport`, `--remote-control`, `remoteSessionConfig`, `teleportWithProgress`, `CLAUDE_CODE_SESSION_ACCESS_TOKEN` | Confirms local sessions can be bridged to remote, teleport, and control channels. |
+| Cloud/teleport/control | `RemoteBridge` | `--cloud`, deprecated `--remote`, `--teleport`, `--remote-control`, `remoteSessionConfig`, `teleportWithProgress`, `CLAUDE_CODE_SESSION_ACCESS_TOKEN` | Confirms hosted, imported, and bridged session channels remain distinct. |
+| Remote runner data plane | `initAgentProxy`, `startSyncedFileSyncer`, `stageFile`, `runStagedMcpCall` | Provides policy-enforced egress and synchronized/staged files to hosted runners without becoming the session transport. |
 | Agents/tasks/workflows | `TaskRuntime` | `Agent`, `TaskCreate`, `TaskGet`, `Workflow`, `SubagentStart`, `SubagentStop`, `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` | Confirms task, background subagent, and deterministic workflow orchestration as first-class runtime state. |
 | Operations | `OpsPolicy` | `CLAUDE_CODE_DEBUG_LOGS_DIR`, `--debug-file`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, `H.command("doctor")`, `H.command("update")` | Debug, telemetry/traffic, updater, and health-check boundaries. |
 | Voice/native audio | `VoiceDictation` | `audio-capture-napi loaded`, `/voice`, `Final transcript assembled`, `Injecting transcript` | Local microphone capture plus transcription stream feeding text back into prompt input. |
@@ -63,6 +65,7 @@ flowchart TB
     Commander --> Headless[Headless SDK loop]
     Commander --> Interactive[Interactive TUI loop]
     Commander --> Commands[mcp / plugin / auth / agents / doctor / update]
+    Commander --> Gateway[enterprise gateway server]
     Specialized --> Daemon[Local background supervisor]
 
     Commander --> Settings[Settings, managed policy, flags]
@@ -102,6 +105,7 @@ flowchart TB
     Remote --> Interactive
     Remote --> Headless
     Remote --> Permissions
+    Remote --> RunnerData[agent proxy / working sync / file staging]
 
     Commander --> Ops[Debug logs / telemetry / updater]
     Headless --> Ops
@@ -209,7 +213,9 @@ Important consequences:
 | Command sandbox | Platform command isolation, network/filesystem policy, unsandboxed fallback/strict mode. | Approved Bash/PowerShell tool input, sandbox settings, managed policy, host permission responses. | Sandboxed command wrapper, sandbox violations, permission requests, TUI sandbox status. | [Sandbox and isolation](../03-tools-integrations-security/sandbox-and-isolation.md) |
 | MCP/plugins/hooks | External tool/resource/prompt providers and extension payloads. | CLI flags, settings, plugin dirs/URLs, MCP config, claude.ai connector promise, hook definitions. | MCP tools/resources/prompts, plugin output styles/agents/skills/hooks, elicitation frames. | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
 | Sessions and persistence | Session IDs, transcript paths, resume/fork/rewind state, transcript-derived runtime envelope. | CLI session flags, JSONL transcripts, bridge metadata, worktree/PR metadata, restored permission/model state. | Initial runtime state, transcript writes/mirrors, resume/fork handoff. | [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md) |
-| Remote/teleport/control | Remote session attach/create, teleport hydration, local-session bridge, control/permission routing. | Hidden root flags, session access tokens, bridge state, remote URLs/session IDs. | `remoteSessionConfig`, bridge events, permission responses, inbound prompts/control changes. | [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) |
+| Cloud/teleport/control | Hosted session attach/create, teleport hydration, local-session bridge, control/permission routing. | Hidden root flags, session access tokens, bridge state, hosted URLs/session IDs. | `remoteSessionConfig`, bridge events, permission responses, inbound prompts/control changes. | [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) |
+| Remote runner data plane | Hosted-environment HTTPS egress, trust setup, working-file sync, filestore staging, and staged MCP file mediation. | Host session identity/tokens, internal gates, synchronized lane metadata, MCP file declarations. | Local proxy/tool env, `/working` rows, `/uploads` files, staged MCP results. | [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md) |
+| Enterprise gateway | Corporate device auth, provider routing, managed policy, spend enforcement, OTLP relay, health/readiness. | `gateway --config`, YAML/secrets, Postgres, OIDC, provider credentials. | OAuth/Anthropic/admin/telemetry HTTP endpoints. | [Enterprise gateway server](../05-hosted-agent-ops/enterprise-gateway.md) |
 | Runtime communication protocols | Protocol selection across module, daemon, tool, MCP, task/inbox, bridge, remote, and provider boundaries. | In-process calls, local control requests, model/tool deltas, MCP configs, bridge endpoints, remote/session tokens, provider requests. | Newline-delimited daemon JSON, JSON-RPC methods, typed envelopes, stream-JSON frames, HTTP/SSE/event-stream boundaries. | [Runtime communication protocols](runtime-communication-protocols.md) |
 | Agents and automation | Custom agents, task tools, subagent lifecycle, background/scheduled work, hosted review entrypoints. | Agent JSON/frontmatter, tool availability, task store, cron/scheduler triggers, hosted preflight responses. | Task events, subagent transcripts, task notifications, model-visible task results. | [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md) |
 | Diagnostics and operations | Debug logs, traffic policy, telemetry gates, updater/doctor commands, native support boundaries, voice dictation support. | Debug flags, env gates, runtime errors, updater state, hosted/remote policy, local audio capture. | Logs, telemetry, update results, support diagnostics, transcribed voice input. | [Diagnostics and debug logs](../05-hosted-agent-ops/diagnostics-and-debug-logs.md), [Telemetry and tracing](../05-hosted-agent-ops/telemetry-and-tracing.md), [Updater and doctor](../05-hosted-agent-ops/updater-and-doctor.md), [Media native modules](../05-hosted-agent-ops/media-native-modules.md), [Audio capture and voice mode](../05-hosted-agent-ops/audio-capture-and-voice.md) |

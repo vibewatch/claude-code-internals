@@ -1,13 +1,14 @@
 # Remote control and teleport
 
-This page reverse-engineers the hosted-session, teleport, and Remote Control paths. They share session vocabulary but are not one transport: `--remote` drives a hosted session, teleport imports hosted history into a local runtime, Remote Control exposes a running local runtime through a hosted bridge, and Chrome's `BridgeClient` serves browser-backed tools.
+This page reverse-engineers the hosted-session, teleport, and Remote Control paths. They share session vocabulary but are not one transport: `--cloud` (with deprecated alias `--remote`) drives a hosted session, teleport imports hosted history into a local runtime, Remote Control exposes a running local runtime through a hosted bridge, and Chrome's `BridgeClient` serves browser-backed tools. Remote-runner HTTPS egress, synchronized working files, `/uploads`, and staged MCP lanes have a separate owner in [Remote-environment egress and file staging](remote-environment-egress-and-file-staging.md).
 
 ## Source anchors
 
 | Semantic alias | String or symbol | Meaning |
 | --- | --- | --- |
 | DisableRemoteControlPolicy | `Disable Remote Control (claude.ai/code, \`claude remote-control\`, \`--remote-control\`/\`--rc\`)` | Managed setting/policy surface for Remote Control. |
-| RemoteSessionFlag | `--remote [description\|session_id\|url]` | Hidden remote-session create/attach flag. |
+| CloudSessionFlag | `--cloud [description\|session_id\|url]` | Hidden hosted-session create/attach flag. |
+| RemoteSessionAlias | `--remote [description\|session_id\|url]` | Hidden deprecated alias for `--cloud`. |
 | TeleportSessionFlag | `--teleport [session]` | Teleport session resume flag. |
 | RemoteControlFlag | `--remote-control [name]` | Hidden Remote Control flag. |
 | RemoteControlAliasFlag | `--rc [name]` | Alias for Remote Control. |
@@ -26,7 +27,7 @@ This page reverse-engineers the hosted-session, teleport, and Remote Control pat
 | RemoteControlSessionFactory | [~417,824](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L417824) | `async function z6u(e)` | Creates/reattaches the hosted bridge, rebuilds credentials/transport, and owns archive teardown. |
 | CcrV2Hydration | [~580,840](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L580840) | `hydrateFromCCRv2InternalEvents`, `.ccr-tip.json` | Reconciles foreground/subagent internal events into local JSONL by anchored delta or guarded replacement. |
 | PersistenceReadyBackfill | [~833,666](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L833666) | `Epf`, `onTransportPersistenceReady` | Starts local-to-server suffix backfill before installing the interactive bridge's live internal-event writer. |
-| HostedRemoteClient | [~853,215](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L853215) | `SessionsV2Client` | Separate SSE client used by `--remote` attach/create. |
+| HostedRemoteClient | [~853,215](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L853215) | `SessionsV2Client` | Separate SSE client used by `--cloud`/deprecated `--remote` attach/create. |
 | HostedRequestIdFilter | [~853,420-853,755](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L853420) | `issuedRequestIds`, `Rqb = 500` | Bounds the set used to reject non-worker responses to this hosted client's own control requests. |
 | TeleportLogFallback | [~336,767](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L336767) | `v2 endpoint returned null, trying session-ingress` | Fetches hosted logs with an ordered endpoint fallback. |
 | RemoteEnvironmentCommand | [~813,295–813,790](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L813295) | `/remote-env`, `P0a()`, `z0a()`, `A$e()` | Lists cloud targets, resolves settings precedence, and writes the user default environment. |
@@ -46,7 +47,7 @@ This page reverse-engineers the hosted-session, teleport, and Remote Control pat
 ```mermaid
 flowchart TD
     Root[Root action] --> RemoteFlag{remote path?}
-    RemoteFlag -->|--remote| RemoteSession[create or attach remote session]
+    RemoteFlag -->|--cloud / --remote alias| RemoteSession[create or attach hosted session]
     RemoteFlag -->|--teleport| Teleport[teleportWithProgress]
     RemoteFlag -->|remote-control / --rc| Control[Remote Control bridge]
     RemoteSession --> HostedLoop[Hosted session + SessionsV2Client SSE]
@@ -62,7 +63,8 @@ flowchart TD
 
 | Surface | Runtime role |
 |---|---|
-| `--remote [description|session_id|url]` | Creates a remote session from a description or attaches to an existing session by ID/URL. |
+| `--cloud [description|session_id|url]` | Creates a hosted session from a description or attaches to an existing session by ID/URL. |
+| `--remote [description|session_id|url]` | Deprecated hidden alias for `--cloud`; retained for compatibility. |
 | `--teleport [session]` | Resumes a teleport session; helper strings validate clean git state and matching checkout. |
 | `remote-control` / `rc` | Hidden command that starts Remote Control for local sessions. |
 | `--remote-control [name]` / `--rc [name]` | Hidden root flags enabling Remote Control on an interactive session. |
@@ -155,15 +157,15 @@ CCR v2 hydration uses a coherent anchor to append returned payloads not already 
 
 When an interactive bridge transport becomes persistence-ready, `Epf()` first fetches foreground and subagent server UUIDs and scans local files backward to the newest compaction boundary. It starts queuing UUID-bearing local records absent from the union. Subagent startup backfill is capped at the 20 newest files of at most 5 MiB; main scanning is backward-streamed without that file-size admission cap. The routine starts writer Promises with failure handlers but does not await their server acknowledgements before returning. Only then does a transport-generation check install the live writer/readers, and registration lowers the main JSONL drain schedule from 100 ms to 10 ms. Teardown invalidates stale installation but does not cancel already-started old-transport work as one transaction.
 
-The direct remote/headless CCR runtime wires its internal-event writer/readers eagerly and can prefetch hydration on `--resume`; the interactive bridge uses the persistence-ready/backfill callback above. Neither path should be generalized to hosted `--remote`, teleport, or the worker-SSE receipt cursor.
+The direct remote/headless CCR runtime wires its internal-event writer/readers eagerly and can prefetch hydration on `--resume`; the interactive bridge uses the persistence-ready/backfill callback above. Neither path should be generalized to hosted `--cloud`/deprecated `--remote`, teleport, or the worker-SSE receipt cursor.
 
-## Hosted `--remote` reconnect contract
+## Hosted `--cloud` reconnect contract
 
-`--remote` uses `SessionsV2Client`, not the Remote Control worker wrapper. It also resumes with a sequence query/header and uses a 45-second liveness timeout, but its retry contract is bounded: five reconnect attempts with exponential backoff capped between 1 and 30 seconds. Clock-drift/suspend detection triggers a reconnect. A `catch_up_truncated` event is handled explicitly as a transcript gap; the client reports it rather than claiming complete replay.
+`--cloud` (and deprecated alias `--remote`) uses `SessionsV2Client`, not the Remote Control worker wrapper. It also resumes with a sequence query/header and uses a 45-second liveness timeout, but its retry contract is bounded: five reconnect attempts with exponential backoff capped between 1 and 30 seconds. Clock-drift/suspend detection triggers a reconnect. A `catch_up_truncated` event is handled explicitly as a transcript gap; the client reports it rather than claiming complete replay.
 
 The hosted client also keeps an insertion-ordered `issuedRequestIds` set for control-plane source filtering. Each locally generated control request enters the set before its asynchronous POST result is known; a worker-sourced response removes it. Once the set exceeds 500 entries, the oldest still-retained ID is evicted. Timeouts and failed POSTs are not wired to immediate removal in this class, so unanswered IDs can remain until a worker response or capacity eviction. While an ID is retained, a matching `control_response` from a non-worker source is dropped; after eviction, that particular source check can no longer recognize a late response as belonging to this client's request. This is a bounded provenance filter, not a complete pending-request ledger or an exactly-once response guarantee.
 
-This distinction matters operationally: do not transfer Remote Control's credential-rebuild/archive behavior to `--remote`, and do not assume `--remote`'s five-attempt budget applies to the Remote Control worker.
+This distinction matters operationally: do not transfer Remote Control's credential-rebuild/archive behavior to `--cloud`, and do not assume the hosted client's five-attempt budget applies to the Remote Control worker.
 
 ## Teleport-specific guardrails
 
@@ -182,7 +184,7 @@ These are client-side stopping rules, not server guarantees. Short-code/session 
 
 ## Chrome browser-tool bridge protocol (`BridgeClient`)
 
-This is a separate browser-tool subsystem, not the session transport used by Remote Control or `--remote`. One client owns one WebSocket to the Chrome bridge server and routes JSON tool messages between Claude Code and the user's extension(s). Per-connection state includes `connected`, `authenticated`, `connecting`, `reconnectAttempts`, `pendingCalls` and `timedOutCalls` (both `Map<tool_use_id, ...>`), `selectedDeviceId`, `pairingInProgress`, plus a `keepAliveInterval` and `lastPongReceived`.
+This is a separate browser-tool subsystem, not the session transport used by Remote Control or hosted `--cloud`. One client owns one WebSocket to the Chrome bridge server and routes JSON tool messages between Claude Code and the user's extension(s). Per-connection state includes `connected`, `authenticated`, `connecting`, `reconnectAttempts`, `pendingCalls` and `timedOutCalls` (both `Map<tool_use_id, ...>`), `selectedDeviceId`, `pairingInProgress`, plus a `keepAliveInterval` and `lastPongReceived`.
 
 `ensureConnected()` is the public guard: it logs `wsState`, returns immediately when the socket is `OPEN` and authenticated, otherwise starts `connect()` and polls every 200 ms with a 10,000 ms cap, resolving `true` once `connected && authenticated` and `false` if the connecting flag clears first. `connect()` walks a handshake that emits `chrome_bridge_handshake_timeout` at `z8q` ms when WebSocket stays below `OPEN`, fetches the dev or production user ID for the URL, and adds an OAuth token when one is available.
 
@@ -223,6 +225,7 @@ The bridge child process itself is supervised: at [line 236330](../../claude-cod
 
 - [Session resume and transcripts](session-resume-and-transcripts.md)
 - [Session API, events, and storage](session-api-events-and-storage.md)
+- [Remote-environment egress and file staging](remote-environment-egress-and-file-staging.md)
 - [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md)
 - [Diagnostics and debug logs](../05-hosted-agent-ops/diagnostics-and-debug-logs.md)
 - [Telemetry and tracing](../05-hosted-agent-ops/telemetry-and-tracing.md)

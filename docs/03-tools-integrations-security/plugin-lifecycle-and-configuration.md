@@ -51,6 +51,11 @@ The important separations are:
 | PluginAssembler | [~471,900–473,730](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L471900) | `createPluginFromPath()`, `mergePluginSources()`, `loadAllPlugins()` | Resolves component paths, source precedence, partial errors, and enabled/disabled sets. |
 | PluginDefaultSettings | [~473,570](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L473570) | `Dgy()`, `cachePluginSettings()`, `cnd` | Loads allowlisted plugin defaults before ordinary settings layers. |
 | PluginCliConfig | [~654,099](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L654099) | `--config`, `oS_()`, `iS_()` | Validates repeated `KEY=VALUE` options after CLI installation. |
+| PluginEvalSchemas | [~657,872–658,177](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L657872) | `case.yaml`, `prompt.md`, `graders/*.md` | Parses evaluation cases, execution controls, and grader definitions with caps. |
+| PluginEvalSandbox | [~658,275–658,469](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L658275) | `cwd/`, `config/`, `home/`, `out/`, `EVAL_*` | Creates per-run isolated directories and a restricted case-provided environment. |
+| PluginEvalRunLoop | [~659,462–659,736](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L659462) | `with-without`, `scaffold_script`, `dontAsk` | Runs arms/cases, grades results, enforces cost/timeout, and cleans temporary state. |
+| PluginEvalReports | [~659,738–660,629](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L659738) | `aggregate-result.json`, HTML report, Artifact publish | Produces aggregate, full JSON, local HTML, and optional private hosted reports. |
+| PluginEvalRegistration | [~660,841–660,964](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L660841) | `plugin eval [target]`, `plugin eval init [name]` | Registers the early-access runner and suite-authoring flow. |
 | PluginInteractiveConfig | [~795,996–802,400](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L795996) | `/plugin configure`, `fJt()` | Interactive option editor using the same storage split. |
 
 ## Discovery and source precedence
@@ -152,6 +157,70 @@ Auto-installed dependencies carry `auto: true`; `plugin prune` removes only auto
 | Plugin defaults | root `settings.json` | Valid allowlisted file values win over manifest `settings`; malformed file input falls back to manifest values. |
 
 A failure in one plugin or component does not necessarily erase every other plugin. The loader returns enabled/disabled records alongside errors and warnings, emits a partial-failure outcome when appropriate, and only classifies the whole load as failed when no plugin survives.
+
+## Plugin evaluation (early access)
+
+`claude plugin eval [target]` is a dedicated evaluation runner rather than a normal loaded plugin component. The command tree is registered in this build, but both `eval` actions call an early-access guard before doing work. When `tengu_walnut_spire`/`CLAUDE_CODE_WALNUT_SPIRE` does not enable the feature, invocation immediately reports that plugin eval is in early access.
+
+The target can be a path, a bare plugin name, or `plugin@marketplace`. Installed and skills-directory plugin identities resolve through the plugin registries; an ambiguous bare name fails with the candidate list. Default ablation is `with-without` when target resolution establishes a plugin identity and `none` for an ordinary path. A plain skills-style path containing only `SKILL.md` is not automatically discovered as a plugin while walking upward for a manifest, so callers should not assume that every path gets a meaningful no-plugin baseline.
+
+### Case and grader formats
+
+The discovery root can contain either:
+
+```text
+evals/**/case.yaml
+```
+
+or the prose form:
+
+```text
+evals/**/prompt.md
+evals/**/graders/*.md
+```
+
+`case.yaml` supports metadata/tags/plugin paths, context setup, execution prompt/history/additional directories, model/tool/system/env controls, run count, graders, and expected outcome. Important bounds are:
+
+| Control | Default | Maximum |
+|---|---:|---:|
+| `runs` | 3 | 50 |
+| `execution.max_turns` | 10 | 200 |
+| `execution.timeout_seconds` | 300 | 3,600 |
+| One prose case/grader file | — | 1 MiB |
+| Grader files for one prose case | — | 256 |
+
+Schema version is a string and this runner accepts the `1.x` major. A case needs either an execution prompt or a history file and at least one grader. Supported grader types are `regex`, `tool_order`, `tool_used`, `file_exists`, `llm`, and `baseline`; weighted pass/fail results become each run's score.
+
+Explicit `plugins:` paths are realpathed and must remain below the discovery root. Without that field, the loader walks upward for `plugin.json` or `.claude-plugin/plugin.json`. In `with-without` mode, each valid case executes once with its resolved plugin directories and once with none. A case with no resolved plugin is excluded rather than reporting a meaningless delta. Plugin-activation `tool_used` checks can be display-only under ablation so the headline score measures outcome graders rather than mechanically rewarding invocation.
+
+### Execution sandbox and trust boundary
+
+Each run receives a temporary tree with `cwd/`, `config/`, `home/`, and `out/`. The child receives isolated `HOME`/`USERPROFILE`, XDG and Claude config roots, a managed-settings path, disabled update/nonessential traffic controls, and copied credentials when available. Case-provided environment keys are accepted only with the `EVAL_` prefix.
+
+The effective tool grant combines the case's `allowed_tools` with operator `--allow-tools`, while a small read/task support set remains available to the harness. The evaluation child runs with `--permission-mode dontAsk`; it cannot open normal interactive approval prompts. Global `--model` overrides per-case models, `--judge-model` controls LLM grading, and the tool process is force-killed when its timeout expires.
+
+`context.scaffold_script` is a deliberate exception to the sandbox story. It is **off by default** and runs only with `--scaffold`; when enabled, author-supplied Bash runs as the operator. A nonzero scaffold exit gives that run a zero/error result. The warning in the CLI is accurate: only opt in for suites authored by the operator or organization. `--no-scaffold` makes the default explicit.
+
+Temporary directories are removed after a normal run. `--keep-temp` preserves them; non-JSON mode also preserves failed-run directories for diagnosis. The sandbox credential copy is removed during cleanup, but this source cannot guarantee erasure from storage media.
+
+### Cost, interruption, reports, and exits
+
+`--max-cost-usd` is suite-wide. Once the budget is breached, no later agent run begins; paid LLM/baseline graders on the breaching run are marked failed/skipped while free graders still execute. Because the check follows an agent run, overrun is bounded to one agent run rather than zero. The aggregate is marked partial with reason `cost_ceiling` and exits 2.
+
+The first `SIGINT` aborts active work, prints an interruption notice, and still assembles partial output from completed runs. After cleanup/reporting, interruption exits 130. Ordinary threshold or case-load failure exits 1; a complete suite meeting the threshold exits 0. Individual errored runs score zero but do not necessarily stop all remaining cases.
+
+Every run directory can produce `aggregate-result.json`. Additional outputs are:
+
+| Option | Result |
+|---|---|
+| `--json` | Full normalized suite/case/arm/run/grader result on stdout. |
+| `--json <file.json>` | Writes that full result to the named file. |
+| `--report <path>` | Self-contained HTML report with prompts, graders, evidence, scores, and ablation delta. |
+| `--publish-report` | Privately publishes the HTML through Artifact when account/policy/provider/privacy gates allow it; otherwise explains why and suggests a local report. |
+
+`claude plugin eval init [name]` is the authoring companion. `--bare` creates a blank `prompt.md` plus `graders/criteria.md`; the normal interactive route launches a guided interview that inspects the plugin and helps design/calibrate cases. That interview prompt recommends practices, but executable schema/runner behavior—not the generated prose—is the authority for this page.
+
+The manifest schema also exposes `experimental.evals`. The traced CLI runner above discovers filesystem cases below the resolved target; this page does not claim that the manifest field independently redirects every discovery call without a separate executable path.
 
 ## Plugin-owned default settings
 
@@ -287,6 +356,8 @@ The full reload command first checks whether changing plugin MCP tool names woul
 - Plugin option secure storage is abstracted behind the runtime credential store. This page establishes split/merge behavior, not OS keychain internals.
 - Component activation is not one universal hot-reload operation; use the owner-specific reload/reconnect path.
 - Hosted `ListPlugins`/`SearchPlugins`/`SuggestPluginInstall` operate on claude.ai catalogs and cards. They are separate from the local marketplace/cache/plugin lifecycle described here.
+- Eval suites are not loaded into ordinary sessions as plugin contributions. `plugin eval` is a gated CLI harness with its own execution and report boundaries.
+- Eval `scaffold_script` runs operator-authored Bash outside the child run sandbox and should be treated as trusted executable code.
 - `source-atlas/` was intentionally not regenerated for this focused trace; enclosing control flow in the retained readable bundle supplied direct evidence.
 
 ## Related docs

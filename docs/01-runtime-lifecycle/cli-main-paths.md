@@ -38,7 +38,7 @@ The bundle is minified and bundled, but the renamed derivative still contains re
 | InteractiveSessionSetup | `async function qkS(e, t)` | Interactive fresh, continue, resume, teleport, and remote-session setup. |
 | InteractiveSessionLoop | `launchRepl` | Interactive TUI/session loop entry. |
 | ContinueRecentSessionBranch | `if (t.continue)` inside `qkS()` | Continue-most-recent-session branch. |
-| ResumeRemoteSessionBranch | `else if (t.resume || t.fromPr || Re || n !== null)` | Resume, PR, teleport, and cloud-session branch cluster. |
+| ResumeCloudSessionBranch | `else if (t.resume || t.fromPr || Re || n !== null)` | Resume, PR, teleport, and cloud-session branch cluster. |
 | UtilitySubcommandRegistry | `agents`, `auth`, `auto-mode`, `doctor`, `gateway`, `install`, `mcp`, `plugin`, `project`, `setup-token`, `ultrareview`, `update` | Top-level utility subcommands visible in `2.1.215 --help`. |
 | StartupProfilingEvents | `profileCheckpoint("cli_entry")`, `cli_before_main_import`, `main_function_start`, `run_function_start` | Checkpoints spanning bootstrap, normal main, and command parsing. |
 
@@ -137,7 +137,7 @@ There is one performance-sensitive special case visible directly in `jkS()`: if 
 | Continue last session | `-c` or `--continue` | `ContinueRecentSessionBranch`, `SessionDiscovery`, `SessionRestore`, `InteractiveSessionLoop` | Load most recent transcript, restore runtime state, enter TUI. |
 | Resume/search picker | `-r`, `--resume`, `--from-pr` | `ResumeRemoteSessionBranch`, `InteractiveResumePicker` | Resolve session ID/title/PR, restore if exact, otherwise open picker. |
 | Teleport | hidden `--teleport [session]` | `Re` branch in `qkS()`, `teleportWithProgress` | Validate remote session/repo state, hydrate messages, enter TUI. |
-| Remote session | hidden cloud/remote session option | `n !== null` branch in `qkS()`, `attachRemote`, `remoteSessionConfig` | Create or attach to a remote session and enter TUI backed by remote transport. |
+| Cloud session | hidden `--cloud`; deprecated hidden `--remote` alias | `n !== null` branch in `qkS()`, `attachRemote`, `remoteSessionConfig` | Create or attach to a hosted session and enter the TUI backed by the hosted transport. |
 | Remote Control | hidden `--remote-control [name]` / `--rc` or `remote-control` subcommand | `remote-control`, `rc`, `bridgeMain`, `initReplBridge` | Exposes local sessions to claude.ai/code or mobile control channels. |
 
 No root `--server`, `--headless`, or `--acp` mode appears in this artifact. Long-lived protocol or helper roles use the explicit `ZIS()` process branches above; ordinary non-interactive execution uses `runHeadless`.
@@ -171,6 +171,8 @@ Inside `HeadlessRunner`:
 - drains the streaming/control loop through `HeadlessControlLoop`;
 - writes final output as plain text, JSON result, or stream JSON frames.
 
+For eligible Pro/Max consumer accounts, headless startup also checks the cached Grove terms/privacy state before the run. A grace notice prints a reminder and continues; a mandatory notice prints an action-required message and exits 1 because the user must complete the choice in interactive `claude`. See [Consumer terms and privacy policy](../03-tools-integrations-security/settings-policy-and-integrations.md#consumer-terms-and-privacy-policy-grove).
+
 `HeadlessControlLoop` is the main headless event loop. It handles stream JSON input, control requests, MCP status and calls, permission responses, remote-control requests, background task controls, bash command messages, user prompts, session state, and result emission. The presence of many `control_request` subtypes in this function makes it the headless equivalent of the interactive UI dispatcher.
 
 ## Interactive path
@@ -187,11 +189,13 @@ Confirmed steps:
    - `--continue` loads the most recent transcript through `SessionDiscovery`, restores it through `SessionRestore`, and enters `InteractiveSessionLoop`.
    - `--resume` resolves an explicit UUID/title/file, restores through `SessionRestore`, and enters `InteractiveSessionLoop` if exact.
    - `--from-pr` or ambiguous resume search falls back to `InteractiveResumePicker`.
-   - `--remote` creates or attaches to a remote session and enters `InteractiveSessionLoop` with `remoteSessionConfig`.
+   - `--cloud` (or deprecated alias `--remote`) creates or attaches to a hosted session and enters `InteractiveSessionLoop` with `remoteSessionConfig`.
    - `--teleport` validates and hydrates remote session logs, then enters `InteractiveSessionLoop`.
    - a fresh session enters `InteractiveSessionLoop` with optional deep-link/prefill warnings and startup hook messages.
 
 The stable semantic entrypoints are therefore `InteractiveSessionLoop` for the main interactive TUI/session loop and `InteractiveResumePicker` for the picker/search-style resume path.
+
+The interactive setup sequence can also mount the Grove terms/privacy dialog for eligible consumer accounts. Grace mode can be deferred; mandatory mode requires a choice, and escape exits cleanly rather than entering the session. This account-policy gate is independent of workspace trust and is documented in [Settings, policy, and integrations](../03-tools-integrations-security/settings-policy-and-integrations.md#consumer-terms-and-privacy-policy-grove).
 
 ## MCP path
 
@@ -210,6 +214,7 @@ The root command registers these main command families outside the print fast pa
 |---|---|---|
 | `mcp` | `McpCommandRegistrar` | Configures and manages MCP servers; also has `serve` and optional `xaa` subcommands. |
 | `plugin` / `plugins` | `PluginCommandRegistrar` | Manages plugins and marketplaces; validates, lists, installs, updates, disables, and removes plugin surfaces. |
+| `gateway --config <path>` | `H.command("gateway")` | Runs the native-only enterprise gateway server; see [Enterprise gateway server](../05-hosted-agent-ops/enterprise-gateway.md). |
 | `auth` | `H.command("auth")` | `login`, `status`, and `logout` subcommands import auth handlers lazily. |
 | `project purge [path]` | `H.command("project")...command("purge [path]")` | Deletes project-scoped Claude Code state such as transcripts, tasks, file history, and config entries. |
 | `setup-token` | `H.command("setup-token")` | Sets up a long-lived authentication token for Claude subscription users. |
@@ -220,6 +225,7 @@ The root command registers these main command families outside the print fast pa
 | `doctor` | `H.command("doctor")` | Checks auto-updater health and related environment state. |
 | `update` / `upgrade` | `H.command("update").alias("upgrade")` | Checks for updates and installs if available. |
 | `install [target]` | `H.command("install [target]")` | Installs the native Claude Code build for `stable`, `latest`, or a specific version. |
+| hidden `import-conversations <exportPath>` | registration near ~978,660 | Gated archive-to-JSONL migration path requiring `--cwd`; see [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md#hidden-conversation-archive-import). |
 
 In `2.1.215`, `auto-mode` exposes `config`, `defaults`, `critique`, and `reset`; `reset` removes the `autoMode` section from user settings after confirmation (or with `--yes`). The `agents` command adds scriptable `--json` output and `--all` for completed rows, while retaining per-dispatch model, effort, permission, settings, MCP, plugin, and directory defaults.
 
@@ -236,9 +242,9 @@ The root action consumes a large option surface. The most important groups are:
 | Prompt/system | `--system-prompt`, `--system-prompt-file`, `--append-system-prompt`, `--append-system-prompt-file`, `--plan-mode-instructions`, `--exclude-dynamic-system-prompt-sections` | Overrides or appends system prompt content and cache-sensitive sections. |
 | Sessions | `--continue`, `--resume`, `--fork-session`, `--from-pr`, `--session-id`, `--no-session-persistence`, `--resume-session-at`, `--rewind-files`, `--name` | Controls local transcript/session restore, forking, persistence, and display naming. |
 | Model/thinking | `--model`, `--fallback-model`, `--effort`, `--thinking`, `--thinking-display`, `--max-thinking-tokens`, `--max-turns`, `--max-budget-usd`, `--task-budget`, `--betas` | Selects model, thinking mode, budget, and beta headers. |
-| MCP/plugins/settings | `--mcp-config`, `--strict-mcp-config`, `--settings`, `--setting-sources`, `--plugin-dir`, `--plugin-url`, `--agents` | Adds dynamic MCP/plugin/agent/settings inputs. |
+| MCP/plugins/settings | `--mcp-config`, `--strict-mcp-config`, `--settings`, `--setting-sources`, `--plugin-dir`, `--plugin-url`, `--agents`, `--disable-slash-commands` | Adds dynamic MCP/plugin/agent/settings inputs or removes the slash-command/skill registry for this run. |
 | Workspace/integrations | `--add-dir`, `--ide`, `--chrome`, `--no-chrome`, `--file`, `--ax-screen-reader` | Adds tool-access directories, IDE/Chrome/file integration, and the flat accessibility renderer. |
-| Deep link/remote hidden flags | `--prefill`, `--deep-link-origin`, `--prefill-b64`, `--deep-link-cwd-b64`, `--teleport`, `--remote`, `--remote-control`, `--rc` | Used by deep-link launching, remote sessions, and Remote Control. |
+| Deep link/cloud hidden flags | `--prefill`, `--deep-link-origin`, `--prefill-b64`, `--deep-link-cwd-b64`, `--teleport`, `--cloud`, deprecated `--remote`, `--remote-control`, `--rc` | Used by deep-link launching, hosted sessions, and Remote Control. |
 
 ## High-signal constants and environment variables
 
@@ -281,7 +287,7 @@ The main paths identified from `cli.renamed.js` are:
 - [Command-line reference](command-line-reference.md) is the canonical root-option, subcommand, interactive-command, alias, and gate inventory.
 - [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md) expands `HeadlessRunner`/`HeadlessControlLoop` stream-JSON and SDK behavior.
 - [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md) expands `SessionDiscovery`, `SessionRestore`, JSONL transcripts, fork, and rewind.
-- [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) expands `--remote`, `--teleport`, Remote Control, bridge, and token paths.
+- [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) expands `--cloud`/deprecated `--remote`, `--teleport`, Remote Control, bridge, and token paths.
 - [Built-in tools and permissions](../03-tools-integrations-security/built-in-tools-and-permissions.md) expands the tool and permission surfaces referenced by root flags.
 
 ## Shutdown coordinator and signal-exit
