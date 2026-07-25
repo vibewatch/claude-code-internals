@@ -2,6 +2,8 @@
 
 Claude Code `2.1.215` adds a first-class terminal accessibility mode selected by `--ax-screen-reader`, `CLAUDE_AX_SCREEN_READER`, or the `axScreenReader` setting. The mode is more than a label: it changes renderer selection, animation behavior, terminal setup, startup output, and child-process environment propagation.
 
+The ordinary classic/fullscreen selection, raw-input parser, resize/suspend handling, and terminal cleanup are documented in [Terminal UI renderer and input lifecycle](terminal-ui-renderer-and-input.md). This page owns only the accessibility-specific override and rendering behavior.
+
 The exact `CLAUDE_AX_SCREEN_READER` and `axScreenReader` anchors are absent from the retained `2.1.143` parent bundle, so this page documents a package-delta subsystem rather than a renamed pre-existing path.
 
 ## Source anchors
@@ -75,6 +77,7 @@ It is also distinct from `prefersReducedMotion`: reduced motion can stop animati
 
 - [Command-line reference](command-line-reference.md)
 - [CLI main paths](cli-main-paths.md)
+- [Terminal UI renderer and input lifecycle](terminal-ui-renderer-and-input.md)
 - [Settings schema reference](../03-tools-integrations-security/settings-schema-reference.md)
 - [Environment variables reference](../05-hosted-agent-ops/environment-variables-reference.md)
 - [Safe mode and recovery](../05-hosted-agent-ops/safe-mode-and-recovery.md)

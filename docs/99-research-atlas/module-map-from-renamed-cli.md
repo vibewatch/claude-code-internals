@@ -71,7 +71,7 @@ Each row links a Claude Code subsystem to its loader line range in `cli.renamed.
 |---|---:|---|---|---|
 | `GitRepoOperations` | 1 | 65739 | `stashToCleanState`, `redactGitRemoteCredentials`, `preserveGitStateForIssue`, `normalizeGitRemoteUrl`, `isLinkedWorktree`, `isAtGitRoot` | [CLI main paths](../01-runtime-lifecycle/cli-main-paths.md) |
 | `GitRefWatcher` | 1 | 64612 | `resolveRef`, `resolveGitDir`, `resetGitFileWatcher`, `removeWatchedRepo`, `readWorktreeHeadSha`, `readGitHead` | [Daemon and background service](../01-runtime-lifecycle/daemon-and-background-service.md) |
-| `AgentWorktreeManager` | 1 | 262923 | `worktreeBranchName`, `validateWorktreeSlug`, `restoreWorktreeSession`, `persistWorktreeSession`, `removeAgentWorktree`, `listRegisteredWorktrees` | [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md) |
+| `AgentWorktreeManager` | 1 | 262923 | `worktreeBranchName`, `validateWorktreeSlug`, `restoreWorktreeSession`, `persistWorktreeSession`, `removeAgentWorktree`, `listRegisteredWorktrees` | [Worktree isolation and handoffs](../06-agents-automation/worktree-isolation-and-handoffs.md) |
 | `WorktreeDaemonJobScheduler` | 1 | 909259 | `summarizeEvent`, `stateBucket`, `sortJobs`, `seedLastJobs`, `rollupJobColor`, `deriveActivity`, `deriveBand` | [Daemon and background service](../01-runtime-lifecycle/daemon-and-background-service.md) |
 
 ### Models, prompts, and memory
@@ -84,11 +84,11 @@ Each row links a Claude Code subsystem to its loader line range in `cli.renamed.
 
 | Semantic alias / theme | Modules | Loader line range | Representative exports | Companion doc |
 |---|---:|---|---|---|
-| `McpChromeBridge` | 4 | 40188 – 52085 | `localPlatformLabel`, `createClaudeForChromeMcpServer`, `createChromeSocketClient`, `createBridgeClient`, `clearBrowserResolution` | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md), [Tool runtime, events, and integration flows](../03-tools-integrations-security/tool-runtime-events-and-integrations.md) |
+| `McpChromeBridge` | 4 | 40188 – 52085 | `localPlatformLabel`, `createClaudeForChromeMcpServer`, `createChromeSocketClient`, `createBridgeClient`, `clearBrowserResolution` | [Browser automation and Claude in Chrome](../03-tools-integrations-security/browser-automation-and-claude-in-chrome.md) |
 | `McpbExtensionPackaging` | 5 | 207944 – 227138 | `verifyMcpbFile`, `verifyCertificateChain`, `validateManifest`, `unsignMcpbFile`, `unpackExtension`, `signMcpbFile` | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
 | `PluginLoader` | 1 | 473632 | `resolvePluginRoot`, `resolveContainedPluginPath`, `mergePluginSources`, `loadSkillsAsPlugins`, `loadPluginManifest`, `loadAllPlugins` | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
 | `PluginCommandHandlers` | 1 | 657701 | `pluginValidateHandler`, `pluginUpdateHandler`, `pluginUninstallHandler`, `pluginTagHandler`, `pluginPruneHandler`, `pluginListHandler`, `pluginInstallHandler`, `pluginInitHandler` | [Commands and flags](../01-runtime-lifecycle/commands-and-flags.md) |
-| `LspIdeClient` | 1 | 320957 | `createLSPClient` | [Settings, policy, and integrations](../03-tools-integrations-security/settings-policy-and-integrations.md) |
+| `LspIdeClient` | 1 | 320957 | `createLSPClient` | [IDE integration and LSP diagnostics](../03-tools-integrations-security/ide-integration-and-lsp-diagnostics.md) |
 
 ### Auth (multi-cloud)
 

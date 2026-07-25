@@ -193,7 +193,7 @@ The effective timeout is clamped to a hard ceiling (`GB5`).
 |---|---|
 | `createBaseHookInput(permissionMode, sessionId?, ctx?)` | Builds the base hook envelope: `session_id`, `transcript_path`, `cwd`, `permission_mode`, `agent_id`, `agent_type`, `effort`. All per-event hook payloads extend this base. |
 | `hasInstructionsLoadedHook()` / `executeInstructionsLoadedHooks(...)` | Fires when `CLAUDE.md` / settings / memory files are loaded; used by tools that want to react to memory changes. |
-| `hasWorktreeCreateHook()` / `executeWorktreeCreateHook(...)` / `executeWorktreeRemoveHook(...)` | Worktree spawn/teardown; the daemon validates `hasWorktreeCreateHook()` before allowing `--worktree-mode` startup. |
+| `hasWorktreeCreateHook()` / `executeWorktreeCreateHook(...)` / `executeWorktreeRemoveHook(...)` | Worktree spawn/teardown; the daemon validates `hasWorktreeCreateHook()` before allowing `--worktree-mode` startup. See [Worktree isolation and handoffs](../06-agents-automation/worktree-isolation-and-handoffs.md). |
 | `executeSetupHooks(...)` | Runs once per startup phase (`trigger` distinguishes them). |
 | `executeCwdChangedHooks(...)` / `executeFileChangedHooks(...)` / `executeConfigChangeHooks(...)` | Watch hooks; the matchers carry the changed path / source. |
 | `executeElicitationHooks(...)` / `executeElicitationResultHooks(...)` | Wrap MCP elicitation requests; hooks can auto-respond instead of showing the dialog. |
@@ -211,6 +211,7 @@ There is no `StatusLine` entry in this registry. `executeStatusLineCommand()` is
 - [Tool inventory and schemas](tool-inventory-and-schemas.md)
 - [Built-in tools and permissions](built-in-tools-and-permissions.md)
 - [MCP, plugins, and hooks](mcp-plugins-hooks.md)
+- [Worktree isolation and handoffs](../06-agents-automation/worktree-isolation-and-handoffs.md)
 - [Session API, events, and storage](../04-sessions-persistence-remote/session-api-events-and-storage.md)
 - [Data models and frame schemas](../04-sessions-persistence-remote/data-models-and-frame-schemas.md)
 - [Feature gates reference](../05-hosted-agent-ops/feature-gates-reference.md)

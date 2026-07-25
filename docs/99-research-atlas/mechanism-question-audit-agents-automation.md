@@ -14,7 +14,7 @@ Original audited pages:
 6. [`observer-agents.md`](../06-agents-automation/observer-agents.md)
 7. [`slash-commands-and-automation.md`](../06-agents-automation/slash-commands-and-automation.md)
 
-The later Agent Teams follow-up added and audited [`agent-teams.md`](../06-agents-automation/agent-teams.md), then updated the section guide, architecture/ordinary-Agent/runtime handoffs, canonical flag/settings/environment/feature-gate references, cross-cutting protocol map, navigation, and website sidebar. The original seven-page audit excluded those navigation/reference files; that historical scope does not describe the later focused round.
+The later Agent Teams follow-up added and audited [`agent-teams.md`](../06-agents-automation/agent-teams.md), then updated the section guide, architecture/ordinary-Agent/runtime handoffs, canonical flag/settings/environment/feature-gate references, cross-cutting protocol map, navigation, and website sidebar. Subsequent focused rounds documented agent messaging and, during the full-system review, [`worktree-isolation-and-handoffs.md`](../06-agents-automation/worktree-isolation-and-handoffs.md). The original seven-page audit excluded those navigation/reference files; that historical scope does not describe the later focused rounds.
 
 Extracted source artifacts, generated prompt catalogs, and `source-atlas/` remained read-only throughout. A page that already answered its source-answerable mechanism questions was intentionally left unchanged rather than churned.
 
@@ -200,12 +200,13 @@ The post-edit reread produced zero new source-answerable mechanism questions. Re
 
 ## Final convergence result
 
-The original complete post-edit pass over all seven in-scope pages produced **zero new source-answerable mechanism questions**. A later focused `/goal` pass updated its owning slash-command page and then produced zero new questions in Round 5.
+The original complete post-edit pass over all seven in-scope pages produced **zero new source-answerable mechanism questions**. Later focused passes covered `/goal`, Agent Teams, messaging, and worktree isolation; each produced zero new questions after correction.
 
 | Page | Documentation decision | Final pass: new source-answerable questions | Status |
 |---|---|---:|---|
 | `agent-runtime-scheduling-and-completion.md` | Edited | 0 | Converged |
 | `agents-tasks-and-subagents.md` | Edited | 0 | Converged |
+| `worktree-isolation-and-handoffs.md` | New full-system follow-up | 0 | Converged |
 | `architecture.md` | Edited | 0 | Converged |
 | `cron-and-scheduled-tasks.md` | Edited | 0 | Converged |
 | `dynamic-workflows.md` | Edited | 0 | Converged |
@@ -222,6 +223,9 @@ Cross-page terminology now consistently preserves these boundaries:
 - observer resume recovery versus dropped best-effort batches;
 - shell-content replacement, model-invocation exclusion, and direct user invocation;
 - `/goal` Stop-hook continuation versus cron/dynamic scheduling, local transcript reconstruction versus remote `active_goal` seeding, and model judgment versus deterministic completion.
+- session-wide `EnterWorktree` cwd relocation versus Agent-specific cwd isolation versus the background shared-checkout write guard;
+- Git sparse checkout versus explicitly symlinked directories and `.worktreeinclude` copies; and
+- project-keyed global worktree state versus transcript `worktree-state` continuity.
 
 ## Validation
 
@@ -356,5 +360,20 @@ This follow-up traced `SendMessage` as an address resolver and target router rat
 | Are shared tasks, observer reports, and completion events all peer chat? | No. Shared tasks coordinate state, `ObserverReport` is one-way, and `task-notification` reports lifecycle completion. | Added an adjacent-channel distinction table. |
 
 Direct follow-up reads confirmed that `CSg()`/`OQn` are correctly anchored, that the stopped-by-user exception for `observer-activity` belongs to the internal observer-resume path and is unreachable from `SendMessage` because observer targets are rejected first, and that peer discovery is dormant despite retained transport implementations. The post-edit reread found no additional source-answerable message-transport question across ordinary Agents, teammates, main, local/cloud route code, observers, or task completion. Server-side cloud delivery after HTTP acceptance and provider behavior after insertion remain evidence-limited. `source-atlas/` was intentionally left untouched. **Follow-up status: documented and converged.**
+
+## Full-system follow-up: worktree isolation and handoffs — 2026-07-25
+
+The cross-inventory audit found worktree behavior split among Agent prose, hook names, session persistence, settings, and generated tool prompts without an owning lifecycle page.
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Are session and Agent worktrees the same cwd transition? | No. `EnterWorktree` changes the session/process cwd; `Agent({isolation:"worktree"})` pins only that agent's cwd. | Created [Worktree isolation and handoffs](../06-agents-automation/worktree-isolation-and-handoffs.md) with a three-shape comparison. |
+| When do hooks versus Git create the directory? | A configured `WorktreeCreate` hook wins, even in a Git repo; otherwise Git creates under `.claude/worktrees/` after trust/name/symlink checks. | Added backend precedence and hook result validation. |
+| How do sparse and shared directories work? | `sparsePaths` configures Git cone-mode sparse checkout; `symlinkDirectories` is a separate, explicit post-checkout operation; `.worktreeinclude` safely copies selected ignored files. | Corrected the audit report's conflation. |
+| What prevents concurrent deletion? | Git lock reasons include Claude role/name/PID/process-start. Other-live/unknown locks produce guest/fail-safe behavior; dead Claude locks can be reclaimed. | Added ownership and stale-lock rules. |
+| Where is continuity stored? | `activeWorktreeSession` lives in the current-project entry of `~/.claude.json`; a nullable `worktree-state` record lives in session JSONL. They are not one transaction. | Added dual persistence and corrected the prior path ambiguity. |
+| How is work protected on exit/completion? | `ExitWorktree remove` refuses changed/unverifiable state without explicit discard; entered-existing worktrees are never removed. Agent cleanup removes unchanged worktrees and retains changed work. | Added keep/remove/agent cleanup and failure tables. |
+
+The focused reread produced zero new source-answerable worktree questions. Git crash semantics, hook backend durability, and filesystem/platform behavior remain evidence limits. **Focused follow-up status: new page, cross-linked, and converged.**
 
 **Audit status: complete and converged for Claude Code `2.1.215`.**

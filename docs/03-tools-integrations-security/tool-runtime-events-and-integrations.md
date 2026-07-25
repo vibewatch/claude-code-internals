@@ -207,9 +207,14 @@ Plugins are the main extension packaging surface. The `plugin` / `plugins` comma
 
 MCP is the runtime protocol side of extension. `McpRuntimeCoordinator` connects regular, always-load, and claude.ai connector configs; MCP protocol schemas include `tools/list`, `tools/call`, `resources/list`, and `prompts/get`. MCP tools become model-visible capabilities only after connection and still pass through `ToolExecutionBoundary`.
 
+Two integration families have focused owners because their process/transport state is larger than a generic MCP row:
+
+- [Browser automation and Claude in Chrome](browser-automation-and-claude-in-chrome.md) traces dynamic MCP setup, Chrome native messaging, the authenticated browser bridge, tab groups, browser tools, and permissions.
+- [IDE integration and LSP diagnostics](ide-integration-and-lsp-diagnostics.md) separates IDE dynamic MCP discovery/connection from plugin-provided LSP subprocesses.
+
 ### LSP support
 
-The source-confirmed LSP path is diagnostics-oriented:
+The source-confirmed LSP path is diagnostics-oriented. The complete configuration, lazy subprocess, file-sync, crash/retry, deduplication, and volume-bound lifecycle is in [IDE integration and LSP diagnostics](ide-integration-and-lsp-diagnostics.md):
 
 1. Plugins/settings can declare `lspServers` as a path, keyed record, or array of inline/path configs.
 2. The LSP manager initializes server processes and tracks file-to-server associations.
@@ -218,7 +223,7 @@ The source-confirmed LSP path is diagnostics-oriented:
 5. Diagnostics are converted from URI/range/severity/source/code into internal diagnostic records and registered for async delivery.
 6. Stale diagnostics can be dropped when a diagnostic version is older than the current document version.
 
-This is enough to answer “is there LSP syntax support?” as **yes for language-server diagnostics / syntax-error reporting**. The anchors do not prove a full editor feature set such as semantic rename, hover, code actions, or workspace edits as Claude Code user-facing tools in this build.
+This is enough to answer “is there LSP syntax support?” as **yes for language-server diagnostics / syntax-error reporting**. The client advertises and has generic request plumbing for additional LSP capabilities, but the anchors do not by themselves prove a model-visible semantic-rename, hover, code-action, or workspace-edit surface.
 
 ## SDK support
 

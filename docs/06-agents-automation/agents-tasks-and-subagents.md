@@ -142,7 +142,7 @@ The `Agent` tool's current contract differs from the older synchronous Task ment
 - `run_in_background` defaults to true. Set it to false only when the parent must block on that result before continuing.
 - `name` makes a running agent addressable through `SendMessage`.
 - `model` overrides the agent definition for one call; otherwise the definition or parent model is used.
-- `isolation: "worktree"` creates an isolated checkout; gated `remote` isolation launches in a cloud environment.
+- `isolation: "worktree"` creates an isolated checkout whose creation, locking, retained-change, and cleanup rules are documented in [Worktree isolation and handoffs](worktree-isolation-and-handoffs.md); gated `remote` isolation launches in a cloud environment.
 - The deprecated `mode` input is ignored; subagents inherit the parent permission mode unless agent frontmatter overrides it.
 - The deprecated `team_name` input is ignored because an enabled session derives one implicit team. This does **not** mean Agent Teams is always on; without the experimental gate, named calls follow the ordinary Agent path.
 
@@ -331,6 +331,7 @@ After invalidation, the next `getActiveAgentsFromList(...)` call re-parses every
 ## Related docs
 
 - [Agent and automation architecture](architecture.md)
+- [Worktree isolation and handoffs](worktree-isolation-and-handoffs.md)
 - [Agent messaging and communication](agent-messaging.md)
 - [Agent Teams](agent-teams.md)
 - [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md)

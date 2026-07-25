@@ -108,12 +108,13 @@ The process-level lock has separate cleanup/stale-recovery logic, so a crash doe
 
 ## Caveats
 
-- `computer-use` and Claude-in-Chrome are separate MCP integrations. Native application control deliberately redirects browser interaction to the browser integration when the app is read-only.
+- `computer-use` and [Claude in Chrome](browser-automation-and-claude-in-chrome.md) are separate MCP integrations. Native application control deliberately redirects browser interaction to the browser integration when the app is read-only.
 - The schema is dynamic: teach-mode tools and available-app hints appear only when their host callbacks/gates exist.
 - The source contains macOS native implementation details; no Linux/Windows control implementation is confirmed in this package.
 
 ## Related docs
 
+- [Browser automation and Claude in Chrome](browser-automation-and-claude-in-chrome.md)
 - [MCP, plugins, and hooks](mcp-plugins-hooks.md)
 - [Built-in tools and permissions](built-in-tools-and-permissions.md)
 - [Settings, policy, and integrations](settings-policy-and-integrations.md)

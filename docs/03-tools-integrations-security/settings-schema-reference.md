@@ -6,7 +6,7 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 
 - This is a **known-settings reference**, not a complete JSON Schema dump. The complete schema is embedded in the minified bundle and may also be extended by plugins or managed policy.
 - Settings names here are included when they are already anchored in implementation pages or are high-signal strings in `cli.renamed.js`.
-- Runtime precedence can be affected by `--setting-sources`, managed policy, and per-invocation flags; docs should avoid assuming one universal merge order for every mode.
+- The ordinary effective-object order is plugin defaults → user → project → local → flag/SDK → policy. `--setting-sources` controls participation of user/project/local, not that order. Some sensitive keys deliberately use narrower resolvers.
 
 ## Source anchors
 
@@ -18,8 +18,11 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | RemoteControlPolicySetting | `disableRemoteControl` | Managed policy surface for Remote Control. |
 | SkillShellPolicySetting | `disableSkillShellExecution` | Managed policy surface for shell execution in skills/custom slash commands. |
 | ApiKeyHelperSetting | `apiKeyHelper` | Settings helper script that outputs authentication values. |
-| EmbeddedSettingsValidator | `PP().safeParse` | Loaded settings are validated through the embedded schema. |
+| EmbeddedSettingsValidator | `parseSettingsFileUncached()`, `r3().safeParse` | Ordinary loaded settings are sanitized, then validated as a whole through the embedded schema [~72,420](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L72420). |
+| ManagedSettingsValidator | `mSi()` | Managed settings recover per key, with field-specific fail-closed behavior for selected policy controls [~71,679](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L71679). |
+| SettingsMergeOrder | `SSi()`, `settingsMergeCustomizer()` | Recursive low-to-high merge; arrays normally union while `fallbackModel` is replaced [~72,820](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L72820). |
 | EnabledPluginsSetting | `enabledPlugins` | Settings surface for plugin enablement and version constraints. |
+| PluginConfigsSetting | `pluginConfigs`, `MGr()` | Plugin user options are read only from user, flag/SDK, and policy settings; project/local values do not participate [~227,482](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L227482). |
 | ExtraMarketplacesSetting | `extraKnownMarketplaces` | Settings surface for repository/team marketplace registration. |
 | StrictMarketplacePolicy | `strictKnownMarketplaces` | Managed marketplace allowlist. |
 | BlockedMarketplacePolicy | `blockedMarketplaces` | Managed marketplace blocklist. |
@@ -54,8 +57,33 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | `.claude/settings.local.json` | Local project | Local overrides that are usually not committed. |
 | Managed settings / policy | Organization/admin | Can disable or constrain capabilities regardless of local preferences. |
 | `--settings <file-or-json>` | Per invocation | Adds settings JSON file or inline JSON. |
-| `--managed-settings <file-or-json>` | Per invocation / policy test path | Loads managed-policy-style settings from a file or inline JSON. |
-| `--setting-sources <sources...>` | Per invocation | Selects setting source order/participation for a run. |
+| `--managed-settings <file-or-json>` | Per invocation / SDK parent-policy path | Supplies parent-managed settings; the selected admin tier can filter or suppress that parent slice. |
+| `--setting-sources <sources...>` | Per invocation | Admits a comma-separated subset of `user`, `project`, and `local`. Flag/SDK and policy settings remain admitted, and source order stays fixed. |
+
+## Effective order and merge exceptions
+
+For the ordinary effective object, later rows have higher precedence:
+
+| Order | Layer | Important boundary |
+|---:|---|---|
+| 0 | Enabled-plugin defaults | Only the plugin-default allowlist is accepted; user and higher sources override it. |
+| 1 | User settings | Global editable preferences. |
+| 2 | Project settings | Overrides user settings for the repository. Loading does not itself authorize every project-owned executable extension; trust checks remain owner-specific. |
+| 3 | Local settings | Private project override. |
+| 4 | Flag/SDK settings | `--settings` file/inline data plus SDK inline settings. |
+| 5 | Managed policy | Selected admin policy; lower settings cannot override it. |
+
+Nested objects merge recursively. Arrays normally concatenate and de-duplicate, but a later `fallbackModel` array replaces the earlier array. When policy defines `availableModels`, that array entirely replaces the ordinarily merged lower-source array after merge (there is no lower-source union); policy `enforceAvailableModels` is likewise copied exactly. Lower settings therefore cannot widen model enforcement.
+
+The policy layer is itself selected rather than universally merged. A validated policy helper wins when present; otherwise the first non-empty remote → MDM/HKLM/plist → managed-file tier is the ordinary admin object. `parentSettingsBehavior:"first-wins"` drops the filtered SDK-parent slice; it is not a generic first-key-wins merge mode. Security-specific consumers can still accumulate restrictions across all admin tiers.
+
+Parsing is also source-sensitive:
+
+- an ordinary settings file with any remaining schema error contributes no settings, although permission/hook/MCP-list sanitizers can first remove bad individual entries with warnings;
+- managed settings validate per field, preserving unrelated valid policy and applying explicit fail-closed recovery to fields such as `allowedMcpServers`, `allowManagedMcpServersOnly`, `availableModels`, `enforceAvailableModels`, and `forceLoginOrgUUID`; and
+- every disk settings file is bounded to 2 MiB.
+
+The complete load, watcher, `ConfigChange`, and atomic-write path is documented in [Load, validate, and merge pipeline](settings-policy-and-integrations.md#load-validate-and-merge-pipeline).
 
 ## Known settings and policy groups
 
@@ -66,10 +94,11 @@ This page centralizes source-visible settings roots, policy keys, and configurat
 | Remote and agent policy | `disableRemoteControl`, `disableAgentView` | Managed policy can disable Remote Control and agent UI paths. | [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) |
 | Skill/slash safety | `disableSkillShellExecution` | Replaces or prevents shell execution in skills/custom slash commands. | [Slash commands and automation](../06-agents-automation/slash-commands-and-automation.md) |
 | Authentication helpers | `apiKeyHelper`, `proxyAuthHelper`, `enterpriseGateway` | Points to credential/proxy helper mechanisms. | [Models, providers, and auth](../02-context-model-loop/models-providers-auth.md) |
-| MCP and plugins | `mcpServers`, `disableClaudeAiConnectors`, plugin marketplaces, plugin-provided hooks/output styles/MCP servers | Adds external capability providers; the disable key specifically suppresses claude.ai connectors. | [MCP, plugins, and hooks](mcp-plugins-hooks.md) |
+| MCP and plugins | `mcpServers`, `disableClaudeAiConnectors`, `enabledPlugins`, `pluginConfigs`, `extraKnownMarketplaces`, plugin-provided hooks/output styles/MCP/LSP servers | Adds external capability providers; enablement, user options, installation, and marketplace state remain separate layers. | [Plugin lifecycle and configuration](plugin-lifecycle-and-configuration.md) |
 | Tools and permissions | `allowedTools`, `disallowedTools`, permission mode settings, `denyRead`-style exclusions | Shapes model-visible tools and approval/deny behavior. | [Tool inventory and schemas](tool-inventory-and-schemas.md) |
 | Prompt/context | system prompt, append prompt, output styles, memory/context exclusions | Shapes model-visible context and prompt assembly. | [Prompt, context, and memory](../02-context-model-loop/prompt-context-memory.md) |
-| Integrations | `--ide`, `--chrome`, `--file` plus integration settings | Adds editor/browser/file-resource integration surfaces. | [Settings, policy, and integrations](settings-policy-and-integrations.md) |
+| Integrations | `--ide`, `autoConnectIde`, `--chrome`, `claudeInChromeDefaultEnabled`, `--file` | Adds [IDE/LSP](ide-integration-and-lsp-diagnostics.md), [browser](browser-automation-and-claude-in-chrome.md), and file-resource integration surfaces. | [Settings, policy, and integrations](settings-policy-and-integrations.md) |
+| Worktree isolation | `worktree.baseRef`, `sparsePaths`, `symlinkDirectories`, `bgIsolation` | Selects base ancestry, sparse checkout, explicit shared directories, and background edit isolation. | [Worktree isolation and handoffs](../06-agents-automation/worktree-isolation-and-handoffs.md) |
 | Sandbox/runtime behavior | sandbox mode, ignore-file behavior, tool-specific safety switches | Constrains process/file/network access after permission approval. | [Sandbox and isolation](sandbox-and-isolation.md) |
 | Accessibility/UI | `axScreenReader`, `wheelScrollAccelerationEnabled`, `vimInsertModeRemaps` | Selects accessible rendering and terminal input behavior. | [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md) |
 | Permission defaults/auto mode | `permissions.defaultMode`, `autoMode.classifyAllShell` | `manual` aliases historical `default`; auto mode can classify every shell command. | [Built-in tools and permissions](built-in-tools-and-permissions.md) |
@@ -108,21 +137,23 @@ The [focused status-line page](status-line.md) owns payload fields, refresh/canc
 
 ## Complete schema extraction boundary
 
-The complete settings validator is present in the bundle, but it is embedded as minified schema construction rather than an exported JSON Schema document. The high-signal validation anchor is `PP().safeParse` around line ~187: loaded JSON is parsed, preflight errors are collected, and only the parsed `.data` is returned as settings.
+The complete settings validator is present in the bundle, but it is embedded as minified schema construction rather than an exported JSON Schema document. The high-signal ordinary path is `parseSettingsFileUncached()` → `hGe()` → `r3().safeParse`; the managed path wraps the same field shapes through `mSi()` so policy can recover per key.
 
 | Layer | What is source-confirmed | Documentation status |
 |---|---|---|
-| Embedded validator | `PP().safeParse` validates loaded settings after JSON/object parsing. | Anchored here; not expanded into a full generated JSON Schema. |
+| Embedded validator | `r3().safeParse` validates ordinary settings after parsing and targeted sanitization; `mSi()` owns managed recovery. | Anchored here; not expanded into a full generated JSON Schema. |
 | Project/user/local settings | `.claude/settings.json`, `.claude/settings.local.json`, `~/.claude/settings.json` | Covered as roots and loaders. |
 | Managed/policy settings | `disableRemoteControl`, `disableAgentView`, `disableAllHooks`, `disableSkillShellExecution`, `allow_team_onboarding`, marketplace allow/block lists | Covered as policy groups; exact organization policy envelopes may vary. |
-| Plugin marketplaces | `enabledPlugins`, `extraKnownMarketplaces`, `strictKnownMarketplaces`, `blockedMarketplaces` | Covered here and in [MCP, plugins, and hooks](mcp-plugins-hooks.md). |
+| Plugin lifecycle/configuration | `enabledPlugins`, `pluginConfigs`, `extraKnownMarketplaces`, `strictKnownMarketplaces`, `blockedMarketplaces` | Covered here, in [Plugin lifecycle and configuration](plugin-lifecycle-and-configuration.md), and in [MCP, plugins, and hooks](mcp-plugins-hooks.md). |
 | Sandbox-sensitive settings | `dangerouslyDisableSandbox` schema text and sandbox policy pages | Covered as policy boundary, not as a guarantee that a command bypasses sandboxing. |
 
 The remaining “complete schema” gap is mechanical extraction: a future script could reconstruct or evaluate the embedded schema into a stable JSON/Markdown reference. Until then, this page should stay a known-settings reference with exact anchors for high-signal keys, rather than hand-copying every minified schema branch.
 
 ## Source restrictions for sensitive settings
 
-Not every valid key is honored from every source. `autoMemoryDirectory` is ignored in checked-in project settings. `processWrapper` is read from managed, flag/SDK, or user settings (and can be overridden by `CLAUDE_CODE_PROCESS_WRAPPER`), while project/local values are ignored. `sandbox.credentials.allowPlaintextInject` and `sandbox.network.tlsTerminate` are likewise restricted to user, managed/policy, or `--settings` sources. `autoMode` classifier rules reject project/local sources because repositories control those files.
+Not every valid key is honored from every source. `autoMemoryDirectory` is ignored in checked-in project settings. `processWrapper` is read from managed, flag/SDK, or user settings (and can be overridden by `CLAUDE_CODE_PROCESS_WRAPPER`), while project/local values are ignored. `sandbox.credentials.allowPlaintextInject` and `sandbox.network.tlsTerminate` are likewise restricted to user, managed/policy, or `--settings` sources. `autoMode` classifier rules reject project/local sources because repositories control those files. `pluginConfigs` follows user → flag/SDK → policy and ignores both project and local settings so repository configuration cannot supply plugin options/secrets. Sensitive plugin values are stored outside settings JSON and merged last.
+
+`enabledPlugins` is different: it uses the ordinary scoped cascade, so project/local values can enable or disable a plugin unless a higher source wins. `extraKnownMarketplaces` can also be declared by editable scopes, but project/local declarations do not enter the usable marketplace set before workspace trust. See [Plugin lifecycle and configuration](plugin-lifecycle-and-configuration.md) for the complete distinction.
 
 `statusLine` normally uses the merged effective setting after workspace trust. Safe mode, managed `allowManagedHooksOnly`, or a non-policy merged `disableAllHooks` state reduces it to the managed-policy value; managed `disableAllHooks: true` suppresses execution. This is a source-selection boundary, not a per-refresh permission prompt.
 
@@ -133,12 +164,16 @@ When adding new settings detail, prefer this ownership split:
 1. Put the key name, scope, and owning behavior here.
 2. Put call paths and runtime effects in the owning implementation page.
 3. Put env-var-only toggles in [Environment variables reference](../05-hosted-agent-ops/environment-variables-reference.md), not here.
-4. Keep plugin-specific schema extensions in plugin/MCP docs until confirmed as general settings.
+4. Put plugin enablement, plugin-owned defaults, `userConfig`, and sensitive option storage in [Plugin lifecycle and configuration](plugin-lifecycle-and-configuration.md), not in the general key list.
 
 ## Related docs
 
 - [Status line runtime and command protocol](status-line.md)
 - [Settings, policy, and integrations](settings-policy-and-integrations.md)
+- [Plugin lifecycle and configuration](plugin-lifecycle-and-configuration.md)
+- [Browser automation and Claude in Chrome](browser-automation-and-claude-in-chrome.md)
+- [IDE integration and LSP diagnostics](ide-integration-and-lsp-diagnostics.md)
+- [Worktree isolation and handoffs](../06-agents-automation/worktree-isolation-and-handoffs.md)
 - [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md)
 - [Safe mode and recovery](../05-hosted-agent-ops/safe-mode-and-recovery.md)
 - [Tool inventory and schemas](tool-inventory-and-schemas.md)

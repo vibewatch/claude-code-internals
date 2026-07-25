@@ -355,3 +355,27 @@ The focused Fable lifecycle/provider pass added no new page and left navigation 
 - No extracted package artifact or `source-atlas/` file changed; the readable retained bundle was sufficient, so atlas regeneration was intentionally skipped.
 
 **Fable follow-up status: complete, validated, and converged for Claude Code `2.1.215`.**
+
+## `/compact` cache-sharing and media follow-up
+
+A focused reread of `J5g()`/`fas()`, `JMu()`, and the reactive `cWg()` → `ilo()` path answered four implementation questions left implicit by the earlier compaction audit.
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Does full/partial compaction always send a fresh direct summarizer request? | No. When `tengu_compact_cache_prefix` is enabled, `JMu()` first runs a one-turn, no-tool fork whose new prompt contains only the summary instruction and whose cache-safe parameters can reuse the existing conversation prefix. | Added the fork-first/direct-fallback request shapes. |
+| Does cache-prefix reuse write another transcript or prompt-cache entry? | No. The fork sets `skipTranscript:true` and `skipCacheWrite:true`; the direct fallback sets `enablePromptCaching:false`. A valid prompt-too-long fork result is returned to the caller's context-shortening retry rather than being mislabeled a cache-sharing failure. | Separated cache read/reuse from cache writes and listed the success-event fields without inferring billing semantics. |
+| What exactly replaces rich content? | User/queued-command image and document blocks become `[image]`/`[document]`; nested tool-result blocks use the same values; image, notebook, and parts file attachments become one-line text-file attachments containing `[image]`, `[notebook]`, or `[parts]`. | Added the exact placeholder/location table. |
+| Does the media fallback mutate persisted history? | No. `fas()` constructs the summary-request copy. Reactive compaction retries the same logical split once after `media_too_large`; a second media-size result becomes `media_unstrippable`. | Added copy-versus-transcript and retry-count semantics. |
+
+An independent source-versus-document pass confirmed the fork, cache-write, placeholder, retry, and transcript-boundary claims; its suggestion that exact placeholders were absent did not apply after the table was added. The post-fix reread produced zero new retained-artifact-answerable `/compact` questions. **Focused follow-up status: edited and converged.**
+
+### `/compact` cache/media follow-up validation
+
+- Editor diagnostics reported no errors in the compaction page, either focused audit ledger, the new plugin/configuration page, or any changed cross-link/navigation file.
+- The changed-document link scan resolved all 562 relative Markdown targets across 12 changed Markdown files.
+- Generated HTML contains the newly referenced `userconfig-plugin-specific-options`, `load-validate-and-merge-pipeline`, and `plugin-marketplace-lifecycle` IDs.
+- Repository-wide `git diff --check` passed before the final validation-note update.
+- Astro loaded 92 documentation sources and generated 93 static pages; Pagefind indexed all 93 HTML files and sitemap generation completed. The only warning was the existing Vite advisory for chunks larger than 500 kB after minification.
+- No file under `claude-code-pkg/` or `source-atlas/` changed; the readable retained bundle supplied the required enclosing control flow.
+
+**`/compact` cache/media follow-up status: complete, validated, and converged for Claude Code `2.1.215`.**

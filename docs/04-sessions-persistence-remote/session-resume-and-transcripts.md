@@ -276,7 +276,9 @@ Key mechanics:
 
 ### Worktree session state
 
-Worktree continuity has two persistence surfaces. `persistWorktreeSession()` updates the process-level worktree state and writes `activeWorktreeSession` in current project config. Independently, `saveWorktreeState()` caches a normalized copy in the transcript store and, when a session file exists, appends a `worktree-state` record; metadata re-append emits that record again. The transcript loader keeps the latest per-session value, and resume applies it through `ubt()`/`restoreWorktreeSession()`. The retained artifact does not expose an atomic transaction joining the project-config and JSONL writes.
+Creation, existing-worktree validation, background write guards, liveness locks, and keep/remove behavior are owned by [Worktree isolation and handoffs](../06-agents-automation/worktree-isolation-and-handoffs.md). This section owns only persistence, resume, and transcript relocation.
+
+Worktree continuity has two persistence surfaces. `persistWorktreeSession()` updates process state and writes `activeWorktreeSession` into the current-project entry of global config (`~/.claude.json`). Independently, `saveWorktreeState()` caches a normalized copy in the transcript store and, when a session file exists, appends a `worktree-state` record; metadata re-append emits that record again. The transcript loader keeps the latest per-session value, and resume applies it through `ubt()`/`restoreWorktreeSession()`. The retained artifact does not expose an atomic transaction joining the global-config and JSONL writes.
 
 The normalized transcript record stores the original cwd, optional pre-entry cwd, worktree path/name/branch, original branch/head, session ID, optional tmux session, and hook/existing-worktree flags. A `null` `worktreeSession` is a persisted clear rather than an absent record.
 

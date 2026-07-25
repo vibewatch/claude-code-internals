@@ -2,7 +2,9 @@
 
 This page reverse-engineers the MCP, plugin, and hook surfaces in the analyzed `cli.renamed.js`.
 
-Use [Hooks and events reference](hooks-and-events-reference.md) for the canonical hook/frame/method list and [Tool inventory and schemas](tool-inventory-and-schemas.md) for MCP/plugin tool schema ownership. This page owns MCP/plugin runtime wiring.
+Use [Plugin lifecycle and configuration](plugin-lifecycle-and-configuration.md) for manifests, source/enablement precedence, dependency constraints, plugin defaults, and `userConfig`; [Hooks and events reference](hooks-and-events-reference.md) for the canonical hook/frame/method list; and [Tool inventory and schemas](tool-inventory-and-schemas.md) for MCP/plugin tool schema ownership. This page owns marketplace acquisition plus MCP/plugin/hook runtime wiring.
+
+Specialized dynamic MCP integrations have separate owners: [Browser automation and Claude in Chrome](browser-automation-and-claude-in-chrome.md) and the IDE half of [IDE integration and LSP diagnostics](ide-integration-and-lsp-diagnostics.md).
 
 ## Source anchors
 
@@ -102,6 +104,8 @@ flowchart TD
 - plugin autoupdate guarded by updater state.
 
 Current CLI handlers also expose `plugin init <name>` (scaffold under `.claude/skills`), `plugin list` with enabled/disabled filters, `plugin prune` / `uninstall --prune` for orphaned dependencies, and `plugin tag` for validated release tags. Nested `.claude/skills` directories load contextually; name collisions are qualified with their directory.
+
+These command surfaces manipulate several independent state layers. Marketplace declarations/materialization are documented below; installation records, scoped `enabledPlugins`, manifest contribution loading, plugin-owned defaults, dependency/version constraints, and sensitive/non-sensitive `userConfig` storage are traced in [Plugin lifecycle and configuration](plugin-lifecycle-and-configuration.md).
 
 ## Plugin marketplace lifecycle
 
@@ -296,23 +300,24 @@ MCP elicitation completion is visible in two places: the MCP client handles an e
 
 ## Plugin hot reload and hook cache
 
-The `PluginHotReload` module (`cli.renamed.js:288518`-`288560`) keeps plugin-contributed hooks fresh without restarting the session. The `PluginInstallLifecycle` module (`cli.renamed.js:545539`-`545700`, plus `kickOffBackgroundPluginInstall` at `722995`) handles plugin discovery, installation, and pruning.
+The current `PluginHotReload` path around `cli.renamed.js:334180-334360` can rebuild plugin-contributed hooks after an accepted **policy-settings** change. It is narrower than a universal plugin hot reload: ordinary user/project/local changes do not pass this subscriber's source check, and non-hook contribution families have their own `/reload-plugins` boundary. The install lifecycle separately handles plugin discovery, installation, and pruning.
 
 ### Plugin-affecting settings snapshot
 
-`getPluginAffectingSettingsSnapshot()` builds a JSON-stable snapshot of the slice of settings that influence which plugins are active (`enabledPlugins`, marketplace lists, etc.). The watcher compares the new snapshot against the previous one; when they differ, plugin hooks are re-loaded.
+`getPluginAffectingSettingsSnapshot()` builds a JSON-stable snapshot of effective `enabledPlugins`/`extraKnownMarketplaces` plus policy `strictKnownMarketplaces`, `blockedMarketplaces`, and `disableSideloadFlags`. The comparison is performed when the settings change detector emits `policySettings`; a policy event that leaves this snapshot unchanged skips the reload.
 
 ### Hot-reload runtime (`setupPluginHookHotReload`, `loadPluginHooks`)
 
 `setupPluginHookHotReload()`:
 
-1. Subscribes to settings changes for the slice returned by `getPluginAffectingSettingsSnapshot()`.
-2. On change, calls `pruneRemovedPluginHooks()` (removes hooks whose owning plugin is no longer enabled) and `loadPluginHooks()` (re-registers hooks for currently enabled plugins).
-3. Caches the materialized hook records so the [hook dispatcher](hooks-and-events-reference.md#runtime-dispatcher-internals) does not re-parse plugin manifests on every dispatch.
+1. Captures `getPluginAffectingSettingsSnapshot()` and subscribes to the general settings change detector.
+2. Ignores every emitted source except `policySettings`, then compares the new snapshot.
+3. On a changed snapshot, clears the full plugin cache and the memoized plugin-hook loader, then calls `loadPluginHooks()` to rebuild registered hooks from the current cache-only plugin view.
+4. Caches the materialized hook records so the [hook dispatcher](hooks-and-events-reference.md#runtime-dispatcher-internals) does not re-parse plugin manifests on every dispatch.
 
-`clearPluginHookCache()` is the brute-force invalidator used after major settings churn (settings file replaced wholesale, marketplace re-installed). `resetHotReloadState()` clears the watcher state so tests can rebuild it cleanly.
+`clearPluginHookCache()` invalidates the memoized hook assembly. `resetHotReloadState()` clears the subscription/snapshot guard so tests or a fresh runtime can initialize it again.
 
-`pruneRemovedPluginHooks()` walks the hook cache, finds entries whose `pluginId` is no longer in `enabledPlugins`, and removes them from the dispatcher cache. This is also the path that kicks in when a user disables a plugin via `/plugin disable`.
+`pruneRemovedPluginHooks()` is a separate targeted helper: it loads the enabled cache-only plugin paths and keeps only registered plugin hooks whose `pluginRoot` still belongs to that set. The policy watcher shown above does not call this helper; it takes the full cache-clear/reload route instead.
 
 ### Install lifecycle (`checkEnabledPlugins`, `getInstalledPlugins`, `findMissingPlugins`, `installSelectedPlugins`)
 
@@ -364,6 +369,9 @@ The command does not disable anything. It points the user to `/skills`, `.claude
 
 ## Related docs
 
+- [Browser automation and Claude in Chrome](browser-automation-and-claude-in-chrome.md)
+- [IDE integration and LSP diagnostics](ide-integration-and-lsp-diagnostics.md)
+- [Plugin lifecycle and configuration](plugin-lifecycle-and-configuration.md)
 - [Tool inventory and schemas](tool-inventory-and-schemas.md)
 - [Hooks and events reference](hooks-and-events-reference.md)
 - [Tool runtime and security architecture](architecture.md)

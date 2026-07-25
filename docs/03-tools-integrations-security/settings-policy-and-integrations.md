@@ -2,7 +2,7 @@
 
 This page reverse-engineers settings, managed policy, helper scripts, and local integration paths in the Claude Code runtime.
 
-Use [Settings schema reference](settings-schema-reference.md) for the canonical settings roots/key groups, [Status line runtime and command protocol](status-line.md) for the configured command's execution lifecycle, and [Environment variables reference](../05-hosted-agent-ops/environment-variables-reference.md) for env-var-only controls. This page owns the settings/policy/integration behavior narrative.
+Use [Settings schema reference](settings-schema-reference.md) for the canonical settings roots/key groups, [Plugin lifecycle and configuration](plugin-lifecycle-and-configuration.md) for plugin enablement/defaults/user options, [Status line runtime and command protocol](status-line.md) for the configured command's execution lifecycle, and [Environment variables reference](../05-hosted-agent-ops/environment-variables-reference.md) for env-var-only controls. This page owns the settings/policy/integration behavior narrative.
 
 ## Source anchors
 
@@ -17,6 +17,13 @@ Use [Settings schema reference](settings-schema-reference.md) for the canonical 
 | OtelHeadersHelperOrigin | `isOtelHeadersHelperFromProjectOrLocalSettings`, `checkHasTrustDialogAccepted` | Project/local OTEL header helpers are suppressed until workspace trust is accepted. |
 | StatusLineSettingsMutation | `~/.claude/settings.json` | Status-line setup instructions mutate user settings. |
 | SettingsInjectionFlag | `--settings <file-or-json>` | Adds settings JSON file or inline JSON for a session. |
+| SettingsSourceSelector | `GCl()`, `IT()`, `--setting-sources` | Parses the editable source allowlist while always retaining flag/SDK and policy settings [~67,405](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L67405). |
+| SettingsParser | `parseSettingsFileUncached()`, `hGe()`, `r3()` | Size-bounded read, targeted entry sanitization, and ordinary whole-file schema validation [~72,317–72,550](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L72317). |
+| ManagedSettingsRecovery | `mSi()` | Per-key managed-policy validation with source-visible fail-closed behavior for selected allowlists/enforcement fields [~71,679](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L71679). |
+| SettingsMergePipeline | `SSi()`, `settingsMergeCustomizer()` | Ordered recursive merge with array union and a full-replacement exception for `fallbackModel` [~72,820–72,905](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L72820). |
+| AdminPolicyTierSelection | `bSi()`, `bxl()`, `parentSettingsBehavior` | Selects the first admin tier and optionally layers a filtered SDK-parent security slice underneath it [~72,650–72,820](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L72650). |
+| SettingsChangeDetector | `Hyg()`, `executeConfigChangeHooks()` | Watches settings/drop-ins/symlink targets, admits changes through `ConfigChange`, clears caches, and emits source-specific updates [~242,148–242,360](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L242148). |
+| SettingsWriter | `updateSettingsForSourceWithTransform()`, `n7m()`, `tte()` | Serializes per-file transforms and normally uses exclusive temp write, mode preservation, flush, and rename with a narrow in-place fallback [~73,730](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L73730), [~61,222](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L61222). |
 | IdeIntegrationFlag | `--ide` | Auto-connect IDE integration flag. |
 | ChromeIntegrationFlag | `--chrome` | Chrome integration flag. |
 | StartupFileResourceFlag | `--file <specs...>` | Startup file-resource download integration. |
@@ -48,17 +55,158 @@ Use [Settings schema reference](settings-schema-reference.md) for the canonical 
 ## Settings layers
 
 ```mermaid
-flowchart TD
-    User[~/.claude/settings.json] --> Merge[Settings merge]
-    Project[.claude/settings.json] --> Merge
-    Local[.claude/settings.local.json] --> Merge
-    Managed[managed settings / policy] --> Merge
-    Flags[--settings / --managed-settings / --setting-sources] --> Merge
-    Merge --> Runtime[Runtime config]
+flowchart LR
+    Defaults[Enabled-plugin defaults] --> User[User settings]
+    User --> Project[Project settings]
+    Project --> Local[Local settings]
+    Local --> Flags[--settings / SDK settings]
+    Flags --> Managed[Selected managed policy]
+    Managed --> Runtime[Effective runtime settings]
     Runtime --> Tools[Tools and permissions]
     Runtime --> Context[Prompt/context]
     Runtime --> Integrations[IDE / Chrome / MCP / plugins]
 ```
+
+The arrows show ordinary low-to-high precedence, not every specialized resolver. Later scalar values win, nested objects merge recursively, arrays normally form a de-duplicated concatenation, and policy is not overridable by user/project/local values. Security-sensitive settings and plugin-specific configuration can intentionally read a narrower source set; those exceptions are called out below and in the schema reference.
+
+## Load, validate, and merge pipeline
+
+The effective object is computed lazily and cached. `SSi()` loads admitted sources, collects validation diagnostics, and merges them in deterministic order. `HS()` clears the aggregate cache plus per-path/source caches after an accepted filesystem or programmatic change.
+
+### Source admission and order
+
+The ordinary source list is:
+
+| Precedence | Internal source | Typical input |
+|---:|---|---|
+| 0 | enabled-plugin defaults | Allowlisted `settings.json`/manifest defaults from enabled plugins. |
+| 1 | `userSettings` | `~/.claude/settings.json`. |
+| 2 | `projectSettings` | `.claude/settings.json`. |
+| 3 | `localSettings` | `.claude/settings.local.json`, with legacy/canonical project-root compatibility. |
+| 4 | `flagSettings` | `--settings` path/inline JSON and SDK inline settings. |
+| 5 | `policySettings` | Selected managed/admin policy. |
+
+`--setting-sources user,project,local` can admit any subset of the three editable disk sources; an empty value admits none of them. It cannot remove `flagSettings` or `policySettings`, which `IT()` always adds. The selector therefore narrows ordinary configuration discovery but cannot bypass command-supplied or enterprise policy input.
+
+`--managed-settings` is not another ordinary top-precedence object. It enters the managed-policy tier machinery as parent-managed settings and is filtered/selected according to the admin tier rules below.
+
+### Parse and validation semantics
+
+Settings files are read through the symlink-aware bounded reader with a **2 MiB** maximum. Empty files become `{}`. The loader then clones/parses the object and performs targeted sanitization before the main schema parse:
+
+- non-string or syntactically invalid `permissions.allow`/`deny`/`ask` entries are removed with warnings;
+- a non-object `hooks` root, unknown hook event, or non-array event value is removed with warnings; and
+- invalid entries in `allowedMcpServers` and `deniedMcpServers` are filtered for ordinary settings.
+
+For an ordinary user/project/local/flag file, any remaining root-schema failure makes that file contribute **no settings**. Diagnostics still identify the file/path and can include a correction hint. Other valid sources continue to load; this is a per-file failure, not a universal startup rollback.
+
+Managed input intentionally behaves differently. `mSi()` wraps the schema fields individually so one invalid policy key normally does not discard unrelated valid policy. Most invalid fields are dropped with warnings, while selected enforcement fields fail closed:
+
+| Invalid managed field | Recovery in `2.1.215` |
+|---|---|
+| `allowedMcpServers` | Empty allowlist. |
+| `allowManagedMcpServersOnly` | Treated as `true`. |
+| `availableModels` | Empty list (only the default model remains available under the documented policy semantics). |
+| `enforceAvailableModels` | Treated as `true`. |
+| `forceLoginOrgUUID` | Empty list, so no organization is permitted until fixed. |
+| `deniedMcpServers` | Invalid field is dropped; the diagnostic explicitly warns those entries cannot be enforced. |
+| Invalid sandbox credential entry | Entry is dropped and the diagnostic warns that credential is not protected. |
+
+This is not a blanket promise that every malformed policy becomes stricter. The recovery is field-specific, and diagnostics distinguish warnings from fatal source-load errors. In headless mode, fatal managed-source failures state that policy from the failed source is not in effect; recoverable invalid entries state that remaining valid policy is still enforced.
+
+### Ordinary merge rules
+
+`settingsMergeCustomizer()` gives arrays special treatment and otherwise lets the recursive object merge proceed:
+
+```text
+object + object      → recursive key merge
+scalar or type swap → later source wins
+array + array        → concatenate, then de-duplicate
+fallbackModel array → later source replaces the whole array
+```
+
+After the normal merge, a managed `availableModels` and `enforceAvailableModels` are copied back exactly from policy so lower array-union semantics cannot widen the enforced model set.
+
+These are effective-object rules, not a guarantee that every consumer reads the merged value. Examples of narrower resolvers include:
+
+- `pluginConfigs`: user → flag/SDK → policy only; project/local values are ignored;
+- several credential/sandbox/process controls: policy, flag, and/or user sources only; and
+- deny/allow security accumulators that inspect all managed tiers rather than only the displayable effective object.
+
+See [Plugin-specific options](plugin-lifecycle-and-configuration.md#userconfig-plugin-specific-options) and the source-restriction columns in [Settings schema reference](settings-schema-reference.md).
+
+## Managed policy is tier selection plus selective accumulation
+
+Managed configuration is not one universal deep merge. In the absence of a policy helper, the base admin candidates are checked in this order:
+
+```text
+remote managed settings → MDM/HKLM or macOS plist → managed file/drop-ins
+```
+
+The first non-empty candidate is the selected admin object for ordinary `policySettings`. If a validated policy helper was configured by an admin origin, its returned `managedSettings` replaces that base selection. HKCU policy is a last-resort Windows tier only when no selected admin/parent policy exists (with the separate WSL double-opt-in rules documented by the schema).
+
+SDK parent-managed settings can layer underneath the selected admin object only through a filtered security slice. `BYm()` carries selected restrictive flags, deny/ask permission rules, sandbox denies, and conditionally admitted allow values. It does **not** merge the entire parent object. If the selected admin sets `parentSettingsBehavior:"first-wins"`, that parent slice is omitted entirely, so only the selected admin contributes to the ordinary effective policy object; this setting does not mean “the first value of every ordinary settings key wins.” The default/`"merge"` behavior admits the filtered slice and then lets the selected admin override it.
+
+Security-specific code can additionally inspect `getAllPolicyTierSettings()` to accumulate deny rules or “managed-only” constraints across remote/MDM/file tiers. Therefore the effective `policySettings` object, the selected policy origin, and all security-relevant admin tiers are related views but not interchangeable.
+
+## Live reload and change admission
+
+`Hyg()` installs the runtime settings change detector outside safe mode. It watches admitted settings files, the managed drop-in directory, and resolved symlink targets whose parent exists at initialization. The watcher uses atomic-save handling plus write-stability checks and maps a real target back to its canonical settings source.
+
+```mermaid
+sequenceDiagram
+    participant Disk as Settings file
+    participant Watcher as Change detector
+    participant Hook as ConfigChange hooks
+    participant Cache as Settings caches
+    participant Runtime as Subscribers
+
+    Disk->>Watcher: add / change / delete
+    Watcher->>Watcher: coalesce write or deletion grace
+    Watcher->>Hook: source kind + canonical path
+    alt hook blocks
+        Hook-->>Watcher: blocking result
+        Watcher-->>Cache: retain current cached settings
+    else admitted
+        Hook-->>Watcher: allow
+        Watcher->>Cache: HS() invalidation
+        Watcher->>Runtime: emit source-specific change
+    end
+```
+
+Important timing and ownership details:
+
+- ordinary writes wait for roughly one second of stability with a 500 ms poll interval; deletion has a grace window so atomic replace does not look like a lasting removal;
+- changes echoing a Claude Code write within five seconds are suppressed because the writer emits its own programmatic event;
+- external add/change/delete events run `ConfigChange`; a blocking hook leaves the current cache/runtime state untouched even though the disk file changed;
+- MDM/HKCU/WSL policy state is polled every 30 minutes in addition to filesystem watching; and
+- accepted events refresh the effective settings and app permission state, but they do not imply that every extension is rebuilt. Plugin commands/agents/MCP/LSP, status command processes, and other owner-managed resources retain their documented reload/reconnect boundaries.
+
+Because only existing parent directories are registered during initialization, creating an entirely new settings directory after startup is not equivalent to changing a watched file. Restarting or invoking the relevant explicit reload remains the reliable recovery path for that edge case.
+
+## Mutation and atomic-write behavior
+
+`updateSettingsForSourceWithTransform()` only mutates user/project/local settings; policy and flag settings are read-only through this API. Writes to the same file are serialized through a per-path queue so concurrent UI/command transforms do not race from the same process.
+
+The transform pipeline is deliberately different from effective-settings merge:
+
+1. Read a validated source-only seed without folding the legacy local alias into it.
+2. If schema validation failed but the file is still syntactically valid JSON, parse the raw object so a targeted edit can preserve unknown/temporarily invalid fields. Invalid JSON syntax aborts the write rather than replacing the file.
+3. Apply the caller transform. `null` means no canonical write; `undefined` patch values delete keys; arrays in the patch replace existing arrays rather than unioning them.
+4. Serialize pretty JSON, mark the path for self-echo suppression, and write through `tte()`.
+5. Clear caches and emit the source event; local writes also maintain ignore/revocation compatibility state.
+
+The normal `tte()` path is:
+
+```text
+exclusive temp create → write → preserve/apply mode → fsync → close → rename over target
+```
+
+The temp path can live in the guarded `.claude` staging directory; when sandbox setup recorded that directory's device/inode, the writer rechecks its identity before use. User settings may intentionally follow a target-file symlink. Project/local settings normally reject a symlink target and reject a symlinked parent directory, preventing a repository-controlled path from redirecting the write.
+
+If rename cannot complete for the narrow `EXDEV`, `EPERM`, `EEXIST`, or `EBUSY` class after a successful temp write—or an existing target returns the handled pre-write `EACCES` case—the writer can fall back to opening/truncating the target in place, writing, and syncing it. That fallback is **not atomic**. If it fails after truncation, the error reports that the new content remains at the temp path when applicable. Other failures clean up the temp file and propagate.
+
+For canonicalized local settings, `Nxl()` also applies the transform to an older cwd-local `settings.local.json` copy in **removals-only** form. This revokes stale legacy values without adding new settings back into the obsolete file. A canonical write can therefore succeed while a relevant legacy revocation still returns an error that the caller should surface.
 
 ## Confirmed settings and policy groups
 
@@ -96,7 +244,7 @@ Managed `disableSideloadFlags` closes CLI-only extension paths by rejecting `--p
 
 `processWrapper` (or the higher-precedence `CLAUDE_CODE_PROCESS_WRAPPER`) is an argv prefix for the background supervisor, sessions/workers it hosts, and covered self-spawns. The runtime validates that the launcher remains executable, retires an older unwrapped supervisor, preserves wrapper state across background upgrades, and exposes the recorded launcher through daemon status. Project/local settings cannot set it.
 
-Claude in Chrome is a first-class integration in this build (`--chrome` / `--no-chrome`) and is generally available subject to auth, host, extension, policy, and safe-mode gates. Browser calls remain tool calls and therefore still cross normal plan-mode and permission checks.
+[Claude in Chrome](browser-automation-and-claude-in-chrome.md) is a first-class integration in this build (`--chrome` / `--no-chrome`) subject to auth, host, extension, policy, mode, and safe-mode gates. Browser calls remain MCP tool calls and therefore still cross normal plan-mode and permission checks; extension site permissions add another boundary.
 
 `disableClaudeAiConnectors` is narrower than a global MCP kill switch: the runtime checks it for `claudeai`-scoped configs and connector startup, while normal settings/plugin/flag MCP configs retain their own policies. `allow_team_onboarding` is an organization capability policy rather than a model permission; it gates the user-invoked local-history workflow, and [hosted guide sharing](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md) applies additional account/traffic/feature checks.
 
@@ -193,6 +341,9 @@ Unmappable entries can be written to `skills/import-to-claude-code/SKILL.md` und
 
 ## Related docs
 
+- [Browser automation and Claude in Chrome](browser-automation-and-claude-in-chrome.md)
+- [IDE integration and LSP diagnostics](ide-integration-and-lsp-diagnostics.md)
+- [Plugin lifecycle and configuration](plugin-lifecycle-and-configuration.md)
 - [Status line runtime and command protocol](status-line.md)
 - [Settings schema reference](settings-schema-reference.md)
 - [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md)

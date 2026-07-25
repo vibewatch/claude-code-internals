@@ -52,7 +52,7 @@ Before this command exists, `ZIS()` has already consumed exact process-role invo
 | Prompt/context | `--system-prompt`, `--system-prompt-file`, `--append-system-prompt`, `--append-system-prompt-file`, `--add-dir`, `--exclude-dynamic-system-prompt-sections`, `--plan-mode-instructions` | Overrides or extends system prompts and workspace context. |
 | Sessions | `--continue`, `--resume`, `--fork-session`, `--no-session-persistence`, `--resume-session-at`, `--rewind-files`, `--session-id`, `--name` | Controls local transcript restore, session IDs, fork/rewind, and persistence. |
 | Models/auth | `--model`, `--fallback-model`, `--betas` | Selects model aliases, fallback model behavior, and beta headers. |
-| Settings/integrations | `--settings`, `--setting-sources`, `--mcp-config`, `--strict-mcp-config`, `--plugin-dir`, `--plugin-url`, `--agents`, `--ide`, `--chrome`, `--file` | Adds runtime settings, MCP/plugin/agent definitions, IDE/browser/file integrations. |
+| Settings/integrations | `--settings`, `--setting-sources`, `--mcp-config`, `--strict-mcp-config`, `--plugin-dir`, `--plugin-url`, `--agents`, `--ide`, `--chrome`, `--file` | Adds runtime settings, MCP/plugin/agent definitions, [IDE/LSP](../03-tools-integrations-security/ide-integration-and-lsp-diagnostics.md), [Chrome browser](../03-tools-integrations-security/browser-automation-and-claude-in-chrome.md), and file integrations. |
 | Accessibility | `--ax-screen-reader` | Forces screen-reader-friendly flat text. `CLAUDE_AX_SCREEN_READER` is a higher-priority tri-state override over settings; accepted true strings are `1`, `true`, `yes`, `on`, and false strings are `0`, `false`, `no`, `off` (trimmed, case-insensitive). |
 | Remote hidden paths | `--teleport`, `--remote`, `--remote-control`, `--rc`, `--remote-control-session-name-prefix`, `--prefill`, `--deep-link-origin` | Used by remote sessions, teleport, Remote Control, and deep-link launch flows. |
 
@@ -88,6 +88,7 @@ Thus “print fast path” means reduced command registration, not a separate `-
 
 - [Command-line reference](command-line-reference.md)
 - [CLI main paths](cli-main-paths.md)
+- [Terminal UI renderer and input lifecycle](terminal-ui-renderer-and-input.md)
 - [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md)
 - [Built-in tools and permissions](../03-tools-integrations-security/built-in-tools-and-permissions.md)
 - [Agents, tasks, and subagents](../06-agents-automation/agents-tasks-and-subagents.md)

@@ -27,6 +27,8 @@ Scope: model aliases and precedence, main/helper/subagent/advisor/fallback model
 | FableConsentGate | `jrr()`, `IMu()`, `getFableDeclineFallbackModel()` | Determines whether a Fable attempt needs an interactive usage-credit decision and resolves an allowed non-Fable substitute [~345,607–345,654](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L345607). |
 | FablePromptAdaptation | `S3e()`, `PS()`, `M2()`, `T6y`, `w6y` | Selects the lean prompt and Fable-specific identity, autonomy/communication, and optional tool-JSON guidance [~568,052–568,369](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L568052). |
 | FableRequestShaping | `J9t()`, `QTt()`, `$te()`, `output_config`, `thinking` | Applies adaptive thinking, disabled-thinking omission, effort, temperature, and tool-choice rules [~487,900–488,100](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L487900). |
+| PerTurnEffortHistory | `Ysd()`, `pinPerTurnEffort()`, `api_system.outputConfig` | Inserts effort transitions at historical user-turn boundaries when the per-turn-control beta is active [~486,700–486,760](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L486700). |
+| ThinkingTypeCompatibility | `getThinkingTypeOverride()`, `setThinkingTypeOverride()`, `retry:thinking-type` | Latches a per-model adaptive/enabled compatibility substitute after provider rejection [~487,980, ~488,850](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L487980). |
 | FableCreditFeedback | `bto()`, `NIg()`, `FIg()`, `fableCreditsRequired` | Feeds successful response headers and Fable-specific `429` details back into consent state and user guidance [~285,109–286,500](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L285109). |
 | RefusalFallbackRouter | `lSc()`, `iZu()`, `QQu()`, `fallback_request` | Resolves a policy-compatible Opus route and chooses server-side or client-visible refusal retry [~143,331–143,620](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L143331). |
 | RefusalFallbackPersistence | `model_refusal_fallback`, `latchRefusalFallbackModel()`, `Z4t()` | Tombstones refused output, records the substitution, latches the session model, and reconstructs the latch on resume [~460,600–461,500](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L460600), [~860,250–860,435](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L860250). |
@@ -435,6 +437,14 @@ The setter preserves several precedence boundaries:
 - interactive ordinary levels can be saved as the default, while non-interactive changes are session-scoped.
 
 `/fast [on|off]` first checks current model/account availability. Turning it on selects the required fast-capable model when necessary, updates local or remote flag state, reports the speed tier, and can display a model deprecation notice. Interactive changes persist to user settings; non-interactive/bridge-local changes explicitly report `this session only` when they are not saved.
+
+### Per-turn effort and thinking compatibility
+
+The provider request has both a current `output_config.effort` and, when the per-turn-control beta is active, historical effort transitions. `Ysd()` walks user-message UUIDs, calls `pinPerTurnEffort(uuid, currentEffort)`, and inserts an `api_system` record only when the effective effort changes. This lets one conversation preserve where an interactive `/effort` change began instead of rewriting every earlier turn as though it used the newest value.
+
+If the server rejects that mid-conversation effort statement, the retry path strips those `api_system.outputConfig` records and sticky-rejects the beta until `/clear` or `/compact`. The ordinary current request can still carry supported `output_config.effort`; this fallback removes historical turn markers, not the user's saved preference.
+
+Thinking type has a separate compatibility latch. When a provider/model rejects `thinking.type:"enabled"` or `"adaptive"`, the error classifier records the opposite type for that model and retries. Future requests consult that per-model map. This is a protocol-compatibility substitution, not a model picker change and not evidence that the user changed `/effort` or thinking-display preferences.
 
 ### `/usage`: account state plus local attribution heuristics
 

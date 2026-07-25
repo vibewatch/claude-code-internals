@@ -27,6 +27,8 @@ Scope: local/project/managed/auto memory, context accounting, manual and automat
 | PrecomputedCompaction | `Ras()` → `ilo()`, then `Das()` / `JTy()` → `hlo()` | Background arm and later automatic swap or manual consume path. |
 | ManualCompactRouter | `XTy()` → `JTy()` / `Bas()` → `hlo()` | `/compact` runs a manual hook pass, reuses a compatible ready precompute when possible, and otherwise uses grouped reactive summarization [~499,359–499,529](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L499359). |
 | CompactSummaryContract | `Jao()`, `cWg()`, `J9r()` | One-turn, no-tool, no-transcript/cache-write summary request and the continuation message built from its `<summary>` output [~346,360–346,700](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L346360). |
+| CompactCacheSharing | `JMu()`, `tengu_compact_cache_sharing_success` | Full/partial summarization first tries a one-turn fork that can reuse the conversation's cache-safe prefix; invalid/no-text/error results fall back to a direct non-caching summary call [~347,443–347,650](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L347443). |
+| CompactMediaPlaceholder | `J5g()`, `fas()` | Summary-request copies replace rich media with exact text placeholders without rewriting the source transcript [~346,673–346,746](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L346673). |
 | CompactResultSplice | `E.type === "compact"`, `jVe()` | Local-command dispatch appends command/display records to the retained suffix and returns the compacted chain without another model turn [~351,953–351,974](../../claude-code-pkg/src/entrypoints/cli.renamed.js#L351953). |
 | PrecomputedSidecar | `Qrr()`, `oOu()`, `iOu()`, `.precompact.json` | Versioned, size-bounded persistence for a ready main-session precompute. |
 | PreservedMessageMetadata | `gas()`, `preservedMessages`, `preservedSegment` | Current explicit preserved-UUID metadata and its legacy contiguous-segment compatibility form. |
@@ -157,6 +159,15 @@ The entry has four distinct phases:
 
 The helper request is deliberately constrained: `cWg()` invokes a one-turn fork with every tool denied, transcript and prompt-cache writes disabled, and `querySource:"compact"`. `Jao()` requires plain text containing `<analysis>` followed by `<summary>` and asks the helper to preserve user intent, technical decisions, files/code, errors/fixes, all genuine user messages, pending/current work, next-step context, and security constraints. Optional `/compact` instructions are appended to this prompt. `J9r()` strips the analysis block, turns the summary into a continuation message, includes the transcript path when available, and tells the main agent to resume without recapping.
 
+### Cache sharing versus cache writes
+
+The full and partial summarizers call `JMu()`, which has two request shapes:
+
+1. When `tengu_compact_cache_prefix` is enabled and non-essential content is not being stripped, `runForkedAgent()` sends only the summary instruction as the fork's new prompt message while carrying the caller's cache-safe parameters. The fork permits no tools, runs at most one turn, writes neither transcript nor prompt cache, and may read/reuse the existing conversation prefix. A valid assistant text result returns immediately. `tengu_compact_cache_sharing_success` records `preCompactTokenCount`, `outputTokens`, `cacheReadInputTokens`, `cacheCreationInputTokens`, a cache-hit ratio whose denominator also includes ordinary input tokens, and `forkAssistantMessageCount`; it does not emit ordinary input tokens as a separate event field.
+2. If the fork throws or returns no valid non-error text, `JMu()` records `tengu_compact_cache_sharing_fallback` and calls the model directly with a short summarizer system prompt. That direct request explicitly sets `enablePromptCaching:false`, uses no MCP tools, and streams only the summary response. Abort remains terminal rather than being converted into fallback work.
+
+Prompt-too-long text from a valid fork is returned to the caller rather than classified as a cache-sharing failure. Full/partial retry logic then shortens the fork context and calls `JMu()` again. The source exposes the helper request's usage counters, but it does not establish a separate user-visible billing rule for “compaction tokens”; this page therefore does not infer one.
+
 ### Hook lifecycle
 
 Hook timing differs slightly by path:
@@ -193,11 +204,24 @@ sequenceDiagram
 
 - when the error supplies a token gap, the next step estimates how many additional groups cover that gap;
 - without a parseable gap, it advances one group;
-- a media-too-large result gets one retry with media replaced by placeholders;
+- a media-too-large result repeats the same logical split once with media represented by text placeholders; the retry does not consume another group-preservation attempt;
 - aborts and ordinary API errors stop the attempt rather than silently applying a partial result;
 - the routine fails when fewer than two groups exist, no assistant message is in the summary prefix, or every possible split is exhausted.
 
 A successful grouped result contains the summary text/messages, the exact messages to preserve, attempt count, group counts, fork usage, and assistant-message count. `hlo()` turns that result into the normal boundary/summary/attachment shape. Preserved assistant messages keep their content but have historical usage counters zeroed before reinsertion so the retained suffix is not reported as fresh model usage.
+
+`fas()` performs the media transformation on the summary-request copy, not on the original transcript or retained suffix:
+
+| Rich-content location | Summary copy |
+|---|---|
+| User or queued-command image block | text block `[image]` |
+| User or queued-command document block | text block `[document]` |
+| Image/document nested in a tool result | corresponding text block inside the same tool result |
+| File attachment with `content.type:"image"` | one-line text-file attachment containing `[image]` |
+| File attachment with `content.type:"notebook"` | one-line text-file attachment containing `[notebook]` |
+| File attachment with `content.type:"parts"` | one-line text-file attachment containing `[parts]` |
+
+Reactive `cWg()` first sends the unmodified summary prefix. Only a provider `media_too_large` response makes `ilo()` repeat it with `fas()` enabled; a second media-size result becomes `media_unstrippable`. The direct fallback inside full/partial `JMu()` applies `fas()` before its non-caching request, because the cache-sharing fork has already had the opportunity to consume the richer prefix.
 
 ### Precomputed result state and sidecar
 
@@ -254,7 +278,7 @@ The surrounding `buildConversationChain()` reconstruction then walks `parentUuid
 |---|---|
 | Full/partial prompt still too long | The summarizer can truncate older groups and retry up to three times; exhaustion raises the conversation-too-long failure instead of emitting an invalid boundary. |
 | Reactive prompt still too long | `ilo()` increases the preserved suffix using a token-gap-guided or one-group step until a split works or all splits are exhausted. |
-| Reactive media too large | Retries once with image/document content represented by placeholders; a second media failure becomes `media_unstrippable`. |
+| Reactive media too large | Repeats the same split once with `[image]`, `[document]`, `[notebook]`, or `[parts]` as applicable; a second media failure becomes `media_unstrippable`. The original transcript is not rewritten. |
 | No valid summary text | Throws `Failed to generate conversation summary - response did not contain valid text content`. |
 | API error in summary call | Emits `tengu_compact_failed` / `tengu_partial_compact_failed` with `reason:"api_error"`. |
 | Summary model unavailable | The summary request can advance through its availability fallback chain; a blocked model with no acceptable fallback surfaces a compaction error. |

@@ -1,6 +1,6 @@
 # Mechanism-question audit: tools, integrations, and security
 
-This ledger records the original full-analysis reverse-engineering audit of ten mechanism-oriented pages under `docs/03-tools-integrations-security` plus the later focused [`status-line.md`](../03-tools-integrations-security/status-line.md) follow-up. It records the reader questions used to test each page, the source-confirmed answers, the resulting documentation decision, and the evidence boundary beyond which the retained artifacts do not support a claim.
+This ledger records the original full-analysis reverse-engineering audit of ten mechanism-oriented pages under `docs/03-tools-integrations-security` plus later focused [`status-line.md`](../03-tools-integrations-security/status-line.md) and [`plugin-lifecycle-and-configuration.md`](../03-tools-integrations-security/plugin-lifecycle-and-configuration.md) follow-ups. It records the reader questions used to test each page, the source-confirmed answers, the resulting documentation decision, and the evidence boundary beyond which the retained artifacts do not support a claim.
 
 ## Scope and exclusions
 
@@ -17,13 +17,16 @@ Original audited pages:
 9. [`skills-system.md`](../03-tools-integrations-security/skills-system.md)
 10. [`tool-runtime-events-and-integrations.md`](../03-tools-integrations-security/tool-runtime-events-and-integrations.md)
 
-Focused follow-up page:
+Focused follow-up pages:
 
 11. [`status-line.md`](../03-tools-integrations-security/status-line.md)
+12. [`plugin-lifecycle-and-configuration.md`](../03-tools-integrations-security/plugin-lifecycle-and-configuration.md)
+13. [`browser-automation-and-claude-in-chrome.md`](../03-tools-integrations-security/browser-automation-and-claude-in-chrome.md)
+14. [`ide-integration-and-lsp-diagnostics.md`](../03-tools-integrations-security/ide-integration-and-lsp-diagnostics.md)
 
 For the original ten-page audit, excluded from direct editing were the section `README.md`, navigation and index files, inventories and schema references, generated artifacts and source atlases, website configuration, unrelated sections, and unrelated research ledgers. The three original pages that already answered their source-answerable mechanism questions were intentionally left unchanged rather than churned.
 
-The focused status-line follow-up intentionally updated its section index, settings/hook references, safe-mode/ops handoffs, global navigation, website sidebar, and this ledger. Generated artifacts, the retained bundle, and `source-atlas/` remained excluded.
+The focused status-line follow-up intentionally updated its section index, settings/hook references, safe-mode/ops handoffs, global navigation, website sidebar, and this ledger. The later plugin/configuration follow-up created the focused plugin page; revisited the settings and MCP owners plus the settings schema reference; and updated navigation, indexes, and this ledger. Generated artifacts, the retained bundle, and `source-atlas/` remained excluded.
 
 ## Artifact identity and evidence model
 
@@ -261,7 +264,7 @@ The following are not answered because the inspected local artifacts do not esta
 
 ## Final convergence result
 
-The original complete post-edit pass over all ten in-scope pages produced **zero new source-answerable mechanism questions**. Later focused rereads found the gated Windows sandbox path and reconstructed the status-line runtime; each owning page then produced zero new source-answerable questions.
+The original complete post-edit pass over all ten in-scope pages produced **zero new source-answerable mechanism questions**. Later focused rereads found the gated Windows sandbox path, reconstructed the status-line runtime, and separated plugin/configuration state; each owning page then produced zero new source-answerable questions.
 
 | Page | Documentation decision | Final pass: new source-answerable questions | Status |
 |---|---|---:|---|
@@ -270,9 +273,13 @@ The original complete post-edit pass over all ten in-scope pages produced **zero
 | `built-in-tools-and-permissions.md` | Edited | 0 | Converged |
 | `claude-design-and-design-sync.md` | Unchanged | 0 | Converged |
 | `computer-use-mcp.md` | Edited | 0 | Converged |
-| `mcp-plugins-hooks.md` | Edited | 0 | Converged |
+| `mcp-plugins-hooks.md` | Edited; hot-reload precision corrected in plugin follow-up | 0 | Converged |
+| `plugin-lifecycle-and-configuration.md` | New focused follow-up | 0 | Converged |
+| `browser-automation-and-claude-in-chrome.md` | New full-system follow-up | 0 | Converged |
+| `ide-integration-and-lsp-diagnostics.md` | New full-system follow-up | 0 | Converged |
 | `sandbox-and-isolation.md` | Edited in Windows follow-up | 0 | Converged |
-| `settings-policy-and-integrations.md` | Edited | 0 | Converged |
+| `settings-policy-and-integrations.md` | Edited; load/merge/reload/write pipeline added in plugin follow-up | 0 | Converged |
+| `settings-schema-reference.md` | Edited in plugin/configuration follow-up | 0 | Converged |
 | `skills-system.md` | Edited | 0 | Converged |
 | `tool-runtime-events-and-integrations.md` | Edited | 0 | Converged |
 | `status-line.md` | New focused follow-up | 0 | Converged |
@@ -284,6 +291,10 @@ Cross-page terminology now consistently preserves these boundaries:
 - auto-mode-classifier-specific `PermissionDenied` dispatch and model guidance rather than automatic retry;
 - per-call post hooks versus normal/end-turn aggregate-hook semantics;
 - marketplace declaration state versus materialized state and final ownership cleanup;
+- plugin installation/enablement versus manifest defaults versus `userConfig` and secure option storage;
+- ordinary settings source merge versus admin-tier selection and security-specific accumulation;
+- accepted settings-cache invalidation versus owner-specific plugin/resource reload;
+- atomic settings replacement versus the narrow non-atomic filesystem fallback;
 - npm plugin packages versus unsupported NPM marketplace acquisition;
 - lazy, contained, exclusive bundled-file extraction with conditional no-follow support;
 - all-step teaching-envelope normalization and pre-batch coordinate framing;
@@ -336,3 +347,69 @@ The post-edit reread produced zero additional tools/security command mechanism q
 - The focused follow-up changed documentation and `website/astro.config.mjs` only. No path under `claude-code-pkg/` or `source-atlas/` changed; `source-atlas/` was intentionally left untouched because the retained readable bundle supplied the required enclosing control flow.
 
 **Status-line follow-up status: complete and converged for Claude Code `2.1.215`.**
+
+### Plugin lifecycle and settings pipeline follow-up
+
+This focused round separated five layers that the prior marketplace page necessarily compressed together: marketplace declaration/materialization, installation records, scoped enablement, manifest/plugin-owned defaults, and plugin `userConfig`. It also traced the general settings loader through source admission, validation, merge, change detection, and persistence.
+
+#### `plugin-lifecycle-and-configuration.md`
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Is a plugin represented by one settings record? | No. `extraKnownMarketplaces`, `known_marketplaces.json`, the versioned cache/`installed_plugins.json`, `enabledPlugins`, manifest/default settings, `pluginConfigs`, and secure option storage have different owners. | Created a focused layer diagram and lifecycle table. |
+| How are colliding plugin sources selected? | Managed names block same-name session plugins; session-only entries override installed entries; installed/session entries shadow skills-directory entries; user skills-directory entries shadow project copies; trust gates project discovery. | Added source precedence separately from settings precedence. |
+| How do install/enable/dependency state compose? | User/project/local installs can coexist by `projectPath`; ordinary `enabledPlugins` precedence applies; defaults yield to explicit values; dependency closure, reverse dependents, range pinners, auto-installed metadata, and prune/update guards constrain transitions. | Added scoped installation, enablement, dependency/version, rollback, and prune behavior. |
+| Can a plugin inject arbitrary Claude Code settings? | No. `Dgy()` accepts only `agent` and `subagentStatusLine` as plugin-owned defaults in this build, and the aggregate sits below ordinary settings. | Added the exact allowlist and precedence. |
+| Where do plugin options come from and where are secrets stored? | `MGr()` reads user → flag/SDK → policy only. `/plugin configure` and install-time `--config` write non-sensitive values to user `pluginConfigs` and sensitive values to `pluginSecrets`; secure values merge last. | Added schema, source restriction, storage split, migration scrubbing, and write-scope details. |
+| Can `${user_config.*}` be substituted everywhere? | No. Exec-form component fields can expand it; shell-form hook/monitor commands reject direct substitution; skills/agents redact sensitive values; hooks also receive normalized `CLAUDE_PLUGIN_OPTION_*` variables. | Added component-specific substitution/security boundaries. |
+| Does every settings edit fully hot-reload plugins? | No. The automatic hook subscriber reacts only to `policySettings` events and rebuilds hooks after a changed snapshot. `/reload-plugins` owns the full commands/agents/hooks/MCP/LSP contribution rebuild; updates can require restart. | Added the exact activation matrix and corrected the existing MCP page's overbroad hot-reload wording. |
+
+#### Settings and MCP owner follow-up
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| What is the ordinary settings order? | Enabled-plugin defaults → user → project → local → flag/SDK → policy. `--setting-sources` controls only user/project/local admission; flag and policy remain. | Added the ordered loader and corrected the schema reference's prior ambiguity. |
+| How are arrays and policy model lists merged? | Arrays normally concatenate/de-duplicate; `fallbackModel` is replaced. Policy `availableModels` and `enforceAvailableModels` are copied back exactly after the merge. | Added merge exceptions and no-widening semantics. |
+| Does one malformed key invalidate every source? | Ordinary files receive targeted permission/hook/MCP-list sanitization, then any remaining schema failure drops that file. Managed `mSi()` recovers per key and fails closed only for selected fields. | Added ordinary-versus-managed validation and the field-specific recovery table. |
+| Are all managed sources deep-merged? | No. A helper can win; otherwise the first remote → MDM/HKLM/plist → managed-file admin object is selected. SDK parent policy contributes only a filtered slice, and `first-wins` omits that slice. Security consumers can still inspect all tiers. | Added tier selection versus selective accumulation. |
+| How do external changes become live? | The watcher coalesces atomic saves/deletions, tracks symlink targets, suppresses self-write echoes, runs `ConfigChange`, clears caches only when admitted, and emits a source-specific event; MDM is additionally polled. | Added the change-admission sequence and owner-specific reload caveat. |
+| Are settings writes direct overwrites? | Normally no. Same-file transforms serialize, preserve syntactically valid but schema-invalid raw objects, write an exclusive temp, preserve mode, sync, and rename. A narrow filesystem-error class can fall back to a non-atomic in-place write; project/local symlink redirection is rejected. | Added transform, symlink, atomic-write, fallback, and legacy-local revocation behavior. |
+
+An independent read-only review confirmed the source restrictions, defaults allowlist, merge exception, admin-tier behavior, validation split, writer, compaction handoff, and policy-only plugin-hook reload. Its source-supported precision suggestions were applied for `projectPath`, `defaultEnabled`, user-only option writes, policy snapshot wording, and exact merge language; contradictory or already-satisfied suggestions were not adopted. A post-fix question pass produced zero new source-answerable plugin/configuration questions. **Focused follow-up status: new page plus owner corrections, converged.**
+
+#### Plugin/configuration follow-up validation
+
+- Editor diagnostics reported no errors in all 13 touched documentation/configuration files.
+- A changed-document link scan resolved all 562 relative Markdown targets across 12 changed Markdown files. An initial checker rule treated an existing directory link as requiring `README.md`; rerunning with valid directory targets accepted produced zero failures.
+- Generated HTML contains the newly referenced `userconfig-plugin-specific-options`, `load-validate-and-merge-pipeline`, and `plugin-marketplace-lifecycle` fragment IDs.
+- Repository-wide `git diff --check` passed before the final validation-note update.
+- The Astro/Starlight production build loaded 92 documentation sources and generated 93 pages, including `/03-tools-integrations-security/plugin-lifecycle-and-configuration/`. Pagefind indexed 93 HTML files and sitemap generation completed; the only warning was Vite's existing large-chunk advisory.
+- Change accounting contained 12 Markdown files plus `website/astro.config.mjs`; no retained package artifact or `source-atlas/` file changed.
+
+**Plugin/configuration follow-up status: complete, validated, and converged for Claude Code `2.1.215`.**
+
+### Full-system follow-up: Chrome automation and IDE/LSP — 2026-07-25
+
+The repository-wide audit compared the tool inventory and integration references with lifecycle owners. Two source-confirmed integration families had only list/summary coverage.
+
+#### Browser automation and Claude in Chrome
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| What starts browser automation? | Explicit/saved/auto-offer gates create a dynamic stdio MCP config that relaunches `--claude-in-chrome-mcp`; setup also installs the `--chrome-native-host` wrapper/manifest. | Created the setup/process-role lifecycle. |
+| Which transport does the normal MCP context use? | `createChromeSocketClient()` chooses authenticated `BridgeClient` when `bridgeConfig` exists; the normal context supplies it. The native host/local socket pool is a separate packaged transport role. | Separated hosted WebSocket and native-messaging/socket paths. |
+| How are browsers/tabs isolated? | The bridge discovers/selects an extension device; renderer MCP metadata carries session scope and caches `tabGroupId`; standalone navigation can front-load `tabs_context_mcp({createIfEmpty:true})`. | Added selection and session tab-group behavior. |
+| Do “safe/read-only” sets bypass permissions? | No. They classify auto/plan subsets. Browser calls remain MCP tools at the common execution boundary, while bridge/extension site permissions add another check. | Corrected the permission interpretation. |
+| What are the recovery bounds? | Source establishes 30 s handshake, 10 s connection wait, 60 s default tool call, 8 s hidden tab bootstrap, 30/90 s ping/pong, and bounded exponential reconnect. | Added timing, failure, and cleanup tables. |
+
+#### IDE integration and LSP diagnostics
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| Are IDE integration and LSP one connection? | No. IDE lock files create a dynamic `ws-ide`/`sse-ide` MCP client; enabled plugins independently supply lazy local LSP subprocesses. | Created one page with two explicitly separate call paths. |
+| How does IDE discovery avoid arbitrary endpoints? | It reads bounded lock records, verifies PID/port/workspace/ancestor conditions, handles WSL mapping, and presents ambiguity through `/ide`. | Added discovery, auto-connect, 35 s connection, and disconnect behavior. |
+| Where can LSP configs come from? | In this path, enabled plugin root `.lsp.json` plus contained/inline manifest `lspServers`; manifest entries merge after the root file and are namespaced. | Corrected the audit's generic-settings overclaim. |
+| How do files and crashes behave? | Servers start lazily by extension; full content travels through didOpen/didChange/didSave, didClose occurs on the 50-document eviction path, and a crashed server can restart on next use within config bounds. | Added lifecycle and lazy-recovery semantics. |
+| What reaches context? | `publishDiagnostics` is version-filtered, deduped, severity-sorted, and capped at 10/file and 30 total; delivered identities retain an LRU of 500 URIs. | Corrected inferred larger caps and documented delivery. |
+
+Direct source validation rejected several report overclaims: normal Chrome calls do not traverse both transports, classifier subsets are not universal grants, LSP caps are 10/30 rather than 50/unknown, LSP config is plugin-owned here, and crash restart is next-use rather than immediate. The post-correction reread produced zero new source-answerable browser/IDE/LSP questions. **Focused follow-up status: two new pages, owner handoffs, and converged.**

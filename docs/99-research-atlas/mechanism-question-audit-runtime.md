@@ -17,6 +17,8 @@ In-scope pages:
 9. `docs/01-runtime-lifecycle/architecture.md`
 10. `docs/01-runtime-lifecycle/commands-and-flags.md`
 
+The later repository-wide coverage review added and audited an eleventh mechanism page, [`terminal-ui-renderer-and-input.md`](../01-runtime-lifecycle/terminal-ui-renderer-and-input.md). That focused round is recorded below and does not rewrite the historical ten-page scope/validation figures.
+
 `main-feature-map.md` and `commands-and-flags.md` were initially conditional. Both were classified as in scope because they explain mechanism and dispatch ordering rather than serving only as inventories.
 
 Excluded from direct editing:
@@ -388,3 +390,17 @@ Source tracing followed `Hur()`/`getBuiltinCommands()`, `_xo()`/`getCommands()`,
 - links from every mechanism-bearing family to its existing domain owner.
 
 `docs/01-runtime-lifecycle/README.md` now describes the reference as the complete core/bundled interactive catalog. Dynamic user, nested-workflow, plugin, and MCP names remain intentionally outside the static count because they are generated from runtime configuration. The post-edit reread found no unclassified static core or bundled name. **Follow-up status: edited and converged.**
+
+## Full-system follow-up: terminal UI renderer and input — 2026-07-25
+
+The cross-domain orphan pass found that screen-reader mode documented only the accessibility override; no page owned the normal TTY → renderer → input → cleanup lifecycle.
+
+| Reader question | Source-confirmed answer | Documentation result |
+|---|---|---|
+| How is classic versus fullscreen selected? | `Zi()` applies process-role, background, accessibility, env, tmux-control, Windows-SSH, saved `tui`, and rollout decisions in that order; `N5e()` records the reason. | Created [Terminal UI renderer and input lifecycle](../01-runtime-lifecycle/terminal-ui-renderer-and-input.md) with the exact precedence. |
+| Does `/tui` replace the renderer in place? | Normally it saves user settings, refuses active background work, checkpoints the current leaf, then relaunches/resumes with renderer env cleaned. A gated branch saves only the future preference. | Added save/live-switch/failure boundaries. |
+| How does input reach UI handlers? | A reference-counted raw-mode controller parses byte chunks into response, paste, mouse, focus, suspend, wheel, and keyboard events; keyboard events enter focused keybinding scopes. | Added the byte-parser and dispatch architecture without duplicating every binding. |
+| What owns alternate screen, resize, and suspend? | `Ser` enters/exits DEC alternate screen, tracks front/back frames and dimensions, listens for resize/`SIGCONT`, and restores terminal modes; `Ctrl+Z` releases and restores raw claims around `SIGTSTP`. | Added screen/state transitions and cleanup. |
+| Does a renderer crash automatically fall back to classic? | No source-visible same-process fallback exists. Selection avoids known-incompatible hosts before mount; the root component error boundary exits on render failure. | Added the explicit non-guarantee. |
+
+Direct source reads corrected the broad audit's “automatic crash fallback” implication and kept screen-reader behavior in its existing owner. The post-edit question pass produced zero new source-answerable terminal-lifecycle questions. **Focused follow-up status: new page, cross-linked, and converged.**
