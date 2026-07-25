@@ -2,7 +2,7 @@
 
 This page is the architecture analysis for the runtime-lifecycle module. It complements the implementation pages in this section by focusing on **module boundary, internal decomposition, public interface, and design rationale** rather than enumerating every source string.
 
-Scope: what reverse engineering reveals about how the Claude Code runtime is assembled inside one Bun-standalone `cli.renamed.js`, how it routes a process invocation to a runtime mode, and how it cleans up on exit. Implementation specifics live in [Package and Bun bootstrap](package-and-bun-bootstrap.md), [CLI main paths](cli-main-paths.md), and [Commands and flags](commands-and-flags.md).
+Scope: what reverse engineering reveals about how the Claude Code runtime is assembled inside one Bun-standalone `cli.renamed.js`, how it routes a process invocation to a runtime mode, and how it cleans up on exit. Implementation specifics live in [Package and Bun bootstrap](package-and-bun-bootstrap.md) and [CLI main paths](cli-main-paths.md); the canonical option/name inventory is [Command-line reference](command-line-reference.md).
 
 ## Module purpose
 
@@ -108,7 +108,7 @@ The module exposes its surface in three flavors: command-line, environment, and 
 
 | Surface | Role |
 |---|---|
-| `claude` root command and options | Primary user contract; documented in [Commands and flags](commands-and-flags.md). |
+| `claude` root command and options | Primary user contract; cataloged in [Command-line reference](command-line-reference.md). |
 | Subcommands (`mcp`, `plugin`, `auth`, `agents`, `ultrareview`, `auto-mode`, `doctor`, `update`, `install`, `project purge`, `setup-token`, hidden `remote-control`/`rc`) | Lazy-loaded utility entrypoints registered after root option parsing. |
 | `--print` / `-p` fast parse | Performance optimization that avoids registering heavy subcommands for scripted runs. |
 | `--handle-uri` | Deep-link trampoline branch that bypasses Commander entirely. |
@@ -226,7 +226,7 @@ These primitives do **not** prove that every child process receives a universal 
 
 - [Package and Bun bootstrap](package-and-bun-bootstrap.md)
 - [CLI main paths](cli-main-paths.md)
-- [Commands and flags](commands-and-flags.md)
+- [Command-line reference](command-line-reference.md)
 - [System architecture](../00-start-here/system-architecture.md)
 - [Context and model loop architecture](../02-context-model-loop/architecture.md)
 - [Session and remote-control architecture](../04-sessions-persistence-remote/architecture.md)

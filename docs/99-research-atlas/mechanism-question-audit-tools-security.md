@@ -1,4 +1,4 @@
-# Mechanism-question audit: tools, integrations, and security
+# Tools, integrations, and security mechanism question audit
 
 This ledger records the original full-analysis reverse-engineering audit of ten mechanism-oriented pages under `docs/03-tools-integrations-security` plus later focused [`status-line.md`](../03-tools-integrations-security/status-line.md) and [`plugin-lifecycle-and-configuration.md`](../03-tools-integrations-security/plugin-lifecycle-and-configuration.md) follow-ups. It records the reader questions used to test each page, the source-confirmed answers, the resulting documentation decision, and the evidence boundary beyond which the retained artifacts do not support a claim.
 

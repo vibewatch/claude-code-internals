@@ -1,6 +1,6 @@
-# Hosted agent ops
+# Operations and native support
 
-This chapter covers operational surfaces that sit around the main local agent runtime: debug logs, telemetry/traffic policy, updater/doctor and safe-mode recovery paths, crash/error reporting, cloud/hosted review signals, and embedded native media helpers.
+This chapter covers operational surfaces that sit around the main local agent runtime: debug logs, telemetry/traffic policy, updater/doctor and safe-mode recovery paths, crash/error reporting, cloud/hosted review signals, and embedded native media helpers. The directory retains its historical `05-hosted-agent-ops` route for link stability; the reader-facing title reflects the chapter's broader actual scope.
 
 Read this chapter when the question is: **how does Claude Code report, diagnose, update, or support host/native capabilities around a session?**
 

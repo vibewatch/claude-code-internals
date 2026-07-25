@@ -334,7 +334,7 @@ After invalidation, the next `getActiveAgentsFromList(...)` call re-parses every
 - [Worktree isolation and handoffs](worktree-isolation-and-handoffs.md)
 - [Agent messaging and communication](agent-messaging.md)
 - [Agent Teams](agent-teams.md)
-- [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md)
+- [Agent steering, interruption, and completion](agent-steering-interruption-and-completion.md)
 - [Observer agents](observer-agents.md)
 - [Slash commands and automation](slash-commands-and-automation.md)
 - [Built-in tools and permissions](../03-tools-integrations-security/built-in-tools-and-permissions.md)

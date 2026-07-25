@@ -139,7 +139,7 @@ The daemon is operational plumbing, not a separate product runtime layer:
 - Session/tool/model behavior still comes from the same Claude Code core runtime surfaces.
 - Other docs already note this architectural stance:
   - runtime-level note that operational boundaries are embedded rather than daemon-only (`00-start-here/system-architecture.md`)
-  - scheduler note that cron/scheduled work is in-session and not an always-on separate scheduler daemon (`06-agents-automation/agent-runtime-scheduling-and-completion.md`)
+   - scheduler note that cron/scheduled work is in-session and not an always-on separate scheduler daemon (`06-agents-automation/cron-and-scheduled-tasks.md`)
 
 ## Local control protocol
 
@@ -492,6 +492,6 @@ The right-hand "last event" column shows a short summary of the worker's most re
 - [Runtime lifecycle architecture](architecture.md)
 - [Prompt template catalog](../02-context-model-loop/prompt-template-catalog.md)
 - [Session API, events, and storage](../04-sessions-persistence-remote/session-api-events-and-storage.md)
-- [Agent runtime, scheduling, and completion](../06-agents-automation/agent-runtime-scheduling-and-completion.md)
+- [Cron and scheduled tasks](../06-agents-automation/cron-and-scheduled-tasks.md)
 - [Diagnostics and debug logs](../05-hosted-agent-ops/diagnostics-and-debug-logs.md)
 - [Telemetry and tracing](../05-hosted-agent-ops/telemetry-and-tracing.md)

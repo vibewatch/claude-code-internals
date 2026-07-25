@@ -1,4 +1,4 @@
-# Mechanism-question audit: operations and native support
+# Operations and native support mechanism question audit
 
 This ledger records the full-analysis audit of mechanism-oriented documentation under `docs/05-hosted-agent-ops`. It is evidence for the edits, not a replacement for the narrative pages.
 

@@ -1,4 +1,4 @@
-# Mechanism-question audit: agents and automation
+# Agents and automation mechanism question audit
 
 This ledger records the original full-analysis reverse-engineering audit of seven mechanism-oriented pages under `docs/06-agents-automation`, plus later focused rounds including the experimental Agent Teams lifecycle. It records the reader questions used to test each page, source-confirmed answers, documentation decisions, and the boundary beyond which the retained artifacts do not support a claim.
 
@@ -6,7 +6,7 @@ This ledger records the original full-analysis reverse-engineering audit of seve
 
 Original audited pages:
 
-1. [`agent-runtime-scheduling-and-completion.md`](../06-agents-automation/agent-runtime-scheduling-and-completion.md)
+1. [`agent-steering-interruption-and-completion.md`](../06-agents-automation/agent-steering-interruption-and-completion.md) (the focused successor to the original `agent-runtime-scheduling-and-completion.md`)
 2. [`agents-tasks-and-subagents.md`](../06-agents-automation/agents-tasks-and-subagents.md)
 3. [`architecture.md`](../06-agents-automation/architecture.md)
 4. [`cron-and-scheduled-tasks.md`](../06-agents-automation/cron-and-scheduled-tasks.md)
@@ -66,7 +66,7 @@ For each page:
 
 ## Per-page question rounds
 
-### `agent-runtime-scheduling-and-completion.md`
+### `agent-steering-interruption-and-completion.md` (formerly `agent-runtime-scheduling-and-completion.md`)
 
 #### Round 1
 
@@ -204,7 +204,7 @@ The original complete post-edit pass over all seven in-scope pages produced **ze
 
 | Page | Documentation decision | Final pass: new source-answerable questions | Status |
 |---|---|---:|---|
-| `agent-runtime-scheduling-and-completion.md` | Edited | 0 | Converged |
+| `agent-steering-interruption-and-completion.md` | Renamed and narrowed during the information-architecture review | 0 | Converged |
 | `agents-tasks-and-subagents.md` | Edited | 0 | Converged |
 | `worktree-isolation-and-handoffs.md` | New full-system follow-up | 0 | Converged |
 | `architecture.md` | Edited | 0 | Converged |

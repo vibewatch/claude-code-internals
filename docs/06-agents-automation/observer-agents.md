@@ -108,7 +108,7 @@ The report origin is tagged `observer:<agent-type>`. Observers do not receive `S
 ## Related docs
 
 - [Agents, tasks, and subagents](agents-tasks-and-subagents.md)
-- [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md)
+- [Agent steering, interruption, and completion](agent-steering-interruption-and-completion.md)
 - [Tool inventory and schemas](../03-tools-integrations-security/tool-inventory-and-schemas.md)
 - [Built-in tools and permissions](../03-tools-integrations-security/built-in-tools-and-permissions.md)
 - [Data models and frame schemas](../04-sessions-persistence-remote/data-models-and-frame-schemas.md)

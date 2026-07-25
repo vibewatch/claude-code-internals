@@ -133,7 +133,7 @@ This page centralizes environment variables visible in the analyzed runtime and 
 
 | Variable | Effect | Owner |
 |---|---|---|
-| `CLAUDE_CODE_DISABLE_CRON` | Disables scheduled tasks / Kairos cron paths. | [Agent runtime, scheduling, and completion](../06-agents-automation/agent-runtime-scheduling-and-completion.md) |
+| `CLAUDE_CODE_DISABLE_CRON` | Disables scheduled tasks / Kairos cron paths. | [Cron and scheduled tasks](../06-agents-automation/cron-and-scheduled-tasks.md) |
 | `CLAUDE_CODE_SAFE_MODE` | Environment equivalent of `--safe-mode`; disables user/project customizations but not managed policy. | [Safe mode and recovery](safe-mode-and-recovery.md) |
 | `CLAUDE_AX_SCREEN_READER` | Overrides the `axScreenReader` setting and `--ax-screen-reader` selection. | [Accessibility and screen-reader mode](../01-runtime-lifecycle/accessibility-and-screen-reader-mode.md) |
 | `CLAUDE_CODE_DISABLE_MOUSE_CLICKS` | Disables click/drag/hover while retaining wheel scrolling. | [Feature gates reference](feature-gates-reference.md) |

@@ -1,4 +1,4 @@
-# Mechanism-question audit: context and model loop
+# Context and model loop mechanism question audit
 
 This ledger records a full-analysis reverse-engineering audit of eight mechanism-oriented pages under `docs/02-context-model-loop`. It records the questions derived from the pre-audit pages, source-confirmed answers, documentation decisions, convergence passes, and the limits beyond which the retained artifacts do not support a claim.
 

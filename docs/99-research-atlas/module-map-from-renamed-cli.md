@@ -87,7 +87,7 @@ Each row links a Claude Code subsystem to its loader line range in `cli.renamed.
 | `McpChromeBridge` | 4 | 40188 – 52085 | `localPlatformLabel`, `createClaudeForChromeMcpServer`, `createChromeSocketClient`, `createBridgeClient`, `clearBrowserResolution` | [Browser automation and Claude in Chrome](../03-tools-integrations-security/browser-automation-and-claude-in-chrome.md) |
 | `McpbExtensionPackaging` | 5 | 207944 – 227138 | `verifyMcpbFile`, `verifyCertificateChain`, `validateManifest`, `unsignMcpbFile`, `unpackExtension`, `signMcpbFile` | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
 | `PluginLoader` | 1 | 473632 | `resolvePluginRoot`, `resolveContainedPluginPath`, `mergePluginSources`, `loadSkillsAsPlugins`, `loadPluginManifest`, `loadAllPlugins` | [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md) |
-| `PluginCommandHandlers` | 1 | 657701 | `pluginValidateHandler`, `pluginUpdateHandler`, `pluginUninstallHandler`, `pluginTagHandler`, `pluginPruneHandler`, `pluginListHandler`, `pluginInstallHandler`, `pluginInitHandler` | [Commands and flags](../01-runtime-lifecycle/commands-and-flags.md) |
+| `PluginCommandHandlers` | 1 | 657701 | `pluginValidateHandler`, `pluginUpdateHandler`, `pluginUninstallHandler`, `pluginTagHandler`, `pluginPruneHandler`, `pluginListHandler`, `pluginInstallHandler`, `pluginInitHandler` | [Plugin lifecycle and configuration](../03-tools-integrations-security/plugin-lifecycle-and-configuration.md) |
 | `LspIdeClient` | 1 | 320957 | `createLSPClient` | [IDE integration and LSP diagnostics](../03-tools-integrations-security/ide-integration-and-lsp-diagnostics.md) |
 
 ### Auth (multi-cloud)

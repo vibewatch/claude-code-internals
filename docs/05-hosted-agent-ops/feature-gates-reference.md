@@ -300,5 +300,6 @@ The practical outcomes:
 - [Observer agents](../06-agents-automation/observer-agents.md)
 - [Agent Teams](../06-agents-automation/agent-teams.md)
 - [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md)
-- [Agent runtime, scheduling, and completion](../06-agents-automation/agent-runtime-scheduling-and-completion.md)
+- [Agent steering, interruption, and completion](../06-agents-automation/agent-steering-interruption-and-completion.md)
+- [Cron and scheduled tasks](../06-agents-automation/cron-and-scheduled-tasks.md)
 - [Operations and native-support architecture](architecture.md)

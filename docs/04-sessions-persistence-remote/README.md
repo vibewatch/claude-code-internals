@@ -31,6 +31,15 @@ flowchart TD
 
 ## Primary reading order
 
+This chapter uses four documentation layers so one session fact does not acquire several competing owners:
+
+| Layer | Canonical pages | Reader contract |
+|---|---|---|
+| Architecture | [Session and remote-control architecture](architecture.md) | Defines identities, layers, collaborators, and invariants; it does not repeat queue/hydration algorithms. |
+| Lifecycle | [Session resume and transcripts](session-resume-and-transcripts.md), [Remote control and teleport](remote-control-and-teleport.md) | Owns setup, state transitions, retries, persistence ordering, reconciliation, cleanup, and failures. |
+| Inventory/reference | [Session API, events, and storage](session-api-events-and-storage.md) | Lists endpoint, event, frame-family, and storage surfaces without becoming their implementation tutorial. |
+| Shape/reference | [Data models and frame schemas](data-models-and-frame-schemas.md) | Defines observable record/frame fields and ordering constraints without duplicating lifecycle algorithms. |
+
 | Order | Page | Session question answered |
 |---:|---|---|
 | 1 | [Session resume and transcripts](session-resume-and-transcripts.md) | How do JSONL roots, `--continue`/`--resume`/fork/no-persistence/rewind and `/clear`/`/branch`/`/rename`/`/recap` connect, and how do discovery/restore rehydrate live state? |
@@ -39,8 +48,9 @@ flowchart TD
 | 4 | [Remote control and teleport](remote-control-and-teleport.md) | How do `--remote`, `--teleport`, `remote-control`, bridge tokens, `/remote-env`, `/web-setup`, `/session`, and Remote Control paths connect to sessions? |
 | 5 | [Session API, events, and storage](session-api-events-and-storage.md) | Which API endpoints, event families, bridge frames, and internal storage areas are visible around sessions and remote control? |
 | 6 | [SDK query, session API, and subagent surface](sdk-query-and-session-api.md) | What programmatic SDK surface does Claude Code expose for `query`, session management, subagent inspection, in-process MCP, and direct-connect transport? |
-| 7 | [Data models and frame schemas](data-models-and-frame-schemas.md) | Which observable transcript records, session layers, stream/control frames, and storage record families shape sessions? |
-| 8 | [Session and remote-control architecture](architecture.md) | How is a session decomposed into a durable JSONL layer + live envelope, and how do resume/fork/rewind/remote reuse the same address? |
+| 7 | [Session recording (asciicast)](session-recording.md) | How are session recordings represented, retained, and bounded when the source-visible asciicast path is active? |
+| 8 | [Data models and frame schemas](data-models-and-frame-schemas.md) | Which observable transcript records, session layers, stream/control frames, and storage record families shape sessions? |
+| 9 | [Session and remote-control architecture](architecture.md) | How is a session decomposed into a durable JSONL layer + live envelope, and how do resume/fork/rewind/remote reuse the same address? |
 
 ## Handoffs
 

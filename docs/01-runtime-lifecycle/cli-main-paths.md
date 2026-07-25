@@ -278,7 +278,7 @@ The main paths identified from `cli.renamed.js` are:
 ## Related module docs
 
 - [Package and Bun bootstrap](package-and-bun-bootstrap.md) covers the npm/native/Bun graph boundary before `OuterBootstrap`.
-- [Commands and flags](commands-and-flags.md) expands the root option and subcommand surface.
+- [Command-line reference](command-line-reference.md) is the canonical root-option, subcommand, interactive-command, alias, and gate inventory.
 - [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md) expands `HeadlessRunner`/`HeadlessControlLoop` stream-JSON and SDK behavior.
 - [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md) expands `SessionDiscovery`, `SessionRestore`, JSONL transcripts, fork, and rewind.
 - [Remote control and teleport](../04-sessions-persistence-remote/remote-control-and-teleport.md) expands `--remote`, `--teleport`, Remote Control, bridge, and token paths.

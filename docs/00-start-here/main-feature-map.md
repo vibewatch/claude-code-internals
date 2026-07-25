@@ -82,7 +82,7 @@ flowchart TB
 | Feature area | Entry point or trigger | Main capabilities | Primary docs |
 |---|---|---|---|
 | Package/Bun startup | Native Bun standalone artifact, `.bun` graph entrypoint | Extracted graph identifies the CLI entrypoint and embedded image/audio N-API modules; exact wrapper-to-native handoff is not retained in this checkout. | [Package and Bun bootstrap](../01-runtime-lifecycle/package-and-bun-bootstrap.md) |
-| CLI command shell | `claude`, root flags, subcommands | Version, root mode dispatch, `auth`, `mcp`, `plugin`, `project`, `agents`, `doctor`, `update`, `install`. | [Commands and flags](../01-runtime-lifecycle/commands-and-flags.md) |
+| CLI command shell | `claude`, root flags, subcommands | Version, root mode dispatch, `auth`, `mcp`, `plugin`, `project`, `agents`, `doctor`, `update`, `install`. | [Command-line reference](../01-runtime-lifecycle/command-line-reference.md) |
 | Background supervisor | daemon/background routes, `claude agents`, leases/control socket | On-demand or gated service-origin supervisor, worker adoption, dispatch/attach/reply/kill, idle/takeover, and local protocol checks. | [Daemon and background service](../01-runtime-lifecycle/daemon-and-background-service.md) |
 | Interactive mode | Default TTY run | Setup/login/trust screens, TUI root, resume picker, tools/agents/MCP load, and the interactive session loop. | [CLI main paths](../01-runtime-lifecycle/cli-main-paths.md) |
 | Conversation termination | Gated `EndConversation` tool | Two-call reflection, durable `ended-by-model` marker, interactive blocking, headless shutdown, and `/clear` recovery. | [Conversation termination](../01-runtime-lifecycle/conversation-termination.md) |

@@ -17,9 +17,11 @@ In-scope pages:
 9. `docs/01-runtime-lifecycle/architecture.md`
 10. `docs/01-runtime-lifecycle/commands-and-flags.md`
 
-The later repository-wide coverage review added and audited an eleventh mechanism page, [`terminal-ui-renderer-and-input.md`](../01-runtime-lifecycle/terminal-ui-renderer-and-input.md). That focused round is recorded below and does not rewrite the historical ten-page scope/validation figures.
+The later repository-wide coverage review added and audited an eleventh mechanism page, [`terminal-ui-renderer-and-input.md`](../01-runtime-lifecycle/terminal-ui-renderer-and-input.md). The subsequent information-architecture review retired the duplicative `commands-and-flags.md` page after assigning its routing material to [`cli-main-paths.md`](../01-runtime-lifecycle/cli-main-paths.md) and its inventory material to [`command-line-reference.md`](../01-runtime-lifecycle/command-line-reference.md). The current runtime/startup count is therefore ten; the historical ten-page scope/validation figures below remain unchanged.
 
 `main-feature-map.md` and `commands-and-flags.md` were initially conditional. Both were classified as in scope because they explain mechanism and dispatch ordering rather than serving only as inventories.
+
+The later consolidation supersedes that classification for the published structure: the command page's useful findings remain, but it no longer has independent ownership.
 
 Excluded from direct editing:
 

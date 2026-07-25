@@ -296,7 +296,7 @@ This is why relaying “the user approved” through SendMessage does not clear 
 
 - [Agents, tasks, and subagents](agents-tasks-and-subagents.md)
 - [Agent Teams](agent-teams.md)
-- [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md)
+- [Agent steering, interruption, and completion](agent-steering-interruption-and-completion.md)
 - [Observer agents](observer-agents.md)
 - [Dynamic workflows](dynamic-workflows.md)
 - [Runtime communication protocols](../00-start-here/runtime-communication-protocols.md)

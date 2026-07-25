@@ -6,7 +6,7 @@ Start here when you need the fastest coherent reverse-engineered mental model of
 2. What major runtime capabilities does it contain?
 3. Which path should I follow for a specific investigation?
 
-The primary readable artifact is `claude-code-pkg/src/entrypoints/cli.js`. It is a bundled/minified production file, so this wiki uses stable semantic aliases in prose and keeps minified names only as searchable anchors for this exact build.
+The raw retained artifact is `claude-code-pkg/src/entrypoints/cli.js`; the primary behavioral reading surface is its reproducible formatted, semantically renamed derivative, `cli.renamed.js`. Both represent the same bundled/minified production file, so this wiki uses stable semantic aliases in prose and keeps generated/minified names only as searchable anchors for this exact build.
 
 ## Source-anchor policy
 
@@ -44,7 +44,7 @@ This page is an orientation document. Concrete anchors live in the linked pages.
 | How are models selected and usage/quota/billing handled? | [Model selection, calls, usage, quota, and billing](../02-context-model-loop/model-selection-usage-quota-billing.md) |
 | Which tools, integrations, and permission boundaries exist? | [Tools, integrations, and security](../03-tools-integrations-security/README.md) |
 | Where do sessions, transcripts, resume, and remote control live? | [Sessions, persistence, and remote](../04-sessions-persistence-remote/README.md) |
-| Which operational contracts cover logs, telemetry, updates, diagnostics, and native media modules? | [Hosted agent ops](../05-hosted-agent-ops/README.md) |
+| Which operational contracts cover logs, telemetry, updates, diagnostics, and native media modules? | [Operations and native support](../05-hosted-agent-ops/README.md) |
 | How are agents, subagents, tasks, and automation surfaced? | [Agents and automation](../06-agents-automation/README.md) |
 
 ## Internals map
@@ -55,7 +55,7 @@ flowchart TD
     Runtime --> Loop[Context and model loop]
     Loop --> Tools[Tools, integrations, and security]
     Runtime --> Sessions[Sessions, persistence, and remote]
-    Sessions --> Hosted[Hosted agent ops]
+    Sessions --> Hosted[Operations and native support]
     Loop --> Agents[Agents and automation]
 
     click Start "./" "Open Start here"
@@ -63,7 +63,7 @@ flowchart TD
     click Loop "../02-context-model-loop/" "Open Context and model loop"
     click Tools "../03-tools-integrations-security/" "Open Tools, integrations, and security"
     click Sessions "../04-sessions-persistence-remote/" "Open Sessions, persistence, and remote"
-    click Hosted "../05-hosted-agent-ops/" "Open Hosted agent ops"
+    click Hosted "../05-hosted-agent-ops/" "Open Operations and native support"
     click Agents "../06-agents-automation/" "Open Agents and automation"
 ```
 

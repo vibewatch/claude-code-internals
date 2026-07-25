@@ -159,11 +159,15 @@ Remote Control frame detail remains feature-gate and transport dependent. Consum
 - Direct Connect and the Chrome browser-tool `BridgeClient` do not share this persisted transcript cursor. Direct Connect has no source-visible reconnect loop.
 - These fields and client rules do not prove server-side exactly-once delivery, replay retention length, or compatibility across versions.
 
-### Persistence ordering note
+### Frame-ordering constraints
 
-The main store serializes queued drains in-process and preserves record/removal order for one target file. Its timer is normally 100 ms and becomes 10 ms after legacy remote ingress or an internal CCR writer is registered; clearing the writer does not reset it. `MAX_CHUNK_BYTES = 104857600` is checked against accumulated serialized JavaScript string length before adding the next entry, so it is a flush threshold rather than a byte-accurate cap and one record can exceed it. Each append chunk is written locally before SDK mirror callbacks run; a failed append logs/telemeters the failure, resolves the remaining batch waiters, and does not emit that chunk to mirrors. The process-local UUID cache is updated at enqueue time, so a same-UUID retry can still be suppressed after such a failure. UUID removal can truncate/rewrite local JSONL and emits no corresponding mirror deletion or UUID-cache eviction. Remote Control internal-CCR persistence is a separate path invoked after enqueue rather than after successful local append. External SDK storage is a later batched/retried stage and cannot roll back local JSONL. No cross-process lock or atomic multi-line transaction is visible.
+Schema consumers need three ordering rules:
 
-After 32,768 bytes of successful UTF-8 appends to the active main file, the drain best-effort re-appends cached metadata and mirrors those records. This checkpoint uses cached bridge fields; it is not evidence that `lastSequenceNum` was sampled after every worker-SSE frame.
+- SDK `transcript_mirror` frames follow the corresponding successful local append; a failed append does not produce that mirror batch.
+- CCR internal-event upload is a distinct path invoked after enqueue, so its acknowledgement order must not be inferred from `transcript_mirror`.
+- Repeated metadata records are snapshots of cached state. A later `bridge-session`, `relocated`, mode, worktree, or title record supersedes earlier values for restore, but does not prove that unrelated files or remote services committed atomically.
+
+Queue timing, chunk thresholds, UUID removal/cache behavior, the 32 KiB metadata checkpoint, and shutdown semantics are implementation lifecycle details owned by [Session resume and transcripts](session-resume-and-transcripts.md#append-and-mirror-ordering).
 
 ## Remote/session storage areas
 

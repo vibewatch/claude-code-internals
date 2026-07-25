@@ -169,7 +169,6 @@ A component error is caught by the root error boundary and handed to the rendere
 
 - [Runtime lifecycle](README.md)
 - [CLI main paths](cli-main-paths.md)
-- [Commands and flags](commands-and-flags.md)
 - [Command-line reference](command-line-reference.md)
 - [Accessibility and screen-reader mode](accessibility-and-screen-reader-mode.md)
 - [Headless streaming and resilience](../02-context-model-loop/headless-streaming-and-resilience.md)

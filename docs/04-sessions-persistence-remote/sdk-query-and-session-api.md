@@ -81,7 +81,7 @@ Key options the SDK accepts:
 
 - `cwd`, `dir`, `env` — process identity for the subprocess.
 - `resume`, `forkSession`, `loadTimeoutMs`, `sessionStore` — control how the session is restored, including mirroring through an [`InMemorySessionStore`](#external-session-store-and-local-staging).
-- `model`, `fallbackModel`, `permissionMode`, `allowedTools`, `disallowedTools`, `mcpServers`, `agents`, `hooks`, `outputStyle`, `appendSystemPrompt` — same shape as the corresponding root flags in [Commands and flags](../01-runtime-lifecycle/commands-and-flags.md).
+- `model`, `fallbackModel`, `permissionMode`, `allowedTools`, `disallowedTools`, `mcpServers`, `agents`, `hooks`, `outputStyle`, `appendSystemPrompt` — same shape as the corresponding root surfaces in [Command-line reference](../01-runtime-lifecycle/command-line-reference.md).
 - `signal`, `abortController` — cancellation. Triggers a `SdkAbortError`.
 
 In stream-JSON mode, `--forward-subagent-text` (or its environment equivalent) forwards delegated text/thinking with `parent_tool_use_id`, while normal mode keeps that internal to the agent result. Model-control requests are no longer deferred to the following user turn: a valid `set_model` received mid-turn affects the next provider round trip in the current turn.

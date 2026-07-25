@@ -11,7 +11,7 @@ The review was run on 2026-07-25 against:
 | Git SHA | `316ce99628e89900bf0b1328fed3b8fec0c0c92d` |
 | Primary behavioral source | [`cli.renamed.js`](../../claude-code-pkg/src/entrypoints/cli.renamed.js) |
 | Audit mode | Full analysis, repository-wide |
-| Resulting mechanism-page count | 62 |
+| Current canonical mechanism-page count | 61 |
 
 `source-atlas/` was intentionally left untouched. This was not a package delta, and the retained readable bundle supplied enclosing control flow for every promoted finding.
 
@@ -34,7 +34,7 @@ Strings, generated prompt shards, SDK declarations, and module-atlas hits were d
 | Context and model loop | Prompt/context, memory, compaction, providers/auth, Fable, usage/quota, and headless streaming were deep. | No missing lifecycle page. One generic compatibility gap remained around historical per-turn effort statements and thinking-type retries. | Expanded [Model selection, calls, usage, quota, and billing](../02-context-model-loop/model-selection-usage-quota-billing.md#per-turn-effort-and-thinking-compatibility). |
 | Tools, integrations, and security | Tool boundary, MCP/plugins/hooks, settings, sandbox, status line, computer use, hosted tools, and skills were deep. | Claude in Chrome had only references/generated prompts; IDE dynamic MCP and plugin LSP had only a short synthesis. Both are independent, substantial lifecycles. | Created [Browser automation and Claude in Chrome](../03-tools-integrations-security/browser-automation-and-claude-in-chrome.md) and [IDE integration and LSP diagnostics](../03-tools-integrations-security/ide-integration-and-lsp-diagnostics.md). Added a bounded deferred-plugin-refresh note. |
 | Sessions, persistence, and remote | Transcript chains, resume/fork/rewind, bridge/CCR, teleport, SDK/session APIs, hosted projects, onboarding, recording, and schemas were deep. | No new page. Worktree persistence was documented here but creation/ownership/cleanup belonged to agents; its global-config store wording needed precision. | Linked the new worktree owner and clarified `activeWorktreeSession` lives in the current-project entry of `~/.claude.json`. |
-| Hosted agent operations | Diagnostics, telemetry, feature gates, updater/doctor, safe mode, environment inventory, voice, and native media were deep. | No material source-answerable gap found for this artifact/platform. | No new mechanism page. |
+| Operations and native support | Diagnostics, telemetry, feature gates, updater/doctor, safe mode, environment inventory, voice, and native media were deep. | No material source-answerable gap found for this artifact/platform. | No new mechanism page. |
 | Agents and automation | Agents/tasks, messaging, teams, observers, scheduling, workflows, slash commands, cron, Monitor, and RemoteTrigger were deep. | Worktree isolation was spread across Agent prose, hooks, session persistence, settings, and generated tool prompts without one lifecycle owner. | Created [Worktree isolation and handoffs](../06-agents-automation/worktree-isolation-and-handoffs.md). |
 
 ## Promoted gaps
@@ -141,6 +141,12 @@ Independent audit reports were treated as hypotheses. Direct source reads correc
 6. **Future versions:** thresholds, tool schemas, gates, and minified anchors are pinned to `2.1.215`.
 
 Within those boundaries, the complete post-change pass found no remaining source-answerable subsystem that both lacks an owner and warrants another mechanism page.
+
+## Information-architecture follow-up
+
+The coverage review originally counted 62 mechanism pages. A later [documentation structure and duplication review](documentation-structure-review.md) found that `commands-and-flags.md` duplicated both the `cli-main-paths.md` routing narrative and the more complete `command-line-reference.md` inventory. Retiring it reduced the canonical count to **61** without removing any source-confirmed behavior.
+
+That review also narrowed `agent-runtime-scheduling-and-completion.md` into [Agent steering, interruption, and completion](../06-agents-automation/agent-steering-interruption-and-completion.md), removed repeated session persistence/reconciliation algorithms from architecture/reference pages, and renamed the reader-facing operations chapter while preserving its stable route. Coverage conclusions and retained-artifact boundaries are unchanged.
 
 ## Validation
 

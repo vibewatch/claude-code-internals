@@ -1,4 +1,4 @@
-# Mechanism-question audit: sessions, persistence, and remote
+# Sessions, persistence, and remote mechanism question audit
 
 This research ledger records the full-analysis audit of the mechanism-explaining pages in `docs/04-sessions-persistence-remote/`, excluding the section `README.md`. It tracks the questions used to test each page, the source answer, the documentation change, and the residual boundary where the retained artifact cannot answer safely.
 

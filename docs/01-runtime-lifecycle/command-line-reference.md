@@ -1,6 +1,6 @@
 # Command-line reference
 
-This page is the table-first companion to [Commands and flags](commands-and-flags.md). It centralizes the source-visible root flags, command families, aliases, and mode-specific CLI surfaces so narrative pages can link here instead of repeating long option lists.
+This page is the canonical source-visible inventory of root flags, command families, aliases, gates, and mode-specific CLI surfaces. Process routing and mode dispatch remain in [CLI main paths](cli-main-paths.md), so this reference does not duplicate the bootstrap narrative.
 
 ## Scope and caveats
 
@@ -151,7 +151,7 @@ Remote mode accepts only thin-client-safe built-in/bundled prompts plus objects 
 | `/artifacts` | Artifact-account gated | Browses published/shared artifacts; see [Artifact publishing and live pages](../03-tools-integrations-security/artifact-publishing-and-live-pages.md). |
 | `/auto-mode-setup` | Auto-mode feature gated; TUI + non-interactive twin | Guided environment/rule proposal flow with reviewed-file application; see [Settings, policy, and integrations](../03-tools-integrations-security/settings-policy-and-integrations.md). |
 | `/bug [report]` (`/share`) | Core TUI | Opens bug-report/conversation-sharing UI. |
-| `/chrome` | Claude.ai/TUI gated | Opens Claude-in-Chrome settings; see [Computer-use MCP](../03-tools-integrations-security/computer-use-mcp.md). |
+| `/chrome` | Claude.ai/TUI gated | Opens Claude-in-Chrome settings; see [Browser automation and Claude in Chrome](../03-tools-integrations-security/browser-automation-and-claude-in-chrome.md). |
 | `/config [key=value ...]` (`/settings`) | TUI + non-interactive twin | Opens settings or validates and applies exposed shorthand keys; see [Settings, policy, and integrations](../03-tools-integrations-security/settings-policy-and-integrations.md). |
 | `/design [subcommand\|prompt]` | First-party auth/policy gated | Bundled hub plus local consent helpers; see [Claude Design and design-system sync](../03-tools-integrations-security/claude-design-and-design-sync.md). |
 | `/design-login` | Gated support surface | Acquires design-specific authorization for `/design-sync`. |
@@ -275,7 +275,6 @@ Interactive `/upgrade` is **not** an alias for `/update`: it is the gated subscr
 
 ## Related docs
 
-- [Commands and flags](commands-and-flags.md)
 - [CLI main paths](cli-main-paths.md)
 - [Accessibility and screen-reader mode](accessibility-and-screen-reader-mode.md)
 - [Safe mode and recovery](../05-hosted-agent-ops/safe-mode-and-recovery.md)

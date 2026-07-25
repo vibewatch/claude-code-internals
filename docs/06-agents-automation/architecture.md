@@ -213,7 +213,7 @@ flowchart TD
 - [Agents, tasks, and subagents](agents-tasks-and-subagents.md)
 - [Agent messaging and communication](agent-messaging.md)
 - [Agent Teams](agent-teams.md)
-- [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md)
+- [Agent steering, interruption, and completion](agent-steering-interruption-and-completion.md)
 - [Slash commands and automation](slash-commands-and-automation.md)
 - [System architecture](../00-start-here/system-architecture.md)
 - [Tool runtime and security architecture](../03-tools-integrations-security/architecture.md)

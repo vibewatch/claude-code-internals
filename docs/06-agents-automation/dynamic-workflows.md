@@ -144,7 +144,7 @@ Resume is same-session and content-pinned. A still-running prior task must be st
 ## Related docs
 
 - [Agents, tasks, and subagents](agents-tasks-and-subagents.md)
-- [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md)
+- [Agent steering, interruption, and completion](agent-steering-interruption-and-completion.md)
 - [Cron and scheduled tasks](cron-and-scheduled-tasks.md)
 - [Tool inventory and schemas](../03-tools-integrations-security/tool-inventory-and-schemas.md)
 - [Hooks and events reference](../03-tools-integrations-security/hooks-and-events-reference.md)

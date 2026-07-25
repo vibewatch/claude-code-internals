@@ -94,15 +94,13 @@ flowchart TD
 | External mirroring | `sessionStore`, `transcript_mirror` | Allows an SDK host to mirror records only after local append succeeds. |
 | Retention/cleanup | `cleanupPeriodDays`, `kIp` | Actively sweeps stale transcripts, recordings, sidecars, and associated session state. |
 
-Two important constraints fall out of the source:
+This is a reference view, so it records three boundaries without duplicating their algorithms:
 
-1. `sessionStore` is not a replacement for local writes. The explicit error says it cannot be used with `persistSession: false`; mirroring is fed from the local transcript stream.
-2. Persistence is ordered but best-effort. One in-process queue serializes each file's append and removal operations, a successful local append triggers SDK mirroring, and write failure is logged/telemetered while queued callers are released. The default drain delay is 100 ms and becomes 10 ms after legacy remote ingress or a CCR internal writer is registered. The 100 MiB value is a serialized-JavaScript-string flush threshold, not a hard byte/record cap. UUIDs enter the process-local dedup cache when enqueued, so the same UUID can remain suppressed after a failed append; removal can truncate/rewrite the local file but emits no mirror deletion and does not evict that cache entry. There is no cross-process lock or rollback of an already-written local batch when an external mirror fails.
-3. Only Remote Control adds bridge frames around a local session envelope. `--remote` owns a hosted loop; teleport imports hosted events before local restore; Direct Connect and the Chrome browser-tool bridge are separate protocols.
+1. `sessionStore` supplements rather than replaces local persistence; the SDK rejects it with `persistSession:false`.
+2. SDK `transcript_mirror` follows a successful local append, while CCR internal-event upload is a separate queue/acknowledgement path.
+3. Remote Control wraps a local envelope; hosted `--remote`, teleport, Direct Connect, and the Chrome bridge remain distinct protocols.
 
-Remote Control internal-event persistence is not the SDK `transcript_mirror` path. Its writer is invoked after the local operation is enqueued rather than after the append succeeds, and its uploader has independent retry/drop semantics; local append → SDK mirror ordering must not be generalized to CCR internal events.
-
-Successful UTF-8 writes to the active main transcript also drive a 32,768-byte metadata checkpoint. The drain then re-appends and mirrors cached last-prompt/title/tag/agent/mode/permission/worktree/PR/bridge records. It snapshots local cache state rather than polling the bridge transport, so checkpoint frequency does not imply per-frame bridge-cursor durability.
+For write ordering, metadata checkpoints, removal, relocation, and hydration, use [Session resume and transcripts](session-resume-and-transcripts.md#persistence-interpretation). For transport retry/cursor behavior, use [Remote control and teleport](remote-control-and-teleport.md).
 
 ## Remote control and remote sessions
 
@@ -133,9 +131,7 @@ Remote Control is implemented through bridge/control frames. The high-signal fra
 | `bash_command` | host → runtime | Injects a command into the headless bash path and posts the output back as user-visible content. |
 | `transcript_mirror` | runtime → host/SDK | Mirrors local transcript records to external consumers. |
 
-The bridge path also wires callbacks such as inbound prompt message handling, permission responses, interrupt, model changes, and max-thinking-token changes. That makes Remote Control a control-plane projection over a local session, not just screen sharing. Its in-memory cache tracks the bridge-session ID and highest numeric worker-SSE ID received; when a transcript is materialized, lifecycle saves queue a `bridge-session` record so a non-fork resume can reattach. A fork clears both restored fields.
-
-Remote Control resumes worker SSE after that cursor, but its numeric-ID set only logs duplicates: duplicate frames still reach parsing/dispatch, the cursor advances before payload validation or filtering, and the set's `>1000` pruning rule is heuristic rather than a hard bound. Separate fixed-capacity UUID rings suppress send-attempt echoes, duplicate outbound SDK events, and type-accepted inbound `user` redelivery; after upstream filtering drops worker-sourced control requests, eligible control request/response frames bypass the main-envelope UUID check. Remote Control also detects liveness loss and can rebuild selected credential failures. Hosted `--remote` instead uses `SessionsV2Client`, with a five-attempt reconnect budget and an explicit `catch_up_truncated` gap event. Teleport fetches hosted logs through an endpoint fallback and reconstructs a local session. See [Remote control and teleport](remote-control-and-teleport.md) for the separate failure and cleanup contracts.
+The callback family confirms that Remote Control is a bidirectional control-plane projection, not screen sharing. This reference intentionally stops at frame/endpoint discovery; bridge identity, numeric receipt cursors, UUID filtering, reconnect, hosted `--remote`, and teleport behavior are canonical in [Remote control and teleport](remote-control-and-teleport.md). The durable `bridge-session` shape is canonical in [Data models and frame schemas](data-models-and-frame-schemas.md#bridge-session-record).
 
 ## API call surfaces
 
@@ -251,22 +247,12 @@ Telemetry strings mostly use the `tengu_*` prefix, for example scheduled-task, a
 | Scheduled tasks | `.claude/scheduled_tasks.lock`, durable scheduled-task prompt mentions `.claude/scheduled_tasks.json` | Session/durable scheduled prompt state and scheduler lock. |
 | Debug/ops logs | `CLAUDE_CODE_DEBUG_LOGS_DIR`, debug `latest` symlink | Support/debug log files outside the transcript. |
 
-The main design pattern is **queue, append-or-remove, mirror appends, and replay**:
+The table above is the canonical storage-area inventory. Lifecycle mechanics are intentionally delegated:
 
-1. records are routed by append policy and queued per target file;
-2. drains are chained so one process preserves per-file order;
-3. a successful local append fires SDK mirror listeners; local UUID removal rewrites without a mirror deletion or process-local dedup-cache eviction;
-4. the SDK host independently batches/retries its `SessionStore.append()` call;
-5. resume scans local or temporarily materialized records into a live envelope;
-6. coordinated shutdown drains the queues best-effort.
-
-Local write failure prevents that drain's mirror callback but does not automatically disable all later persistence. External-store failure emits a mirror error without rolling back local JSONL. Internal CCR upload is a distinct queue and acknowledgement path, not another name for this mirror callback.
-
-Two additional operations deliberately step outside simple append/replay. Transcript relocation flushes and buffers the main and auxiliary in-process writers, then moves the main JSONL and associated session directory separately via rename or copy/delete; buffered records replay afterward, but there is no cross-process lock, atomic multi-file transaction, or rollback. CCR hydration can append a delta from a locally validated `.ccr-tip.json` anchor or directly rewrite foreground/per-agent JSONL. It refuses a full replacement that has no `user`/`assistant` content when the local file does, but it does not merge two content-bearing histories.
-
-Interactive CCR persistence-ready handling reconciles in the opposite direction: it unions server foreground/subagent UUIDs, scans each local file backward to the newest compaction record, and starts queuing absent records before installing the live writer. Subagent startup backfill admits only the 20 newest files no larger than 5 MiB. Its per-record Promises are not awaited as an acknowledgement barrier, so selected counts describe scheduled backfill, not confirmed server durability.
-
-The retention path is likewise executable rather than merely declarative. `startBackgroundHousekeeping()` schedules the first check after five seconds and runs only once per process. Recent interactive activity or a `.last-cleanup` sentinel younger than 24 hours moves the sweep to the ten-minute slow-work interval; after `kIp()` completes, the sentinel is rewritten. Interactive sessions also touch their current transcript immediately and hourly. The sweep compares filesystem `mtime`, removes stale JSONL, cast files and sidecars, and recursively cleans associated session/subagent/workflow/remote-agent state. Cleanup is skipped when disabled or when settings-source errors make the configured period unsafe to determine; the unreferenced timers do not keep a process alive.
+- [Session resume and transcripts](session-resume-and-transcripts.md) owns queue/append/remove/mirror ordering, external-store staging, relocation, hydration, backfill, and retention behavior.
+- [Remote control and teleport](remote-control-and-teleport.md) owns transport cursors, reconnect, uploader queues, and hosted/teleport boundaries.
+- [Data models and frame schemas](data-models-and-frame-schemas.md) owns record and frame shapes.
+- [SDK query, session API, and subagent surface](sdk-query-and-session-api.md) owns the public SDK adapter and `SessionStore` API contract.
 
 ## Mental model
 

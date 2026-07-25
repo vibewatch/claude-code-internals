@@ -2,7 +2,7 @@
 
 This page reverse-engineers the major Claude Code prompt shapes from the analyzed `cli.renamed.js` bundle. It intentionally uses **scenario skeletons** instead of copying long bundled prompt bodies: the goal is to show which fragments are selected, how they are ordered, and which runtime values fill the gaps.
 
-For exact provider-facing prompt text for one live session, instrument or capture the request after runtime interpolation. The static [Prompt template catalog](prompt-template-catalog.md) keeps hashes, previews, and anchors for this extracted build without retaining generated JSON artifacts.
+For exact provider-facing prompt text for one live session, instrument or capture the request after runtime interpolation. The static [Prompt template catalog](prompt-template-catalog.md) keeps hashes, previews, anchors, and a generated machine-readable JSON catalog for this extracted build; those artifacts are discovery evidence rather than proof of runtime assembly.
 
 ## Source anchors
 

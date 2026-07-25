@@ -234,18 +234,13 @@ Explicit `TaskUpdate({owner})` is different: it assigns the task and writes a ma
 
 ## Messaging and protocol frames
 
-### Public `SendMessage` contract
+### Team-specific `SendMessage` constraints
 
-With Agent Teams enabled, `SendMessage` accepts:
+[Agent messaging and communication](agent-messaging.md#sendmessage-input-contract) is the canonical public input, address-resolution, pinning, transport-acknowledgement, and reply/completion reference. Agent Teams adds only these constraints:
 
-- a plain string message plus required short `summary`;
-- `shutdown_request`;
-- `shutdown_response`; or
-- `plan_approval_response`.
-
-`to:"*"` broadcast is rejected. `to` must be a bare name and cannot contain `@`. Plain messages to `main` are queued for the main conversation's next turn; live ordinary subagents receive pending-message attachments at their next tool round; teammates receive mailbox entries. The resolver retains local/cloud peer-session variants, but its candidate providers return empty lists in this exact artifact; in a host/build that supplies those candidates, peers still would not become members of the implicit team.
-
-Names are resolved against process state and the team roster without silently guessing. Ordinary named subagents/local/cloud sessions can acquire a pin so later name reuse cannot redirect a conversation. Team-member routing revalidates the member ID against the current roster before structured sends.
+- team-aware structured input is limited to shutdown request/response and plan-approval response records; ordinary text still requires a short summary;
+- broadcast and `@team` addressing are rejected because one session has one implicit team; and
+- routing revalidates the chosen member ID against the current roster before a structured send, while teammate delivery uses the locked mailbox described below.
 
 ### Internal mailbox protocol
 
@@ -385,7 +380,7 @@ Representative failures include:
 
 - [Agents, tasks, and subagents](agents-tasks-and-subagents.md)
 - [Agent messaging and communication](agent-messaging.md)
-- [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md)
+- [Agent steering, interruption, and completion](agent-steering-interruption-and-completion.md)
 - [Dynamic workflows](dynamic-workflows.md)
 - [Observer agents](observer-agents.md)
 - [Sandbox and isolation](../03-tools-integrations-security/sandbox-and-isolation.md)

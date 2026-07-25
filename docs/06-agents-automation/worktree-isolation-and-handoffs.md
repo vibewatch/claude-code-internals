@@ -258,7 +258,7 @@ Ordinary `Agent({isolation:"worktree"})` cleanup is automatic rather than an `Ex
 ## Related docs
 
 - [Agents, tasks, and subagents](agents-tasks-and-subagents.md)
-- [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md)
+- [Agent steering, interruption, and completion](agent-steering-interruption-and-completion.md)
 - [Agent Teams](agent-teams.md)
 - [Dynamic workflows](dynamic-workflows.md)
 - [Session resume and transcripts](../04-sessions-persistence-remote/session-resume-and-transcripts.md)

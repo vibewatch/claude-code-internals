@@ -323,7 +323,7 @@ This pattern explains why the same skill can answer different shapes of question
 ## Related docs
 
 - [Agents, tasks, and subagents](agents-tasks-and-subagents.md)
-- [Agent runtime, scheduling, and completion](agent-runtime-scheduling-and-completion.md)
+- [Agent steering, interruption, and completion](agent-steering-interruption-and-completion.md)
 - [MCP, plugins, and hooks](../03-tools-integrations-security/mcp-plugins-hooks.md)
 - [Settings, policy, and integrations](../03-tools-integrations-security/settings-policy-and-integrations.md)
 - [Team onboarding and share flows](../04-sessions-persistence-remote/team-onboarding-and-share-flows.md)

@@ -141,7 +141,6 @@ export default defineConfig({
             { label: 'Package and Bun bootstrap', link: '/01-runtime-lifecycle/package-and-bun-bootstrap/' },
             { label: 'CLI main paths', link: '/01-runtime-lifecycle/cli-main-paths/' },
             { label: 'Daemon and background service', link: '/01-runtime-lifecycle/daemon-and-background-service/' },
-            { label: 'Commands and flags', link: '/01-runtime-lifecycle/commands-and-flags/' },
             { label: 'Command-line reference', link: '/01-runtime-lifecycle/command-line-reference/' },
             { label: 'Terminal UI renderer and input', link: '/01-runtime-lifecycle/terminal-ui-renderer-and-input/' },
             { label: 'Accessibility and screen-reader mode', link: '/01-runtime-lifecycle/accessibility-and-screen-reader-mode/' },
@@ -203,7 +202,7 @@ export default defineConfig({
           ],
         },
         {
-          label: 'Hosted agent ops',
+          label: 'Operations and native support',
           items: [
             { label: 'Overview', link: '/05-hosted-agent-ops/' },
             { label: 'Diagnostics and logs', link: '/05-hosted-agent-ops/diagnostics-and-debug-logs/' },
@@ -228,7 +227,7 @@ export default defineConfig({
             { label: 'Agent messaging', link: '/06-agents-automation/agent-messaging/' },
             { label: 'Agent Teams', link: '/06-agents-automation/agent-teams/' },
             { label: 'Observer agents', link: '/06-agents-automation/observer-agents/' },
-            { label: 'Runtime and scheduling', link: '/06-agents-automation/agent-runtime-scheduling-and-completion/' },
+            { label: 'Steering and completion', link: '/06-agents-automation/agent-steering-interruption-and-completion/' },
             { label: 'Dynamic workflows', link: '/06-agents-automation/dynamic-workflows/' },
             { label: 'Slash commands', link: '/06-agents-automation/slash-commands-and-automation/' },
             { label: 'Cron and scheduled tasks', link: '/06-agents-automation/cron-and-scheduled-tasks/' },
@@ -241,6 +240,7 @@ export default defineConfig({
             { label: 'Overview', link: '/99-research-atlas/' },
             { label: 'Bundle module map', link: '/99-research-atlas/module-map-from-renamed-cli/' },
             { label: 'Full-system coverage review', link: '/99-research-atlas/full-system-coverage-review/' },
+            { label: 'Documentation structure review', link: '/99-research-atlas/documentation-structure-review/' },
             { label: 'Runtime mechanism audit', link: '/99-research-atlas/mechanism-question-audit-runtime/' },
             { label: 'Context/model mechanism audit', link: '/99-research-atlas/mechanism-question-audit-context-model/' },
             { label: 'Tools/security mechanism audit', link: '/99-research-atlas/mechanism-question-audit-tools-security/' },
