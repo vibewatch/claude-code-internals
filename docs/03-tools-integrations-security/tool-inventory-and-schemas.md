@@ -191,3 +191,4 @@ High-signal guard strings include:
 - [Computer-use MCP](computer-use-mcp.md)
 - [Hooks and events reference](hooks-and-events-reference.md)
 - [Settings schema reference](settings-schema-reference.md)
+- [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md)

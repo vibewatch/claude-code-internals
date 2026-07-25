@@ -210,6 +210,15 @@ The metrics below describe the completed 61-page structure review before the lat
 - The build's only warning was Vite's existing advisory for chunks larger than 500 kB after minification.
 - No retained package or `source-atlas/` artifact was intentionally edited.
 
+## Current post-string-review validation
+
+- The current inventory contains **100 Markdown sources**, **100 unique H1 titles**, and **99 unique `docs/SUMMARY.md` targets**.
+- All **2,381 authored relative links**, including **144 generated-fragment checks**, resolve. Generated prompt shards remain excluded as link sources because their verbatim fenced examples intentionally contain pseudo-repository links.
+- All **91** configured sidebar routes are unique and resolve to source pages.
+- Current mechanism arithmetic is **10 + 8 + 15 + 10 + 10 + 10 = 63**, with the sessions and operations additions recorded in their domain-ledger follow-ups.
+- Astro/Starlight loaded **100** docs and generated **101** static pages. Pagefind indexed all 101 HTML files and sitemap generation completed; the only build warning was the existing Vite chunk-size advisory.
+- The three new routes and 21 critical heading IDs across new/extended owners were asserted in generated HTML. `git diff --check`, editor diagnostics, final-newline checks, and retained-artifact checks passed.
+
 ## Remaining non-duplication caveats
 
 - Similar terminology is unavoidable across architecture, reference, and implementation layers; explicit owner statements are the maintenance boundary.

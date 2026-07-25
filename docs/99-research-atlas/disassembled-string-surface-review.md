@@ -147,6 +147,7 @@ The remaining questions—audio playback consumers, exact capture/playback threa
 Independent candidate reviews were treated as hypotheses and corrected against direct source:
 
 - `--disable-slash-commands` sets shared command availability and is propagated to relaunch/remote setup; it is not merely a parser that silently drops submitted slash text.
+- `plugin eval` and `plugin eval init` are registered in this build; the Walnut Spire guard runs at action time and refuses execution when early access is off.
 - Plugin case `scaffold_script` is off by default and runs only with `--scaffold`; it is not default setup behavior.
 - `adopt.json` is claimed as `adopt.json.<pid>` and always unlinked after read. This claim path does not rename corruption to `.expired`.
 - The adopt merge guard checks the old candidate's size/count before merging; it does not visibly re-check the final merged count in `Upr()`.
@@ -154,6 +155,9 @@ Independent candidate reviews were treated as hypotheses and corrected against d
 - Grove's missing cache causes a background refresh and skips the check for that session; stale cache returns its value while refreshing.
 - `--cloud` is the current hosted-session spelling; `--remote` is registered as its deprecated hidden alias in this build.
 - Agent proxy, enterprise gateway, and ordinary user proxy configuration are three different systems.
+- `GIT_CONFIG_GLOBAL` must be set before governed Git writes, but the writer trusts that caller-provided path rather than proving it is session-specific.
+- Ordinary `/uploads` reads stream with one 401 remint, a 60-second no-byte watchdog, and truncation checking; synchronized-file reconciliation uses a separate 30-second arraybuffer fetch without those stream controls.
+- Gateway telemetry relay can synthesize a catch-all managed payload without an explicit `managed:` block, and its discovery `scopes_supported` list omits the `offline_access` scope requested by the default outbound IdP authorization flow.
 
 ## Residual interpretation rules
 
@@ -177,6 +181,18 @@ The follow-up adds two canonical mechanism pages:
 | Operations and native support | 9 | Enterprise gateway server | 10 |
 
 Other domain counts remain 10 runtime, 8 context/model, 15 tools/security, and 10 agents/automation. Canonical arithmetic is therefore **10 + 8 + 15 + 10 + 10 + 10 = 63**.
+
+## Validation
+
+- Independent source-versus-doc reviews covered the enterprise gateway, remote-runner egress/staging, all absorbed findings, and the resulting information architecture. Material corrections were applied; each was rechecked against executable branches rather than accepted from review prose alone.
+- The residual scan found every promoted priority string in authored docs and resolved all eight registrations that were absent before the audit. Broad residual absence remains expected: 676 environment-like, 1,598 `tengu_*`/gate-like, 113 endpoint-like, and 512 file-like strings are still absent because the corpus intentionally rejects internal/test/vendor/generated/telemetry noise. Remaining exact Commander-signature mismatches were already-documented commands/options whose prose omits the full argument signature.
+- The final source inventory contains **100 Markdown sources** and **100 unique H1 titles**. `docs/SUMMARY.md` has **99 unique Markdown targets**; all resolve.
+- The Starlight sidebar has **91 unique routes** with no duplicates or missing source pages.
+- A repository-wide authored-doc scan checked **2,381 relative links**, including **144 heading fragments**, against the generated HTML. All file and fragment targets resolve.
+- Production `npm run build` loaded **100** docs and generated **101** pages. Pagefind indexed all 101 HTML files and sitemap generation completed. The only warning was Vite's existing advisory for chunks larger than 500 kB after minification.
+- Assertions checked all three new routes plus 21 critical new heading IDs across the new and extended owner pages; all passed.
+- Editor diagnostics and `git diff --check` passed. Every checked Markdown/config file ends with a newline after the final normalization pass.
+- No path under `claude-code-pkg/` or `source-atlas/` changed; the absent `source-atlas/` was intentionally not regenerated.
 
 ## Related reviews
 

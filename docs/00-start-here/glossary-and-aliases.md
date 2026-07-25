@@ -63,6 +63,9 @@ This page defines recurring semantic aliases, minified-symbol search handles, an
 | Context compaction | Summarizing/replacing prior conversation context to stay within token budgets. |
 | Remote Control | Bridge/control projection over a local session, surfaced by `remote-control`, `--remote-control`, and `--rc`. |
 | Teleport | Remote/session resume path with repository/session consistency guardrails. |
+| Enterprise gateway | Native `claude gateway --config` server that owns corporate OIDC, inference routing, managed settings, spend controls, and OTLP relay; distinct from the client gateway-auth branch. |
+| Agent proxy | Hosted-runner local HTTPS CONNECT listener that tunnels policy-enforced egress over WebSocket; distinct from the enterprise inference gateway and an ordinary user proxy setting. |
+| Working-file lane | A synchronized `/working/...` row mirrored below `/mnt/user-data/working`, including staged MCP input/output mediation. |
 | GrowthBook gate | Feature-evaluation path whose `tengu_*` strings often indicate staged rollout or telemetry surfaces. |
 
 ## Abbreviations
@@ -90,3 +93,5 @@ This page defines recurring semantic aliases, minified-symbol search handles, an
 - [Command-line reference](../01-runtime-lifecycle/command-line-reference.md)
 - [Tool inventory and schemas](../03-tools-integrations-security/tool-inventory-and-schemas.md)
 - [Data models and frame schemas](../04-sessions-persistence-remote/data-models-and-frame-schemas.md)
+- [Enterprise gateway server](../05-hosted-agent-ops/enterprise-gateway.md)
+- [Remote-environment egress and file staging](../04-sessions-persistence-remote/remote-environment-egress-and-file-staging.md)
